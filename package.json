@@ -11,7 +11,6 @@
     "expo-constants": "~57.0.20",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
-    "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.24",
     "expo-splash-screen": "~57.0.9",
@@ -40,7 +39,8 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "test": "tsx --tsconfig tsconfig.json --test scripts/logic-test.ts",
-    "server": "node server/index.mjs"
+    "server": "node --env-file-if-exists=server/.env server/index.mjs",
+    "server:install": "npm --prefix server install"
   },
   "private": true
 }

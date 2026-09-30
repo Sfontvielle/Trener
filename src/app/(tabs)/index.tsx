@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,7 +14,8 @@ import { useCoach } from '@/stores/coach';
 import { useCheckins } from '@/stores/checkins';
 import { useDayNutrition, useReadiness, useTodayWorkout } from '@/hooks/useToday';
 import { useDayKey } from '@/hooks/useDayKey';
-import { GOAL_LABEL } from '@/features/nutrition/targets';
+import { GOAL_LABEL, GOAL_SHORT } from '@/features/nutrition/targets';
+import { getExercise } from '@/data/exercises';
 import { dayProgress, macroState } from '@/features/nutrition/status';
 import { stateColor } from '@/components/macroColor';
 import { mainLimiter } from '@/features/recovery/readiness';
@@ -33,7 +34,7 @@ import { useUi } from '@/stores/ui';
  */
 export default function Home() {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const avail = height - insets.top - insets.bottom - TAB_BAR_HEIGHT;
   const compact = avail < 700;
   const tight = avail < 620;
@@ -72,6 +73,7 @@ export default function Home() {
   const kcalState = target ? macroState('kcal', nut.eaten.kcal, target.kcal, dp) : 'progress';
   const firstName = profile.name.split(' ')[0] || 'атлет';
   const gap = tight ? 8 : compact ? 10 : 12;
+  const previewLines = 6;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + (compact ? 4 : 8), paddingBottom: insets.bottom + TAB_BAR_HEIGHT + gap, gap }]}>
@@ -81,7 +83,7 @@ export default function Home() {
           <T v="caption" color={colors.accent} style={{ letterSpacing: 2 }}>
             FORM <T v="caption"> / PERSONAL COACH</T>
           </T>
-          <T v={compact ? 'h2' : 'h1'} numberOfLines={1} style={{ marginTop: 2 }}>
+          <T v={compact || width < 420 ? 'h2' : 'h1'} numberOfLines={1} style={{ marginTop: 2 }}>
             {greeting()}, {firstName}
           </T>
         </View>
@@ -100,7 +102,7 @@ export default function Home() {
         <Pressable accessibilityRole="button" onPress={() => router.push('/plan')} style={styles.goal}>
           <View style={styles.goalDot} />
           <T v="caption" color={colors.text} numberOfLines={1} style={{ flexShrink: 1, letterSpacing: 1.2 }}>
-            {GOAL_LABEL[profile.goal]}
+            {tight ? `Цель · ${GOAL_SHORT[profile.goal]}` : GOAL_LABEL[profile.goal]}
           </T>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Вес" onPress={() => router.push('/weight')} style={styles.weight}>
@@ -180,6 +182,7 @@ export default function Home() {
             onPress={() => startTodayPlanned()}
             secondary={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })}
             compact={compact}
+            lines={tw.template.exercises.slice(0, previewLines).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${Math.max(1, Math.round(e.sets * tw.volumeFactor))}×${e.repMin}–${e.repMax}` }))}
           />
         ) : tw.kind === 'done' ? (
           <WorkoutBody
@@ -191,6 +194,7 @@ export default function Home() {
             variant="secondary"
             onPress={() => tw.completedSession && router.push({ pathname: '/workout/[id]', params: { id: tw.completedSession.id } })}
             compact={compact}
+            lines={tw.completedSession ? tw.completedSession.exercises.filter((e) => e.sets.some((x) => x.done)).slice(0, previewLines).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${e.sets.filter((x) => x.done).length} подх.` })) : []}
           />
         ) : tw.kind === 'rest' ? (
           <WorkoutBody
@@ -202,6 +206,8 @@ export default function Home() {
             variant="secondary"
             onPress={openHub}
             compact={compact}
+            lines={tw.nextWorkout ? tw.nextWorkout.template.exercises.slice(0, Math.max(0, previewLines - 1)).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${e.sets}×${e.repMin}–${e.repMax}` })) : []}
+            linesTitle={tw.nextWorkout ? `Следующая · ${tw.nextWorkout.template.name}` : undefined}
           />
         ) : (
           <WorkoutBody title="Нет плана" sub="Заполни профиль — FORM составит план" meta="" cta="Открыть профиль" icon="person" onPress={() => router.push('/profile')} compact={compact} />
@@ -268,6 +274,8 @@ function WorkoutBody({
   secondary,
   variant = 'primary',
   compact,
+  lines = [],
+  linesTitle,
 }: {
   title: string;
   sub: string;
@@ -278,7 +286,11 @@ function WorkoutBody({
   secondary?: () => void;
   variant?: 'primary' | 'secondary';
   compact?: boolean;
+  lines?: { name: string; meta: string }[];
+  linesTitle?: string;
 }) {
+  // Сколько строк состава влезает — по реальной высоте карточки (кнопка «Начать» всегда видна)
+  const [fit, setFit] = useState(0);
   return (
     <View style={{ flex: 1, justifyContent: 'space-between', gap: 8 }}>
       <View>
@@ -294,6 +306,19 @@ function WorkoutBody({
           </T>
         ) : null}
       </View>
+      {lines.length ? (
+        <View style={{ flex: 1, minHeight: 0, gap: 6, justifyContent: 'center' }} onLayout={(e) => setFit(Math.max(0, Math.floor((e.nativeEvent.layout.height - (linesTitle ? 18 : 0) + 6) / 38)))}>
+          {linesTitle && fit > 0 ? <T v="caption" style={{ fontSize: 10 }}>{linesTitle}</T> : null}
+          {lines.slice(0, fit).map((l, i) => (
+            <View key={i} style={styles.line}>
+              <T v="small" color={colors.text} numberOfLines={1} style={{ flex: 1, fontWeight: '600' }}>
+                {l.name}
+              </T>
+              <T v="small" style={{ fontVariant: ['tabular-nums'] }}>{l.meta}</T>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button title={cta} icon={icon} variant={variant} size={compact ? 'md' : 'lg'} onPress={onPress} style={{ flex: 1 }} />
         {secondary ? <Button title="Состав" variant="outline" size={compact ? 'md' : 'lg'} onPress={secondary} /> : null}
@@ -345,6 +370,7 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
   small: { flex: 1, paddingVertical: 12, gap: 2 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2 },
   insight: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   insightIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
 });

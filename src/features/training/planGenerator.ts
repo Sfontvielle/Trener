@@ -220,7 +220,7 @@ export function generatePlan(p: UserProfile): WorkoutPlan {
         }
       } else if (v > hi) {
         const pe = findExerciseFor(templates, g, 'remove');
-        if (pe && pe.sets > 2) {
+        if (pe) {
           pe.sets -= 1;
           changed = true;
         }
@@ -242,6 +242,21 @@ export function generatePlan(p: UserProfile): WorkoutPlan {
     }
   }
 
+  // Если тренировка заметно короче желаемого — добавляем подходы в основные упражнения (до 5)
+  for (const t of templates) {
+    let guard = 0;
+    while (t.estMinutes < p.sessionMinutes - 12 && guard++ < 12) {
+      const main = t.exercises.filter((e) => e.sets < (e === t.exercises[0] ? 5 : 4)).sort((a, b) => a.sets - b.sets)[0];
+      if (!main) break;
+      main.sets += 1;
+      t.estMinutes = estimateMinutes(t.exercises);
+      if (t.estMinutes > p.sessionMinutes + 3) {
+        main.sets -= 1;
+        t.estMinutes = estimateMinutes(t.exercises);
+        break;
+      }
+    }
+  }
   const minM = Math.min(...templates.map((t) => t.estMinutes));
   const maxM = Math.max(...templates.map((t) => t.estMinutes));
   const vol = plannedWeeklySets(templates, schedule);
@@ -270,13 +285,16 @@ export function generatePlan(p: UserProfile): WorkoutPlan {
 }
 
 function findExerciseFor(templates: WorkoutTemplate[], g: MuscleGroup, mode: 'add' | 'remove'): PlannedExercise | undefined {
-  const all: PlannedExercise[] = [];
-  for (const t of templates) for (const pe of t.exercises) {
+  const all: { pe: PlannedExercise; ex: Exercise; idx: number }[] = [];
+  for (const t of templates) t.exercises.forEach((pe, idx) => {
     const ex = getExercise(pe.exerciseId);
-    if (ex?.groups.primary.includes(g)) all.push(pe);
-  }
-  if (mode === 'add') return all.sort((a, b) => a.sets - b.sets)[0];
-  return all.sort((a, b) => b.sets - a.sets)[0];
+    if (ex?.groups.primary.includes(g)) all.push({ pe, ex, idx });
+  });
+  // Приоритет при снижении: изоляция → вспомогательные базовые → основное упражнение (не ниже 3 подходов)
+  const weight = (x: { ex: Exercise; idx: number }) => (x.ex.mechanic === 'isolation' ? 0 : x.idx === 0 || x.ex.tier === 1 ? 2 : 1);
+  if (mode === 'add') return all.sort((a, b) => a.pe.sets - b.pe.sets || weight(b) - weight(a))[0]?.pe;
+  const cand = all.filter((x) => (weight(x) === 2 ? x.pe.sets > 3 : x.pe.sets > 2)).sort((a, b) => weight(a) - weight(b) || b.pe.sets - a.pe.sets);
+  return cand[0]?.pe;
 }
 
 export const LEVEL_LABEL: Record<UserProfile['level'], string> = {

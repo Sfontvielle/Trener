@@ -4,6 +4,7 @@ import type { Exercise } from '@/types';
 import { colors, radius } from '@/theme';
 import { Icon, T } from '@/components/ui';
 import { exerciseImages } from '@/data/exercises';
+import { EXERCISE_MEDIA } from '@/data/exerciseMedia';
 
 /**
  * Демонстрация техники: две фазы движения (старт/конец) крупно, с плавным циклическим
@@ -11,7 +12,11 @@ import { exerciseImages } from '@/data/exercises';
  * Картинки грузятся только при открытии карточки (не в списке) и кешируются системой.
  */
 export function ExerciseMedia({ exercise, height = 280 }: { exercise: Exercise; height?: number }) {
-  const [a, b] = exerciseImages(exercise);
+  // Локальные кадры (офлайн); для пользовательских упражнений — из сети, если есть
+  const local = EXERCISE_MEDIA[exercise.id];
+  const remote = exerciseImages(exercise);
+  const a = local ? local[0] : remote[0] ? { uri: remote[0] } : undefined;
+  const b = local ? local[1] : remote[1] ? { uri: remote[1] } : undefined;
   const [playing, setPlaying] = useState(true);
   const [phase, setPhase] = useState<0 | 1>(0);
   const [loaded, setLoaded] = useState(0);
@@ -52,8 +57,8 @@ export function ExerciseMedia({ exercise, height = 280 }: { exercise: Exercise; 
   return (
     <View style={[styles.box, { height }]}>
       <View style={styles.frame}>
-        <Animated.Image source={{ uri: a }} resizeMode="contain" style={[styles.img, { opacity: t.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: scaleA }] }]} onLoad={() => setLoaded((x) => x + 1)} onError={() => setError(true)} />
-        <Animated.Image source={{ uri: b }} resizeMode="contain" style={[styles.img, { opacity: t, transform: [{ scale: scaleB }] }]} onLoad={() => setLoaded((x) => x + 1)} onError={() => setError(true)} />
+        <Animated.Image source={a} resizeMode="contain" style={[styles.img, { opacity: t.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: scaleA }] }]} onLoad={() => setLoaded((x) => x + 1)} onError={() => setError(true)} />
+        <Animated.Image source={b!} resizeMode="contain" style={[styles.img, { opacity: t, transform: [{ scale: scaleB }] }]} onLoad={() => setLoaded((x) => x + 1)} onError={() => setError(true)} />
         {loaded < 2 && !error ? (
           <View style={styles.center}>
             <T v="small">Загрузка демонстрации…</T>
@@ -63,7 +68,7 @@ export function ExerciseMedia({ exercise, height = 280 }: { exercise: Exercise; 
           <View style={[styles.center, { backgroundColor: colors.surface2 }]}>
             <Icon name="cloud-offline-outline" size={32} color={colors.muted} />
             <T v="small" style={{ textAlign: 'center', paddingHorizontal: 24 }}>
-              Демонстрация загружается из интернета. Техника текстом и мышцы — ниже.
+              Не удалось загрузить демонстрацию. Техника текстом и мышцы — ниже.
             </T>
           </View>
         ) : null}
@@ -98,8 +103,9 @@ export function ExerciseMedia({ exercise, height = 280 }: { exercise: Exercise; 
   );
 }
 
-// Предзагрузка изображений (например, при открытии тренировки) — без блокировки UI
+// Предзагрузка сетевых изображений (только для упражнений без встроенных кадров)
 export function prefetchExerciseMedia(ex: Exercise) {
+  if (EXERCISE_MEDIA[ex.id]) return;
   for (const u of exerciseImages(ex)) Image.prefetch(u).catch(() => undefined);
 }
 

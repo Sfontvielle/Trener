@@ -64,7 +64,9 @@ export function buildCoachContext(i: CoachInputs): string {
   L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${p.daysPerWeek} трен/нед по ~${p.sessionMinutes} мин; место: ${p.location === 'gym' ? 'зал' : 'дом'}`);
   L.push(`Оборудование: ${p.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ') || '—'}`);
   L.push(`Ограничения/травмы: ${p.limitations || 'нет'}`);
-  L.push(`Шаги ~${p.stepsPerDay}/день, работа: ${p.workStyle}, предпочитает тренироваться: ${p.preferredTime}`);
+  const WORK = { desk: 'сидячая', mixed: 'смешанная', physical: 'физическая' } as const;
+  const TIME = { morning: 'утром', day: 'днём', evening: 'вечером', any: 'в разное время' } as const;
+  L.push(`Шаги ~${p.stepsPerDay}/день, работа: ${WORK[p.workStyle]}, предпочитает тренироваться ${TIME[p.preferredTime]}`);
   L.push(`Любит: ${p.likedFoods.join(', ') || '—'}; не любит: ${p.dislikedFoods.join(', ') || '—'}; ограничения питания: ${p.dietRestrictions.join(', ') || 'нет'}`);
 
   sec('GOAL');
