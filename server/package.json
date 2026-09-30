@@ -1,0 +1,15 @@
+{
+  "name": "form-coach-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FORM AI Coach backend: принимает рассчитанный на устройстве контекст и отвечает через Claude API",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0"
+  }
+}
