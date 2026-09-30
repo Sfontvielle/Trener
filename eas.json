@@ -1,0 +1,20 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "ios": { "resourceClass": "default" },
+      "env": { "EXPO_PUBLIC_COACH_API_URL": "" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": { "EXPO_PUBLIC_COACH_API_URL": "" }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
