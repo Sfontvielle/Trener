@@ -57,7 +57,8 @@ export function reviewCalories(args: {
 
   const observedTdee = coverage >= 0.7 ? avg(fullDays) - (rate.kgPerWeek * 7700) / 7 : undefined;
 
-  const lastCal = adjustments.filter((a) => a.kind === 'calories' || a.kind === 'plan_rebuild').sort((a, b) => b.createdAt - a.createdAt)[0];
+  // Таймер «ждём эффекта» запускают только изменения калорий (не перестройка тренировок)
+  const lastCal = adjustments.filter((a) => a.kind === 'calories' && (a.deltaKcal !== 0 || a.source === 'goal_change')).sort((a, b) => b.createdAt - a.createdAt)[0];
   const daysSinceAdj = lastCal ? daysBetween(isoFromMs(lastCal.createdAt), now) : Infinity;
 
   const diff = rate.kgPerWeek - target; // >0 — набираем быстрее цели / худеем медленнее

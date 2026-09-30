@@ -38,13 +38,16 @@ export function applyProfile(next: UserProfile, opts: { force?: boolean } = {}):
     const plan = generatePlan(next);
     const summary = !prev ? 'Стартовый план создан' : goalChanged ? `Цель изменена: ${GOAL_LABEL[next.goal]} — план и питание пересчитаны` : 'Параметры тренировок изменены — план перестроен';
     planState.setPlan(plan, target, summary, goalChanged ? 'goal_change' : 'user');
+    if (prev && needTarget) {
+      usePlan.getState().addAdjustment({ kind: 'calories', summary: `КБЖУ пересчитаны: ${target.kcal} ккал`, source: goalChanged ? 'goal_change' : 'user', deltaKcal: 0 });
+    }
   } else if (needTarget) {
     planState.setTarget(target);
     planState.addAdjustment({ kind: 'calories', summary: `КБЖУ пересчитаны: ${target.kcal} ккал`, source: 'user', deltaKcal: 0 });
   }
 
   if (goalChanged) {
-    useCoach.getState().addMemory(`Сменил цель на «${GOAL_LABEL[next.goal]}» (${today()})`, 'other', 'user');
+    useCoach.getState().addMemory(`Цель изменена на «${GOAL_LABEL[next.goal]}» (${today()})`, 'other', 'user');
   }
   return { planRebuilt: needPlan, targetChanged: needTarget };
 }
