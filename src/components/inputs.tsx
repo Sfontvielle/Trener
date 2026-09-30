@@ -12,6 +12,7 @@ export function Field({ label, hint, error, style, ...rest }: TextInputProps & {
       <TextInput
         placeholderTextColor={colors.muted}
         selectionColor={colors.accent}
+        accessibilityLabel={label ?? rest.placeholder}
         {...rest}
         style={[styles.input, !!error && { borderColor: colors.danger }, rest.multiline && { height: 88, paddingTop: 12, textAlignVertical: 'top' }]}
       />
@@ -92,7 +93,7 @@ export function NumberStepper({
             selectTextOnFocus
             selectionColor={colors.accent}
             accessibilityLabel={label}
-            style={[styles.stepInput, compact && { fontSize: 18 }]}
+            style={[styles.stepInput, { width: Math.max(44, text.length * (compact ? 12 : 14) + 14) }, compact && { fontSize: 18 }]}
           />
           {unit ? <T v="small">{unit}</T> : null}
         </View>
@@ -181,7 +182,7 @@ const styles = StyleSheet.create({
   },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
-  stepInput: { flexShrink: 1, width: 90, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  stepInput: { flexShrink: 1, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },
   track: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.surface3, padding: 3 },

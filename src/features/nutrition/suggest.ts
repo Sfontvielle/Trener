@@ -86,7 +86,7 @@ export function suggestMeals(args: {
   const recentIds = new Set(args.recentProducts.map((p) => p.id));
   const eatenToday = new Set(todayEntries.map((e) => e.productId));
   // Сырые/сухие ингредиенты годятся для дневника, но не для готового совета
-  const pool = dedupe([...args.recentProducts, ...LOCAL_FOODS]).filter((p) => allowed(p, profile) && p.per100.kcal > 0 && !/сыро[ей]|сух(ой|ие)\b/i.test(p.name));
+  const pool = dedupe([...args.recentProducts, ...LOCAL_FOODS]).filter((p) => allowed(p, profile) && p.per100.kcal > 0 && !/сыро[ей]|сух(ой|ие)/i.test(p.name));
 
   // Подбираем ОДИН приём пищи: остаток делится на оставшиеся приёмы (утром — не весь день сразу)
   const mealsLeft = hour < 11 ? 4 : hour < 15 ? 3 : hour < 19 ? 2 : 1;
@@ -138,7 +138,7 @@ export function suggestMeals(args: {
     const small = p.serving && p.serving.grams <= 60;
     const step = small ? p.serving!.grams : 10;
     const density = p.per100.kcal;
-    const cap = small ? p.serving!.grams * 3 : density > 350 ? 120 : density > 200 ? 250 : 350;
+    const cap = small ? p.serving!.grams * 3 : density > 350 ? 120 : density > 230 ? 150 : density > 150 ? 250 : 350;
     for (let g = step; g <= Math.min(max, cap); g += step) out.push(g);
     return out;
   };

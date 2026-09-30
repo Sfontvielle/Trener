@@ -1,4 +1,5 @@
-import type { DailyCheckIn, FoodEntry, NutritionTarget, ReadinessResult, UserProfile, WeightEntry, WorkoutSession, PlanAdjustment } from '@/types';
+import type { DailyCheckIn, FoodEntry, NutritionTarget, ReadinessResult, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession, PlanAdjustment } from '@/types';
+import { adherence } from '@/features/training/analytics';
 import type { TodayWorkout } from '@/features/training/today';
 import { getExercise } from '@/data/exercises';
 import { historyFor, recommend } from '@/features/training/progression';
@@ -27,6 +28,7 @@ export function localInsights(args: {
   target: NutritionTarget | null;
   weights: WeightEntry[];
   adjustments: PlanAdjustment[];
+  plan?: WorkoutPlan | null;
   hour?: number;
 }): LocalInsight[] {
   const out: LocalInsight[] = [];
@@ -73,6 +75,24 @@ export function localInsights(args: {
     const rem = remaining(args.target, sumMacros(todayEntries));
     if (hour >= 17 && rem.protein > 40) out.push({ kind: 'nutrition', priority: 60, text: `До нормы белка ещё ${Math.round(rem.protein)} г. Вечером выгоднее творог, курица или скир — без лишнего жира.` });
     if (rem.fat < -10) out.push({ kind: 'nutrition', priority: 55, text: `Жиры уже выше плана на ${Math.round(-rem.fat)} г — до конца дня без орехов, масла и сыра.` });
+  }
+
+  // Систематическое невыполнение плана (≥2 недели истории)
+  if (args.plan) {
+    const firstSession = args.sessions.filter((x) => x.status === 'completed').sort((a, b) => a.startedAt - b.startedAt)[0];
+    if (firstSession && daysBetween(firstSession.date, d) >= 14) {
+      const a = adherence(args.sessions, args.plan, 21);
+      if (a.pct !== null && a.pct < 70) {
+        const missed = a.workoutsPlanned - a.workoutsDone;
+        out.push({
+          kind: 'general',
+          priority: 65,
+          text: missed >= 2
+            ? `За 3 недели выполнено ${a.pct}% плана (${a.workoutsDone}/${a.workoutsPlanned} тренировок). Реалистичнее ${Math.max(2, args.plan.daysPerWeek - 1)} тренировки в неделю — поменяй в профиле, план перестроится.`
+            : `За 3 недели выполнено ${a.pct}% запланированных подходов. Если не хватает времени — сократим объём, а не будем недоделывать.`,
+        });
+      }
+    }
   }
 
   const lastW = args.weights[args.weights.length - 1];

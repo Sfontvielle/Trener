@@ -13,7 +13,7 @@ import { PlanOverview } from '@/features/profile/PlanSummary';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { GOAL_LABEL } from '@/features/nutrition/targets';
-import { relativeDay, today } from '@/utils/date';
+import { relativeDay, today, toISODate } from '@/utils/date';
 
 /** Текущий план: прозрачные расчёты, адаптация калорий и журнал изменений */
 export default function PlanScreen() {
@@ -69,7 +69,7 @@ export default function PlanScreen() {
         {adjustments.slice(0, 15).map((a) => (
           <View key={a.id} style={{ flexDirection: 'row', gap: 10 }}>
             <T v="small" style={{ width: 70 }}>
-              {relativeDay(new Date(a.createdAt).toISOString().slice(0, 10))}
+              {relativeDay(toISODate(new Date(a.createdAt)))}
             </T>
             <T v="small" color={colors.text} style={{ flex: 1 }}>
               {a.summary}

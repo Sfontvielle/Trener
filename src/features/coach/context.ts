@@ -20,7 +20,7 @@ import { adherence, progressRows, sessionVolume, setsByGroup } from '@/features/
 import { resolveToday, MODE_LABEL } from '@/features/training/today';
 import { EQUIPMENT_LABEL, GROUP_LABEL, getExercise } from '@/data/exercises';
 import { LOCAL_FOODS } from '@/data/foods';
-import { addDays, formatHours, today, WEEKDAYS_SHORT } from '@/utils/date';
+import { addDays, formatHours, today, WEEKDAYS_SHORT, toISODate } from '@/utils/date';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
 import { workingSets } from '@/features/training/progression';
 
@@ -135,7 +135,7 @@ export function buildCoachContext(i: CoachInputs): string {
     L.push(`Анализ калорий: ${rev.headline}. ${rev.detail}`);
   }
   const lastAdj = i.adjustments.slice(0, 3);
-  if (lastAdj.length) L.push(`Последние изменения плана: ${lastAdj.map((a) => `${new Date(a.createdAt).toISOString().slice(0, 10)} ${a.summary}`).join('; ')}`);
+  if (lastAdj.length) L.push(`Последние изменения плана: ${lastAdj.map((a) => `${toISODate(new Date(a.createdAt))} ${a.summary}`).join('; ')}`);
 
   sec('NUTRITION TODAY');
   const todayEntries = i.entries.filter((e) => e.date === d);

@@ -61,6 +61,7 @@ export function currentLocalInsights() {
     target: s.ps.target,
     weights: s.weights,
     adjustments: s.ps.adjustments,
+    plan: s.ps.plan,
   });
 }
 

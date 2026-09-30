@@ -4,7 +4,7 @@ import type { Equipment, GoalType, UserProfile } from '@/types';
 import { colors, radius, space } from '@/theme';
 import { Chip, Icon, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
-import { EQUIPMENT_LABEL } from '@/data/exercises';
+import { EQUIPMENT_LABEL, getExercise } from '@/data/exercises';
 import { GOAL_LABEL, defaultRate } from '@/features/nutrition/targets';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
@@ -177,7 +177,22 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           ))}
         </View>
       </View>
-      <Field label="Ограничения и травмы" placeholder="Например: правое плечо не любит жим над головой" value={p.limitations} onChangeText={(t) => set({ limitations: t })} multiline />
+      <Field label="Ограничения и травмы" placeholder="Например: правое плечо не любит жим над головой" value={p.limitations} onChangeText={(t) => set({ limitations: t })} multiline hint="Учитывается AI-тренером. Конкретные упражнения можно исключить на их карточке." />
+      {p.avoidExerciseIds.length ? (
+        <View style={{ gap: 6 }}>
+          <T v="caption">Исключённые упражнения</T>
+          <View style={styles.wrap}>
+            {p.avoidExerciseIds.map((id) => (
+              <Pressable key={id} accessibilityLabel={`Вернуть ${getExercise(id)?.name ?? id}`} onPress={() => set({ avoidExerciseIds: p.avoidExerciseIds.filter((x) => x !== id) })} style={[styles.tag, { backgroundColor: colors.surface3 }]}>
+                <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+                  {getExercise(id)?.name ?? id}
+                </T>
+                <Icon name="close" size={14} color={colors.text} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

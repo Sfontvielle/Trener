@@ -3,7 +3,9 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Card, EmptyState, Icon, SectionTitle, T } from '@/components/ui';
+import { Button, Card, EmptyState, Icon, SectionTitle, T } from '@/components/ui';
+import { confirm, toast } from '@/components/Dialog';
+import { applyProfile } from '@/features/profile/applyProfile';
 import { getExercise, CATEGORY_LABEL, EQUIPMENT_LABEL } from '@/data/exercises';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
@@ -109,6 +111,26 @@ export default function ExerciseScreen() {
       ) : (
         <T v="small">Ты ещё не выполнял это упражнение.</T>
       )}
+
+      {profile && !ex.custom ? (
+        <Button
+          title={profile.avoidExerciseIds.includes(ex.id) ? 'Вернуть в мои планы' : 'Не использовать в моих планах'}
+          icon={profile.avoidExerciseIds.includes(ex.id) ? 'refresh' : 'ban-outline'}
+          variant="outline"
+          size="sm"
+          style={{ marginTop: space.lg }}
+          onPress={() => {
+            const avoided = profile.avoidExerciseIds.includes(ex.id);
+            const next = avoided ? profile.avoidExerciseIds.filter((x) => x !== ex.id) : [...profile.avoidExerciseIds, ex.id];
+            const run = () => {
+              applyProfile({ ...profile, avoidExerciseIds: next });
+              toast(avoided ? 'Упражнение снова доступно, план перестроен' : 'Исключено — план перестроен с заменой');
+            };
+            if (avoided) run();
+            else confirm('Исключить упражнение?', 'FORM перестроит план и подберёт замену. Например, если движение вызывает дискомфорт.', 'Исключить', run);
+          }}
+        />
+      ) : null}
 
       {alts.length ? (
         <>
