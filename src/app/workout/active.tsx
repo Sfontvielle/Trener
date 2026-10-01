@@ -46,6 +46,7 @@ export default function ActiveWorkout() {
   const active = useWorkouts((s) => s.active);
   const sessions = useWorkouts((s) => s.sessions);
   const customs = useWorkouts((s) => s.customExercises);
+  const rest = useWorkouts((s) => s.rest);
   const unit = useProfile((s) => s.settings.weightUnit);
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; weId: string } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -118,6 +119,8 @@ export default function ActiveWorkout() {
   const progress = workoutProgress(active);
   const nextI = nextIndex(active, idx);
   const ctaSet = we?.sets.find((x) => !x.done);
+  // Во время отдыха нижняя зона — таймер (с «Пропустить»), после — снова главная кнопка
+  const resting = !!rest && rest.endsAt + 1500 > now;
   const prevI = prevIndex(active, idx);
 
   const ctx = () => {
@@ -174,12 +177,12 @@ export default function ActiveWorkout() {
 
       <View style={{ flex: 1 }} {...pan.panHandlers}>
         <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
-          <ScrollView key={we?.id ?? 'empty'} contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 230, gap: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          <View key={we?.id ?? 'empty'} style={{ flex: 1, paddingHorizontal: space.lg, paddingTop: 10, paddingBottom: insets.bottom + 136, gap: 8 }}>
             {active.volumeFactor < 1 ? (
               <View style={styles.note}>
-                <Icon name="battery-half" size={16} color={colors.warning} />
-                <T v="small" color={colors.text} style={{ flex: 1 }}>
-                  Объём снижен до {Math.round(active.volumeFactor * 100)}% по готовности. Веса без повышения.
+                <Icon name="battery-half" size={14} color={colors.warning} />
+                <T v="small" color={colors.text} style={{ flex: 1, fontSize: 12 }} numberOfLines={1}>
+                  Объём {Math.round(active.volumeFactor * 100)}% по готовности · веса без повышения
                 </T>
               </View>
             ) : null}
@@ -199,13 +202,15 @@ export default function ActiveWorkout() {
             ) : (
               <EmptyState icon="add-circle-outline" title="Пока пусто" text="Добавь первое упражнение." action="Добавить упражнение" onAction={() => setPicker({ mode: 'add' })} />
             )}
-          </ScrollView>
+          </View>
         </Animated.View>
       </View>
 
       {we ? (
         <View style={[styles.cta, { bottom: insets.bottom + 66 }]}>
-          {ctaSet ? (
+          {resting ? (
+            <RestTimerBar inline />
+          ) : ctaSet ? (
             <Button title={`Завершить подход ${we.sets.indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => completeSetFor({ we, set: ctaSet, index: idx, unit, onPr: (text) => setPr({ text, n: (pr?.n ?? 0) + 1 }) })} />
           ) : nextI >= 0 ? (
             <Button title="Следующее упражнение" icon="arrow-forward" size="lg" onPress={() => goTo(nextI, 1)} />
@@ -236,7 +241,7 @@ export default function ActiveWorkout() {
         </Pressable>
       </View>
 
-      <RestTimerBar bottom={insets.bottom + 134} />
+      {!we ? <RestTimerBar bottom={insets.bottom + 74} /> : null}
       {pr ? <PrBanner key={pr.n} text={pr.text} top={insets.top + 70} /> : null}
 
       <WorkoutNavigator
@@ -499,7 +504,7 @@ function ExerciseFocus({
   const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 3) : []), [ex, sessions]);
   const [whyOpen, setWhyOpen] = useState(false);
   const [stay, setStay] = useState(false);
-  const [mediaOpen, setMediaOpen] = useState(true);
+  const [techOpen, setTechOpen] = useState(false);
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
@@ -512,117 +517,133 @@ function ExerciseFocus({
   const primary = ex.groups.primary.map((g) => GROUP_LABEL[g]);
   const secondary = ex.groups.secondary.map((g) => GROUP_LABEL[g]);
 
+  // Всё на одном экране: заголовок + техника, рекомендация, подходы (растягиваются), быстрые ±
   return (
-    <View style={{ gap: space.md }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} accessibilityRole="button" accessibilityLabel={`${ex.name}, техника`}>
-          <T v="display" style={{ fontSize: 28, lineHeight: 33 }} numberOfLines={3}>
+    <View style={{ flex: 1, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <T v="h2" numberOfLines={2} style={{ fontSize: 22, lineHeight: 26 }}>
             {ex.name}
           </T>
-          <T v="small" numberOfLines={1} style={{ marginTop: 4 }}>
-            {[...primary, ...secondary].slice(0, 4).join(' · ')}
+          <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+            {[...primary, ...secondary].slice(0, 3).join(' · ')}
+          </T>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => setTechOpen(true)} style={styles.techBtn}>
+          <Icon name="play-circle" size={18} color={colors.onAccent} />
+          <T v="small" color={colors.onAccent} style={{ fontWeight: '800' }}>
+            Техника
           </T>
         </Pressable>
-        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} />
+        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 40, height: 40 }} />
       </View>
 
-      {mediaOpen ? (
-        <View style={{ gap: 4 }}>
-          <ExerciseMedia exercise={ex} height={200} />
-          <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setMediaOpen(false)} style={{ alignSelf: 'flex-end' }}>
-            <T v="small" style={{ fontSize: 12 }}>
-              Скрыть технику
-            </T>
-          </Pressable>
-        </View>
-      ) : (
-        <Button title="Показать технику" icon="image-outline" size="sm" variant="ghost" onPress={() => setMediaOpen(true)} />
-      )}
-
       {rec ? (
-        <View style={[styles.rec, rec.action === 'increase' && { borderColor: colors.accentLine, backgroundColor: colors.accentDim }, rec.action === 'decrease' && { borderColor: colors.warningLine }]}>
-          <T v="caption">Рекомендация</T>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-            <T v="num" style={{ fontSize: 30 }}>
-              {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)}` : isBw ? 'свой вес' : '—'}
+        <Pressable accessibilityRole="button" onPress={() => setWhyOpen(!whyOpen)} style={[styles.rec, rec.action === 'increase' && { borderColor: colors.accentLine, backgroundColor: colors.accentDim }, rec.action === 'decrease' && { borderColor: colors.warningLine }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+            <T v="caption" style={{ fontSize: 10 }}>
+              Цель
             </T>
-            {rec.weight > 0 ? <T v="body">{unitLabel(unit)}</T> : null}
+            <T v="num" style={{ fontSize: 22 }}>
+              {rec.weight > 0 ? fmtWeight(rec.weight, unit) : isBw ? 'свой вес' : '—'}
+            </T>
+            {rec.weight > 0 ? <T v="small">{unitLabel(unit)}</T> : null}
             <T v="h3" color={colors.textDim}>
               × {rec.repMin}–{rec.repMax}
             </T>
-            <Icon name={rec.action === 'increase' ? 'trending-up' : rec.action === 'decrease' ? 'trending-down' : rec.action === 'new' ? 'sparkles-outline' : 'remove'} size={18} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim} />
+            <Icon name={rec.action === 'increase' ? 'trending-up' : rec.action === 'decrease' ? 'trending-down' : 'remove'} size={16} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim} />
+            <T v="small" style={{ marginLeft: 'auto', fontSize: 11 }} color={colors.accent}>
+              {whyOpen ? 'скрыть' : 'почему?'}
+            </T>
           </View>
-          <T v="small" style={{ fontSize: 12, marginTop: 2 }}>
-            {rec.rationale}
-          </T>
-          {we.why ? (
-            <Pressable accessibilityRole="button" onPress={() => setWhyOpen(!whyOpen)} hitSlop={6} style={{ marginTop: 6 }}>
-              <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '700' }}>
-                {whyOpen ? 'Скрыть' : `Почему ${we.plannedSets} подхода?`}
-              </T>
-            </Pressable>
-          ) : null}
-          {whyOpen && we.why ? (
-            <T v="small" style={{ fontSize: 12, marginTop: 2 }}>
-              {we.why}
+          {last ? (
+            <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+              Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontVariant: ['tabular-nums'] }}>{last.sets.map((x) => (x.weight ? `${fmtWeight(x.weight, unit)}×${x.reps}` : `${x.reps}`)).join(' · ')}</T>
             </T>
           ) : null}
-        </View>
-      ) : null}
-
-      {last ? (
-        <View style={styles.last}>
-          <T v="caption">Прошлый раз</T>
-          <T v="body" color={colors.text} style={{ fontVariant: ['tabular-nums'] }}>
-            {last.sets.map((s) => (s.weight ? `${fmtWeight(s.weight, unit)}×${s.reps}` : `${s.reps}`)).join('  ·  ')}
-          </T>
-        </View>
+          {whyOpen ? (
+            <T v="small" style={{ fontSize: 12 }}>
+              {rec.rationale}
+              {we.why ? `\n${we.why}` : ''}
+            </T>
+          ) : null}
+        </Pressable>
       ) : null}
 
       <WarmupHint ex={ex} we={we} unit={unit} />
 
-      <View style={styles.block}>
+      <View style={[styles.block, { flex: 1, minHeight: 120 }]}>
         <View style={styles.headRow}>
           <T v="caption" style={{ width: 28 }}>#</T>
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{isBw ? `+${unitLabel(unit)}` : unitLabel(unit)}</T>
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>Повт</T>
           <View style={{ width: 48 }} />
         </View>
-        {we.sets.map((s, i) => (
-          <SetRow key={s.id} weId={we.id} set={s} idx={i} unit={unit} onComplete={completeSet} askFeel={s.done && !we.sets[i + 1]?.done && !s.feel} current={s === nextSet} />
-        ))}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-          <Button title="Подход" icon="add" size="sm" variant="secondary" onPress={() => useWorkouts.getState().addSet(we.id)} style={{ flex: 1 }} />
-          {we.sets.length > 0 && !we.sets[we.sets.length - 1].done ? (
-            <Button title="Убрать" icon="remove" size="sm" variant="ghost" onPress={() => useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id)} />
-          ) : null}
-        </View>
+        {/* Обычно 2–5 подходов помещаются целиком; если больше — прокручивается только этот блок */}
+        <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {we.sets.map((x, i) => (
+            <SetRow key={x.id} weId={we.id} set={x} idx={i} unit={unit} onComplete={completeSet} askFeel={x.done && !we.sets[i + 1]?.done && !x.feel} current={x === nextSet} />
+          ))}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <Button title="Подход" icon="add" size="sm" variant="ghost" onPress={() => useWorkouts.getState().addSet(we.id)} style={{ flex: 1 }} />
+            {we.sets.length > 0 && !we.sets[we.sets.length - 1].done ? (
+              <Button title="Убрать" icon="remove" size="sm" variant="ghost" onPress={() => useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id)} style={{ flex: 1 }} />
+            ) : null}
+          </View>
+        </ScrollView>
       </View>
       <SetTip we={we} step={ex.increment || 2.5} unit={unit} />
 
-      {nextSet ? <QuickAdjust we={we} step={ex.increment || 2.5} unit={unit} bodyweight={isBw} /> : null}
-      {!nextSet && !stay ? (
+      {nextSet ? (
+        <QuickAdjust we={we} step={ex.increment || 2.5} unit={unit} bodyweight={isBw} />
+      ) : !stay ? (
         <View style={styles.doneCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={styles.doneIcon}>
-              <Icon name="checkmark" size={20} color={colors.onAccent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <T v="h3">{isLast ? 'Все упражнения выполнены' : 'Упражнение завершено'}</T>
-              <T v="small">
-                {ex.name} · {doneCount}/{we.sets.length} подходов
-              </T>
-            </View>
+          <View style={styles.doneIcon}>
+            <Icon name="checkmark" size={18} color={colors.onAccent} />
           </View>
-          {!isLast && nextName ? (
-            <T v="small">
-              Следующее: <T v="small" color={colors.text} style={{ fontWeight: '800' }}>{nextName}</T>
+          <View style={{ flex: 1 }}>
+            <T v="body" style={{ fontWeight: '800' }}>
+              {isLast ? 'Все упражнения выполнены' : 'Упражнение завершено'} · {doneCount}/{we.sets.length}
             </T>
-          ) : null}
-          {isLast ? <Button title="Завершить тренировку" icon="flag" size="lg" onPress={onFinishWorkout} /> : <Button title="Следующее упражнение" icon="arrow-forward" size="lg" onPress={onNext} />}
-          <Button title="Остаться" variant="ghost" size="sm" onPress={() => setStay(true)} />
+            {!isLast && nextName ? (
+              <T v="small" numberOfLines={1}>
+                Следующее: <T v="small" color={colors.text} style={{ fontWeight: '700' }}>{nextName}</T>
+              </T>
+            ) : null}
+          </View>
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setStay(true)}>
+            <T v="small" style={{ fontWeight: '700' }}>
+              Остаться
+            </T>
+          </Pressable>
         </View>
       ) : null}
+
+      <Sheet visible={techOpen} onClose={() => setTechOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
+        <View style={{ gap: space.md }}>
+          <ExerciseMedia exercise={ex} height={260} />
+          {ex.cues.length ? (
+            <View style={{ gap: 4 }}>
+              <T v="caption">Как выполнять</T>
+              {ex.cues.map((c) => (
+                <T key={c} v="body" style={{ fontSize: 14 }}>
+                  • {c}
+                </T>
+              ))}
+            </View>
+          ) : null}
+          {ex.mistakes.length ? (
+            <View style={{ gap: 4 }}>
+              <T v="caption">Частые ошибки</T>
+              {ex.mistakes.map((c) => (
+                <T key={c} v="small" color={colors.text}>
+                  • {c}
+                </T>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </Sheet>
     </View>
   );
 }
@@ -682,38 +703,35 @@ function QuickAdjust({ we, step, unit, bodyweight }: { we: WorkoutExercise; step
   const stepTxt = String(step).replace('.', ',');
   return (
     <View style={styles.quick}>
-      <View style={styles.quickRow}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Минус ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.max(0, Math.round((cur.weight - step) * 100) / 100) })} style={styles.qBtn}>
-          <T v="body" style={{ fontWeight: '800' }}>−{stepTxt}</T>
-        </Pressable>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <T v="num" style={{ fontSize: 26 }}>
-            {bodyweight && !cur.weight ? 'свой' : fmtWeight(cur.weight, unit)}
-          </T>
-          <T v="small" style={{ fontSize: 11 }}>
-            {bodyweight ? `доп. ${unitLabel(unit)}` : unitLabel(unit)}
-          </T>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Плюс ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.round((cur.weight + step) * 100) / 100 })} style={styles.qBtn}>
-          <T v="body" style={{ fontWeight: '800' }}>+{stepTxt}</T>
-        </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Минус ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.max(0, Math.round((cur.weight - step) * 100) / 100) })} style={styles.qBtn}>
+        <T v="small" style={{ fontWeight: '800' }}>−{stepTxt}</T>
+      </Pressable>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <T v="num" style={{ fontSize: 22 }}>
+          {bodyweight && !cur.weight ? 'свой' : fmtWeight(cur.weight, unit)}
+        </T>
+        <T v="small" style={{ fontSize: 10 }}>
+          {unitLabel(unit)}
+        </T>
       </View>
-      <View style={styles.quickRow}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Минус повтор" onPress={() => upd({ reps: Math.max(0, cur.reps - 1) })} style={styles.qBtn}>
-          <Icon name="remove" size={22} />
-        </Pressable>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <T v="num" style={{ fontSize: 26 }}>
-            {cur.reps}
-          </T>
-          <T v="small" style={{ fontSize: 11 }}>
-            повторений
-          </T>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Плюс повтор" onPress={() => upd({ reps: cur.reps + 1 })} style={styles.qBtn}>
-          <Icon name="add" size={22} />
-        </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Плюс ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.round((cur.weight + step) * 100) / 100 })} style={styles.qBtn}>
+        <T v="small" style={{ fontWeight: '800' }}>+{stepTxt}</T>
+      </Pressable>
+      <View style={styles.qSep} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Минус повтор" onPress={() => upd({ reps: Math.max(0, cur.reps - 1) })} style={styles.qBtn}>
+        <Icon name="remove" size={20} />
+      </Pressable>
+      <View style={{ flex: 0.8, alignItems: 'center' }}>
+        <T v="num" style={{ fontSize: 22 }}>
+          {cur.reps}
+        </T>
+        <T v="small" style={{ fontSize: 10 }}>
+          повт.
+        </T>
       </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Плюс повтор" onPress={() => upd({ reps: cur.reps + 1 })} style={styles.qBtn}>
+        <Icon name="add" size={20} />
+      </Pressable>
     </View>
   );
 }
@@ -900,12 +918,12 @@ function FinishSheet({ visible, onClose }: { visible: boolean; onClose: () => vo
 const styles = themed({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, paddingBottom: 8, backgroundColor: colors.bg },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
-  block: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md },
-  rec: { padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  block: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 },
+  rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
   setRowCurrent: { borderWidth: 1, borderColor: colors.accentLine },
-  doneCard: { gap: 12, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
-  doneIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  doneCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
+  doneIcon: { width: 32, height: 32, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   cta: { position: 'absolute', left: space.lg, right: space.lg },
   navBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, paddingHorizontal: space.lg, paddingTop: 8, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   navBtn: { flex: 1, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
@@ -915,18 +933,19 @@ const styles = themed({
   barTrack: { height: 4, backgroundColor: colors.surface3 },
   barFill: { height: 4, backgroundColor: colors.accent },
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
-  headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: 4, paddingHorizontal: 4 },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4, borderRadius: radius.sm },
-  input: { flex: 1, minWidth: 0, width: 0, height: 46, borderRadius: radius.sm, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 19, fontWeight: '800', borderWidth: 1, borderColor: colors.border, fontVariant: ['tabular-nums'] },
+  input: { flex: 1, minWidth: 0, width: 0, height: 42, borderRadius: radius.sm, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 18, fontWeight: '800', borderWidth: 1, borderColor: colors.border, fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
-  check: { width: 48, height: 46, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 48, height: 42, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
-  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
+  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
   tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
-  quick: { gap: 8, padding: 10, borderRadius: radius.lg, backgroundColor: colors.surface },
-  quickRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  qBtn: { width: 72, height: 54, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  quick: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: radius.lg, backgroundColor: colors.surface },
+  qBtn: { width: 50, height: 48, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  qSep: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 2 },
+  techBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 40, paddingHorizontal: 12, borderRadius: 20, backgroundColor: colors.accent },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
   alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim },
   rpe: { width: 48, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

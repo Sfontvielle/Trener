@@ -202,9 +202,9 @@ export default function Profile() {
         ) : null}
       </Card>
 
-      <SectionTitle title="AI Coach" />
+      <SectionTitle title="Внешний AI-сервер · необязательно" />
       <Card style={{ gap: 10 }}>
-        <Field label="Адрес AI-сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="Сервер из папки server/ проекта. Без него тренер отвечает по расчётам FORM без AI." />
+        <Field label="Адрес AI-сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="FORM Coach уже работает на устройстве без настройки. Сервер (папка server/) нужен только для свободных ответов большой модели." />
         <Button title="Сохранить и проверить" size="sm" variant="secondary" loading={ping === 'busy'} onPress={testServer} />
         {ping === 'ok' ? <Banner tone="accent" icon="checkmark-circle" text="Сервер отвечает — AI Coach подключён." /> : null}
         {ping === 'fail' ? <Banner tone="warning" icon="alert-circle" text="Сервер не отвечает. Проверь адрес, что сервер запущен и телефон в той же сети." /> : null}

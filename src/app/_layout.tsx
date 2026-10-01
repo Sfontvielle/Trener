@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, Platform, View } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -19,6 +19,9 @@ import { maybeAutoSync } from '@/features/health/sync';
 export { ErrorBoundaryView as ErrorBoundary };
 
 configureNotifications();
+
+/** Вопрос о незавершённой тренировке уже задан в этом запуске */
+let resumeAsked = false;
 
 function Gate() {
   const hydrated = useHydrated();
@@ -45,7 +48,15 @@ function Gate() {
   useEffect(() => {
     if (!hydrated) return;
     const r = consumePendingRoute();
-    if (r) setTimeout(() => router.push(r as never), 0);
+    // Навигатор только что смонтирован — даём ему время, и не роняем приложение, если переход не удался
+    if (r)
+      setTimeout(() => {
+        try {
+          router.push(r as never);
+        } catch {
+          /* остаёмся на главной */
+        }
+      }, 350);
   }, [hydrated]);
 
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)
@@ -57,10 +68,10 @@ function Gate() {
   }, [hydrated]);
 
   // Незавершённая тренировка после перезапуска / выгрузки приложения: спрашиваем один раз за запуск
-  const asked = useRef(false);
+  // (флаг модульный: перемонтирование дерева при смене темы — не новый запуск)
   useEffect(() => {
-    if (!hydrated || !profile || asked.current) return;
-    asked.current = true;
+    if (!hydrated || !profile || resumeAsked) return;
+    resumeAsked = true;
     const active = useWorkouts.getState().active;
     if (!active || segments.join('/').includes('workout')) return;
     const done = active.exercises.reduce((a, e) => a + e.sets.filter((x) => x.done).length, 0);

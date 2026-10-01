@@ -30,6 +30,8 @@ import { generateWorkout } from '../src/features/training/generator';
 import { resolveToday } from '../src/features/training/today';
 import { suggestMeals } from '../src/features/nutrition/suggest';
 import { detectSafety } from '../src/features/coach/safety';
+import { localCoach } from '../src/features/coach/local/engine';
+import { KB } from '../src/features/coach/local/kb';
 import { getExercise, EXERCISES } from '../src/data/exercises';
 import { addDays, today, weekdayIndex } from '../src/utils/date';
 
@@ -575,6 +577,15 @@ test('Т13. Темы: системная/тёмная/светлая, акцен
   assert.equal(colors.bg, light.bg);
   applyPalette('dark', 'lime');
   assert.equal(st.box.backgroundColor, dark.surface);
+  // Регрессия Render Error в Expo Go: RN замораживает стили, отданные в нативную часть.
+  // Смена темы не должна их мутировать — должны появляться новые объекты.
+  const frozen = st.box;
+  Object.freeze(frozen);
+  assert.doesNotThrow(() => applyPalette('light', 'orange'));
+  assert.notEqual(st.box, frozen, 'новый объект для новой темы');
+  assert.equal(st.box.borderColor, paletteFor('light', 'orange').accent);
+  assert.equal(frozen.borderColor, dark.accent, 'старый объект не тронут');
+  applyPalette('dark', 'lime');
   // Сохранение выбора после перезапуска проверяется e2e: scripts/e2e-web.cjs
 });
 
@@ -602,4 +613,29 @@ test('Т15. Дневник: автоматические события по в�
   const deb = workoutDebrief(cur, [prev, cur]);
   assert.equal(deb.prs.length, 1);
   assert.ok(deb.lines.some((l) => l.includes('прогресс')));
+});
+
+test('Локальный коуч: отвечает без сервера по тренировкам, питанию и медицине', () => {
+  const profile = excludeExercise(base, 'leg_press');
+  const plan = generatePlan(profile);
+  const todayW = resolveToday({ date: today(), plan, sessions: [] });
+  const target = computeNutritionTarget(profile);
+  const ask = (question: string) => localCoach({ question, profile, target, entries: [], recentProducts: [], todayW, insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {} });
+  const protein = ask('Сколько мне белка?');
+  assert.equal(protein.intent, 'kb:protein');
+  assert.ok(protein.text.includes(String(target.protein)) || /г/.test(protein.text));
+  const sub = ask('Чем заменить присед?');
+  assert.equal(sub.intent, 'exercise_sub');
+  assert.ok(!sub.text.includes('Жим ногами'), 'исключённое упражнение не предлагается');
+  const sick = ask('можно ли тренироваться при простуде');
+  assert.equal(sick.intent, 'kb:sick');
+  assert.ok(sick.text.includes('врач'));
+  assert.equal(ask('у меня температура 38').intent, 'kb:sick');
+  assert.equal(ask('расскажи про стероиды курс').intent, 'kb:pharma');
+  assert.equal(ask('Разбери мою неделю').intent, 'week');
+  assert.equal(ask('сколько креатина пить').intent, 'kb:creatine');
+  assert.equal(ask('плохо спал что делать').intent, 'kb:sleep');
+  // База знаний: у каждой статьи уникальный id и непустой ответ
+  assert.equal(new Set(KB.map((k) => k.id)).size, KB.length);
+  for (const k of KB) assert.ok(k.answer({ weightKg: 80, goal: 'bulk', proteinG: 160, kcal: 2800, level: 'intermediate' }).length > 40, k.id);
 });

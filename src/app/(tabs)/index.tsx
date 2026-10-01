@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, Pressable, ScrollView, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
@@ -125,7 +125,7 @@ export default function Home() {
       {target ? (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-            <T v="num" style={{ fontSize: 26 }}>
+            <T v="num" style={{ fontSize: 22 }}>
               {fmtNum(nut.eaten.kcal)}
             </T>
             <T v="small">/ {fmtNum(target.kcal)} ккал</T>
@@ -145,10 +145,9 @@ export default function Home() {
           </View>
         </>
       ) : null}
-      <Button title="Добавить еду" icon="add" size="md" variant="secondary" onPress={() => setAddFood(true)} style={{ marginTop: 4 }} />
+      <Button title="Добавить еду" icon="add" size="sm" variant="secondary" onPress={() => setAddFood(true)} style={{ marginTop: 2 }} />
     </Card>
   );
-  const coachCard = <CoachCard key="c" text={insight && insight.date === d ? insight.text : null} local={insight?.source === 'local'} debrief={mode === 'after_workout' ? debrief?.lines[0] : undefined} />;
   const summaryCard =
     mode === 'evening' ? (
       <DaySummary key="s" workout={doneToday ? `${doneToday.name} ✓` : tw.kind === 'rest' ? 'День отдыха' : tw.kind === 'workout' ? 'Не выполнена' : '—'} kcal={target ? [nut.eaten.kcal, target.kcal] : null} protein={target ? [nut.eaten.protein, target.protein] : null} steps={health?.steps} workoutDone={!!doneToday} restDay={tw.kind === 'rest'} />
@@ -156,25 +155,26 @@ export default function Home() {
 
   // Приоритет карточек по времени суток
   const order =
-    mode === 'evening' ? [summaryCard, coachCard, workoutCard, nutritionCard, readinessCard] : mode === 'after_workout' ? [workoutCard, coachCard, nutritionCard, readinessCard] : [readinessCard, workoutCard, nutritionCard, coachCard];
+    mode === 'evening' ? [summaryCard, workoutCard, nutritionCard, readinessCard] : mode === 'after_workout' ? [workoutCard, nutritionCard, readinessCard] : [readinessCard, workoutCard, nutritionCard];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl, gap: 12 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl, gap: 10 }} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <T v="caption" color={colors.accent} style={{ letterSpacing: 2 }}>
               FORM
             </T>
-            <T v="h1" numberOfLines={1} style={{ marginTop: 2 }}>
+            <T v="h2" numberOfLines={1} style={{ marginTop: 1 }}>
               {mode === 'evening' ? 'Итог дня' : `${greeting()}, ${firstName}`}
             </T>
             <T v="small">
               {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
             </T>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="AI Coach" onPress={() => router.push('/coach')} style={styles.headBtn} hitSlop={4}>
-            <Icon name="chatbubble-ellipses-outline" size={21} color={colors.text} />
+          <Pressable accessibilityRole="button" accessibilityLabel="FORM Coach — совет дня и чат" onPress={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')} style={styles.coachBtn} hitSlop={4}>
+            <Icon name="sparkles" size={20} color={colors.accent} />
+            {insight && insight.date === d ? <View style={styles.coachDot} /> : null}
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Профиль" onPress={() => router.push('/profile')} style={styles.avatar} hitSlop={4}>
             <T v="h3" color={colors.onAccent}>
@@ -294,8 +294,8 @@ function ReadinessCard({ readiness, checkin, health, compact }: { readiness: Ret
   if (!readiness) {
     return (
       <Pressable accessibilityRole="button" onPress={() => router.push('/checkin')} style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: space.md }]}>
-        <Ring size={64} stroke={6} progress={0}>
-          <Icon name="sunny-outline" size={24} color={colors.accent} />
+        <Ring size={52} stroke={5} progress={0}>
+          <Icon name="sunny-outline" size={22} color={colors.accent} />
         </Ring>
         <View style={{ flex: 1 }}>
           <T v="caption">Готовность</T>
@@ -312,8 +312,8 @@ function ReadinessCard({ readiness, checkin, health, compact }: { readiness: Ret
   return (
     <View style={[styles.card, { gap: 10 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-        <Ring size={compact ? 64 : 92} stroke={compact ? 6 : 8} progress={readiness.score / 100} color={col}>
-          <T v="num" style={{ fontSize: compact ? 22 : 32 }}>
+        <Ring size={compact ? 58 : 76} stroke={compact ? 6 : 7} progress={readiness.score / 100} color={col}>
+          <T v="num" style={{ fontSize: compact ? 20 : 26 }}>
             {readiness.score}
           </T>
         </Ring>
@@ -375,11 +375,11 @@ function TodayCard({ tw, activeName, activeSets, debrief }: { tw: ReturnType<typ
   if (activeName) {
     return (
       <Card title="Сегодня · идёт тренировка" accent>
-        <T v="display" style={{ fontSize: 30 }} numberOfLines={1}>
+        <T v="display" style={{ fontSize: 26 }} numberOfLines={1}>
           {activeName}
         </T>
         <T v="small">Выполнено подходов: {activeSets} · всё сохранено</T>
-        <Button title="Продолжить тренировку" icon="play" size="lg" onPress={resumeActive} />
+        <Button title="Продолжить тренировку" icon="play" size="md" onPress={resumeActive} />
       </Card>
     );
   }
@@ -405,7 +405,7 @@ function TodayCard({ tw, activeName, activeSets, debrief }: { tw: ReturnType<typ
   if (tw.kind === 'workout' && tw.template) {
     return (
       <Card title="Сегодня" accent right={tw.mode !== 'normal' ? <Badge text={MODE_LABEL[tw.mode]} /> : undefined}>
-        <T v="display" style={{ fontSize: 32 }} numberOfLines={1}>
+        <T v="display" style={{ fontSize: 26 }} numberOfLines={1}>
           {tw.template.name}
         </T>
         <T v="body" color={colors.textDim} numberOfLines={1}>
@@ -415,8 +415,8 @@ function TodayCard({ tw, activeName, activeSets, debrief }: { tw: ReturnType<typ
           ~{tw.estMinutes} мин · {tw.template.exercises.length} упр · {tw.totalSets} подходов
         </T>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-          <Button title="Начать тренировку" icon="play" size="lg" onPress={() => startTodayPlanned()} style={{ flex: 1 }} />
-          <Button title="Состав" variant="outline" size="lg" onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })} />
+          <Button title="Начать тренировку" icon="play" size="md" onPress={() => startTodayPlanned()} style={{ flex: 1 }} />
+          <Button title="Состав" variant="outline" size="md" onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })} />
         </View>
       </Card>
     );
@@ -443,47 +443,6 @@ function Badge({ text }: { text: string }) {
       <T v="small" color={colors.warning} style={{ fontSize: 11, fontWeight: '800' }}>
         {text}
       </T>
-    </View>
-  );
-}
-
-/** FORM Coach: совет дня (появляется плавно) + «Почему?» / «Спросить тренера» */
-function CoachCard({ text, local, debrief }: { text: string | null; local?: boolean; debrief?: string }) {
-  const [fade] = useState(() => new Animated.Value(0));
-  const shown = debrief ?? text;
-  useEffect(() => {
-    fade.setValue(0);
-    Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
-  }, [shown, fade]);
-  return (
-    <View style={[styles.card, styles.coach]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={styles.coachIcon}>
-          <Icon name="sparkles" size={14} color={colors.onAccent} />
-        </View>
-        <T v="caption" color={colors.accent} style={{ flex: 1 }}>
-          FORM Coach{local ? ' · расчёт' : ''}
-        </T>
-      </View>
-      <Animated.View style={{ opacity: fade, transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }}>
-        <T v="body" color={colors.text} style={{ lineHeight: 21 }}>
-          {shown ?? 'Собираю данные дня…'}
-        </T>
-      </Animated.View>
-      <View style={{ flexDirection: 'row', gap: 16 }}>
-        {shown ? (
-          <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push({ pathname: '/coach', params: { q: `Почему ты так советуешь: «${shown}»? Объясни по моим данным.` } })}>
-            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-              Почему?
-            </T>
-          </Pressable>
-        ) : null}
-        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/coach')}>
-          <T v="small" style={{ fontWeight: '700' }}>
-            Спросить тренера
-          </T>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -565,12 +524,14 @@ function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () =
 
 const styles = themed({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  coachBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine, alignItems: 'center', justifyContent: 'center' },
+  coachDot: { position: 'absolute', top: 8, right: 9, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   headBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   goal: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 36, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 36, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md, gap: 8 },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space.md, paddingVertical: 12, gap: 6 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.warningDim },
   coach: { gap: 10 },
   coachIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },

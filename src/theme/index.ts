@@ -149,47 +149,74 @@ export const semantic = {
   get success() { return colors.accent; },
 };
 
-// ── Регистрация стилей ────────────────────────────────────────────────────
+// ── Стили, зависящие от темы ───────────────────────────────────────────────
+//
+// ВАЖНО: объекты стилей НЕЛЬЗЯ менять на месте. React Native в dev-режиме замораживает объекты,
+// переданные в нативную часть (deepFreezeAndThrowOnMutationInDev), и попытка перекрасить их при
+// смене темы падала с Render Error. Поэтому для каждой темы строится НОВАЯ копия стилей, а доступ
+// styles.x идёт через геттер, возвращающий копию для текущей темы.
 
-type Entry = { obj: Record<string, unknown>; key: string; token: keyof Palette };
-const registry: Entry[] = [];
 // Акцентные токены — первыми: в тёмной теме «углеводы» совпадают с лаймом, а статичные стили почти всегда про акцент
 const ACCENT_KEYS: (keyof Palette)[] = ['accent', 'accentPressed', 'accentDim', 'accentLine', 'onAccent', 'doneRow', 'barSoft'];
 const TOKENS = [...ACCENT_KEYS, ...(Object.keys(colors) as (keyof Palette)[]).filter((k) => !ACCENT_KEYS.includes(k))];
+const BASE = paletteFor('dark', 'lime');
 
-function tokenOf(value: string): keyof Palette | undefined {
+function tokenOf(value: string, pal: Palette): keyof Palette | undefined {
   const v = value.toLowerCase();
-  return TOKENS.find((t) => colors[t].toLowerCase() === v);
+  return TOKENS.find((t) => pal[t].toLowerCase() === v);
 }
 
-function register(obj: Record<string, unknown>) {
-  for (const key of Object.keys(obj)) {
-    const v = obj[key];
-    if (typeof v === 'string') {
-      const token = tokenOf(v);
-      if (token) registry.push({ obj, key, token });
-    } else if (v && typeof v === 'object') register(v as Record<string, unknown>);
+/** Копия значения с заменой цветов-токенов на значения из палитры */
+function recolor(v: unknown, from: Palette, to: Palette): unknown {
+  if (typeof v === 'string') {
+    const t = tokenOf(v, from);
+    return t ? to[t] : v;
   }
+  if (Array.isArray(v)) return v.map((x) => recolor(x, from, to));
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v)) out[k] = recolor((v as Record<string, unknown>)[k], from, to);
+    return out;
+  }
+  return v;
+}
+
+let themeKey = 'dark-lime';
+/** Ключ текущей темы — меняется при каждой смене (для кэшей и перемонтирования) */
+export function currentThemeKey(): string {
+  return themeKey;
 }
 
 type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
 
 /**
- * Замена StyleSheet.create: тот же контракт, но цвета следят за темой.
- * (StyleSheet.create в dev замораживает объекты — их нельзя перекрасить на месте.)
+ * Замена StyleSheet.create с поддержкой тем. Исходные стили описываются цветами текущей палитры;
+ * при смене темы создаются новые объекты (исходные не мутируются), кэшируются по ключу темы.
  */
 export function themed<T extends NamedStyles<T> | NamedStyles<any>>(styles: T & NamedStyles<any>): T {
-  register(styles as Record<string, unknown>);
-  return styles;
+  const source = recolor(styles, { ...colors }, BASE) as T; // нормализуем к базовой палитре
+  const cache = new Map<string, T>();
+  const forTheme = (): T => {
+    let v = cache.get(themeKey);
+    if (!v) {
+      v = recolor(source, BASE, colors) as T;
+      cache.set(themeKey, v);
+    }
+    return v;
+  };
+  const out = {} as T;
+  for (const k of Object.keys(styles)) {
+    Object.defineProperty(out, k, { enumerable: true, get: () => (forTheme() as Record<string, unknown>)[k] });
+  }
+  return out;
 }
 
-/** Применить тему: обновляет `colors` и все зарегистрированные стили. Возвращает true, если что-то изменилось */
+/** Применить тему: обновляет живую палитру `colors`. Стили пересоздаются лениво. true — если что-то изменилось */
 export function applyPalette(scheme: SchemeName, accent: AccentName): boolean {
   if (current.scheme === scheme && current.accent === accent) return false;
-  const next = paletteFor(scheme, accent);
-  Object.assign(colors, next);
-  for (const e of registry) e.obj[e.key] = next[e.token];
+  Object.assign(colors, paletteFor(scheme, accent));
   current = { scheme, accent };
+  themeKey = `${scheme}-${accent}`;
   return true;
 }
 

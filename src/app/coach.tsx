@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CoachAction, CoachMessage } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
@@ -11,8 +11,9 @@ import { useCoach } from '@/stores/coach';
 import { applyCoachAction, declineCoachAction, sendCoachMessage } from '@/features/coach/service';
 import { coachBaseUrl } from '@/services/coachApi';
 import { haptic } from '@/services/haptics';
+import { toISODate } from '@/utils/date';
 
-const QUICK = ['Что мне поесть сейчас?', 'Как сегодня тренироваться?', 'Разбери мою неделю', 'Почему вес стоит?', 'Чем заменить упражнение, если болит плечо?'];
+const QUICK = ['Как сегодня тренироваться?', 'Что мне поесть сейчас?', 'Сколько мне белка?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит колено — что делать?', 'Чем заменить присед?'];
 
 export default function Coach() {
   const insets = useSafeAreaInsets();
@@ -47,7 +48,7 @@ export default function Coach() {
       <View style={{ paddingHorizontal: space.lg }}>
         <Header
           title="FORM Coach"
-          subtitle={configured ? `AI · помнит ${memoryCount} ${memoryCount === 1 ? 'факт' : 'фактов'} о тебе` : 'Офлайн-режим · AI-сервер не подключён'}
+          subtitle={`${configured ? 'AI-сервер' : 'На устройстве'} · помнит ${memoryCount} ${memoryCount === 1 ? 'факт' : 'фактов'} о тебе`}
           right={
             <IconButton
               name="ellipsis-horizontal"
@@ -67,7 +68,7 @@ export default function Coach() {
           contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, gap: 10, flexGrow: 1 }}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Intro configured={configured} />}
+          ListEmptyComponent={<Intro />}
           renderItem={({ item }) => <Bubble m={item} />}
           ListFooterComponent={busy ? <Typing /> : null}
           onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
@@ -104,24 +105,28 @@ export default function Coach() {
   );
 }
 
-function Intro({ configured }: { configured: boolean }) {
+function Intro() {
+  const insight = useCoach((st) => st.insight);
+  const todayInsight = insight && insight.date === toISODate(new Date()) ? insight.text : null;
   return (
     <View style={{ gap: 12, paddingVertical: space.xl }}>
       <View style={styles.introIcon}>
         <Icon name="sparkles" size={28} color={colors.onAccent} />
       </View>
       <T v="h2">Я знаю твой план, питание, тренировки и восстановление</T>
-      <T v="bodyDim">Спрашивай что угодно: что съесть, как изменить тренировку под самочувствие, почему стоит вес. Если нужно — предложу изменение плана, и ты применишь его одной кнопкой.</T>
-      {!configured ? (
-        <View style={{ padding: 12, borderRadius: radius.md, backgroundColor: colors.warningDim, gap: 8 }}>
-          <T v="small" color={colors.text}>
-            AI-сервер не подключён — отвечаю по расчётам FORM (без AI). Подключение: Профиль → AI Coach.
+      <T v="bodyDim">Спрашивай про тренировку на сегодня, любое упражнение (вес, техника, замена), питание, сон, боль и травмы, добавки. Работаю прямо на устройстве — без интернета и настроек.</T>
+      {todayInsight ? (
+        <View style={styles.insightCard}>
+          <T v="caption" color={colors.accent}>
+            Совет дня
           </T>
-          <Button title="Настроить" size="sm" variant="secondary" onPress={() => router.push('/profile')} />
+          <T v="body" color={colors.text}>
+            {todayInsight}
+          </T>
         </View>
       ) : null}
       <T v="small" style={{ fontSize: 12 }}>
-        FORM — фитнес-помощник, не врач. При боли в груди, обмороке, сильной одышке или травме — сразу к врачу.
+        FORM — фитнес-помощник, не врач и не ставит диагнозов. При боли в груди, обмороке, сильной одышке или травме — сразу к врачу.
       </T>
     </View>
   );
@@ -134,7 +139,7 @@ function Bubble({ m }: { m: CoachMessage }) {
       <View style={[styles.bubble, mine ? styles.mine : styles.theirs, m.safety && { borderColor: colors.danger, backgroundColor: colors.dangerDim }]}>
         {!mine && (m.offline || m.safety) ? (
           <T v="caption" color={m.safety ? colors.danger : colors.warning} style={{ marginBottom: 4, fontSize: 10 }}>
-            {m.safety ? 'Безопасность' : 'Без AI · расчёт FORM'}
+            {m.safety ? 'Безопасность' : 'Сервер недоступен · ответ на устройстве'}
           </T>
         ) : null}
         <T v="body" color={mine ? colors.onAccent : colors.text} style={{ fontSize: 15, lineHeight: 21 }} selectable>
@@ -238,5 +243,6 @@ const styles = themed({
   mine: { backgroundColor: colors.accent, borderColor: colors.accent, borderBottomRightRadius: 6 },
   theirs: { backgroundColor: colors.surface, borderColor: colors.border, borderBottomLeftRadius: 6 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
+  insightCard: { padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine, gap: 4 },
   introIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
 });
