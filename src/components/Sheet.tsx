@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Animated, Easing, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
 
 /**
- * Нижний лист (bottom sheet) в стиле iOS: затемнение, выезд снизу, закрытие по тапу на фон / крестику.
+ * Нижний лист (bottom sheet) в стиле iOS: затемнение, выезд снизу, закрытие по тапу на фон, крестику
+ * или свайпом вниз (когда содержимое прокручено к началу).
  * Работает одинаково на iPhone и в web-превью.
  */
+/** Прокручено ли содержимое листа к началу (ключ — анимация перетаскивания листа) */
+const SCROLL_TOP = new WeakMap<object, boolean>();
+
 export function Sheet({
   visible,
   onClose,
@@ -31,6 +35,23 @@ export function Sheet({
   const { height } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
   const anim = useState(() => new Animated.Value(0))[0];
+  const drag = useState(() => new Animated.Value(0))[0];
+  // Где прокрутка содержимого: свайп вниз закрывает лист, только если контент у верха
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_e, g) => (SCROLL_TOP.get(drag) ?? true) && g.dy > 10 && g.dy > Math.abs(g.dx) * 1.6,
+        onPanResponderMove: (_e, g) => drag.setValue(Math.max(0, g.dy)),
+        onPanResponderRelease: (_e, g) => {
+          if (g.dy > 110 || g.vy > 0.9) {
+            onClose();
+            Animated.timing(drag, { toValue: 0, duration: 0, delay: 260, useNativeDriver: true }).start();
+          } else Animated.spring(drag, { toValue: 0, friction: 8, useNativeDriver: true }).start();
+        },
+        onPanResponderTerminate: () => Animated.spring(drag, { toValue: 0, friction: 8, useNativeDriver: true }).start(),
+      }),
+    [drag, onClose],
+  );
 
   // Монтируем сразу при открытии (во время рендера, без лишнего прохода эффекта)
   if (visible && !mounted) setMounted(true);
@@ -47,7 +68,13 @@ export function Sheet({
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.6, 0] });
 
   const body = scroll ? (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: footer ? space.md : insets.bottom + space.lg }} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={32}
+      onScroll={(e) => {
+        SCROLL_TOP.set(drag, e.nativeEvent.contentOffset.y <= 2);
+      }}
+      contentContainerStyle={{ paddingBottom: footer ? space.md : insets.bottom + space.lg }} showsVerticalScrollIndicator={false}>
       {children}
     </ScrollView>
   ) : (
@@ -61,7 +88,7 @@ export function Sheet({
           <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть" />
         </Animated.View>
         <View style={{ flex: 1 }} pointerEvents="box-none" />
-        <Animated.View style={[styles.sheet, { maxHeight: height * maxHeightPct, transform: [{ translateY }] }]}>
+        <Animated.View {...pan.panHandlers} style={[styles.sheet, { maxHeight: height * maxHeightPct, transform: [{ translateY }, { translateY: drag }] }]}>
           <View style={styles.grabber} />
           {title ? (
             <View style={styles.header}>

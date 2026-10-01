@@ -2,7 +2,10 @@ import React, { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, TextInput, View } from 'react-native';
 import type { Equipment, Exercise, ExerciseCategory } from '@/types';
 import { colors, radius, themed } from '@/theme';
-import { Chip, EmptyState, Icon, T } from '@/components/ui';
+import { Button, Chip, EmptyState, Icon, T } from '@/components/ui';
+import { Sheet } from '@/components/Sheet';
+import { ExerciseMedia } from './ExerciseMedia';
+import { ExerciseThumb } from './ExerciseThumb';
 import { CATEGORY_LABEL, EQUIPMENT_LABEL, EXERCISES, MUSCLE_LABEL } from '@/data/exercises';
 import { useProfile } from '@/stores/profile';
 import { useWorkouts } from '@/stores/workouts';
@@ -23,7 +26,7 @@ const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 
 /**
  * Библиотека упражнений: поиск + фильтры по мышце, оборудованию, типу и месту.
- * FlatList с мемоизированными строками; изображения в списке не грузятся — только в карточке.
+ * FlatList с мемоизированными строками; миниатюры — встроенные кадры (офлайн), тап по фото — крупный показ.
  */
 export function ExerciseList({
   onSelect,
@@ -70,9 +73,11 @@ export function ExerciseList({
   }, [q, cat, flags, eq, customs, profile, excludeIds]);
 
   const toggleFlag = (f: Flag) => setFlags((x) => (x.includes(f) ? x.filter((y) => y !== f) : [...x, f]));
-  const renderItem = useCallback(({ item }: { item: Exercise }) => <Row ex={item} selected={selectedIds.includes(item.id)} onPress={onSelect} />, [selectedIds, onSelect]);
+  const [preview, setPreview] = useState<Exercise | null>(null);
+  const renderItem = useCallback(({ item }: { item: Exercise }) => <Row ex={item} selected={selectedIds.includes(item.id)} onPress={onSelect} onPreview={setPreview} />, [selectedIds, onSelect]);
 
   return (
+    <>
     <FlatList
       data={data}
       keyExtractor={(e) => e.id}
@@ -113,35 +118,62 @@ export function ExerciseList({
       }
       ListEmptyComponent={<EmptyState icon="search" title="Ничего не найдено" text="Измени запрос или сбрось фильтры." action="Сбросить фильтры" onAction={() => { setQ(''); setCat('all'); setFlags([]); setEq(null); }} />}
     />
+    <PreviewSheet ex={preview} onClose={() => setPreview(null)} onSelect={onSelect} />
+    </>
   );
 }
 
 const Sep = () => <View style={{ height: 8 }} />;
 
-const Row = memo(function Row({ ex, selected, onPress }: { ex: Exercise; selected: boolean; onPress: (e: Exercise) => void }) {
+const Row = memo(function Row({ ex, selected, onPress, onPreview }: { ex: Exercise; selected: boolean; onPress: (e: Exercise) => void; onPreview: (e: Exercise) => void }) {
+  // Две отдельные нажимаемые зоны (без вложенных кнопок): фото — показ техники, остальное — выбор
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={ex.name} onPress={() => onPress(ex)} style={({ pressed }) => [styles.row, selected && { borderColor: colors.accent }, pressed && { opacity: 0.8 }]}>
-      <View style={[styles.badge, ex.mechanic === 'compound' && { backgroundColor: colors.accentDim }]}>
-        <T v="small" color={ex.mechanic === 'compound' ? colors.accent : colors.textDim} style={{ fontWeight: '800', fontSize: 11 }}>
-          {CATEGORY_LABEL[ex.category].slice(0, 3).toUpperCase()}
-        </T>
-      </View>
-      <View style={{ flex: 1 }}>
-        <T v="body" numberOfLines={2} style={{ fontWeight: '700' }}>
-          {ex.name}
-        </T>
-        <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
-          {ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')} · {ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}
-        </T>
-      </View>
-      <Icon name={selected ? 'checkmark-circle' : 'chevron-forward'} size={selected ? 22 : 18} color={selected ? colors.accent : colors.muted} />
-    </Pressable>
+    <View style={[styles.row, selected && { borderColor: colors.accent }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Как выглядит: ${ex.name}`} onPress={() => onPreview(ex)} hitSlop={4}>
+        <ExerciseThumb ex={ex} />
+        <View style={styles.zoom}>
+          <Icon name="expand" size={11} color="#fff" />
+        </View>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={ex.name} onPress={() => onPress(ex)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 64 }, pressed && { opacity: 0.75 }]}>
+        <View style={{ flex: 1 }}>
+          <T v="body" numberOfLines={2} style={{ fontWeight: '700' }}>
+            {ex.name}
+          </T>
+          <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+            {ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')}
+          </T>
+          <T v="small" numberOfLines={1} style={{ fontSize: 11 }} color={colors.muted}>
+            {ex.mechanic === 'compound' ? 'базовое' : 'изоляция'} · {ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}
+          </T>
+        </View>
+        <Icon name={selected ? 'checkmark-circle' : 'chevron-forward'} size={selected ? 22 : 18} color={selected ? colors.accent : colors.muted} />
+      </Pressable>
+    </View>
   );
 });
+
+/** Крупный показ упражнения: анимация фаз, мышцы, техника — и выбор */
+function PreviewSheet({ ex, onClose, onSelect }: { ex: Exercise | null; onClose: () => void; onSelect: (e: Exercise) => void }) {
+  return (
+    <Sheet visible={!!ex} onClose={onClose} title={ex?.name} subtitle={ex ? `${ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')} · ${ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}` : ''} footer={ex ? <Button title="Выбрать" icon="checkmark" size="lg" onPress={() => { onClose(); onSelect(ex); }} /> : undefined}>
+      {ex ? (
+        <View style={{ gap: 12 }}>
+          <ExerciseMedia exercise={ex} height={240} />
+          {ex.cues.slice(0, 4).map((c) => (
+            <T key={c} v="body" style={{ fontSize: 14 }}>
+              • {c}
+            </T>
+          ))}
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
 
 const styles = themed({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
   searchInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, minHeight: 60 },
-  badge: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, minHeight: 60 },
+  zoom: { position: 'absolute', right: 3, bottom: 3, width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
 });

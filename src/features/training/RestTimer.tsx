@@ -7,7 +7,8 @@ import { formatDuration } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 
 /** Плавающий таймер отдыха. Время считается от endsAt, поэтому таймер переживает сворачивание приложения. */
-export function RestTimerBar({ bottom }: { bottom: number }) {
+/** inline — встроенная карточка (в нижней зоне тренировки), иначе плавающая с отступом bottom */
+export function RestTimerBar({ bottom = 0, inline }: { bottom?: number; inline?: boolean }) {
   const rest = useWorkouts((s) => s.rest);
   const adjust = useWorkouts((s) => s.adjustRest);
   const stop = useWorkouts((s) => s.stopRest);
@@ -42,7 +43,7 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   if (!rest) return null;
   const progress = rest.duration ? 1 - left / rest.duration : 1;
   return (
-    <Animated.View style={[styles.bar, { bottom, opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }, { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }] }, done && { borderColor: colors.accent }]}>
+    <Animated.View style={[styles.bar, inline ? styles.inline : { bottom }, { opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }, { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }] }, done && { borderColor: colors.accent }]}>
       <View style={[styles.fill, { width: `${Math.min(100, progress * 100)}%` }]} />
       <Pressable accessibilityLabel="Минус 15 секунд" onPress={() => adjust(-15)} style={styles.adj} hitSlop={6}>
         <T v="small" style={{ fontWeight: '800' }}>−15</T>
@@ -85,6 +86,7 @@ const styles = themed({
     overflow: 'hidden',
     boxShadow: '0px 8px 24px rgba(0,0,0,0.5)',
   },
+  inline: { position: 'relative', left: 0, right: 0 },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.accentDim },
   skip: { paddingHorizontal: 12, minWidth: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   adj: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },

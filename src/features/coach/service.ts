@@ -18,11 +18,11 @@ import { makeWorkoutExercise } from '@/features/training/session';
 import { applyDeload } from '@/features/training/deloadActions';
 import { openGenerated } from '@/features/training/actions';
 import { actionKey, applyToExercises, validateAction, validateActions, type ActionContext } from './actions';
-import { askCoach, CoachApiError, coachErrorText, summarizeConversation, type CoachApiAction } from '@/services/coachApi';
+import { askCoach, coachBaseUrl, CoachApiError, coachErrorText, summarizeConversation, type CoachApiAction } from '@/services/coachApi';
 import { buildCoachContext } from './context';
 import { detectSafety, safetyReply } from './safety';
 import { localInsights } from './insights';
-import { offlineAnswer } from './offline';
+import { localCoach } from './local/engine';
 import { today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { LOCAL_FOODS } from '@/data/foods';
@@ -308,6 +308,11 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     return useCoach.getState().addMessage({ role: 'assistant', text: safetyReply(level), safety: true });
   }
 
+  // Без внешнего AI-сервера тренер работает на устройстве — сразу, без «подключите сервер»
+  if (!coachBaseUrl()) {
+    const r = localReply(text);
+    return useCoach.getState().addMessage({ role: 'assistant', text: r.text, actions: validateActions(r.actions, actionContext()), safety: r.safety });
+  }
   const context = currentContext();
   try {
     const r = await askCoach({ history, context, question: text, summary: coach.summary, memory: coach.memory.map((m) => m.text), mode: 'chat' });
@@ -316,13 +321,34 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     void maybeSummarize();
     return msg;
   } catch (e) {
-    const s = snapshot();
-    const recentProducts = s.nut.recent.map((id) => s.nut.products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is NonNullable<typeof p> => !!p);
-    const off = offlineAnswer({ question: text, profile: s.profile, target: s.ps.target, entries: s.nut.entries, recentProducts, todayW: s.todayW, readiness: s.readiness, insights: currentLocalInsights() });
-    const note = coachErrorText(e);
+    // Сервер недоступен — отвечает тренер на устройстве
+    const r = localReply(text);
     const rateLimited = e instanceof CoachApiError && e.kind === 'rate_limited';
-    return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? note : `${note}\n\n${off.text}`, actions: validateActions(off.actions, actionContext()), offline: true });
+    return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? coachErrorText(e) : r.text, actions: validateActions(r.actions, actionContext()), offline: true });
   }
+}
+
+/** Ответ тренера на устройстве по всем данным пользователя */
+export function localReply(question: string) {
+  const s = snapshot();
+  const recentProducts = s.nut.recent.map((id) => s.nut.products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is NonNullable<typeof p> => !!p);
+  return localCoach({
+    question,
+    profile: s.profile,
+    target: s.ps.target,
+    entries: s.nut.entries,
+    recentProducts,
+    todayW: s.todayW,
+    readiness: s.readiness,
+    insights: currentLocalInsights(),
+    sessions: s.ws.sessions,
+    weights: s.weights,
+    adjustments: s.ps.adjustments,
+    plan: s.ps.plan,
+    checkins: s.checkins,
+    health: healthContext(useHealth.getState().days, today()),
+    customs: s.ws.customExercises,
+  });
 }
 
 /** Инсайт дня для главной: AI, если доступен, иначе — программный. Кэшируется по ключу входных данных. */

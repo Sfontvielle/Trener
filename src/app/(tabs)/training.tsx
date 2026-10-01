@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Exercise, WorkoutSession } from '@/types';
+import type { Exercise, SplitPreference, WorkoutSession } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
-import { Banner, Button, Card, EmptyState, Icon, Segmented, SectionTitle, T } from '@/components/ui';
+import { Banner, Button, Card, Chip, EmptyState, Icon, Segmented, SectionTitle, T } from '@/components/ui';
+import { haptic } from '@/services/haptics';
 import { MiniBars } from '@/components/charts';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
@@ -15,7 +16,14 @@ import { getExercise } from '@/data/exercises';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { sessionVolume } from '@/features/training/analytics';
-import { planVolume } from '@/features/training/planGenerator';
+import { useProfile } from '@/stores/profile';
+import { useHealth } from '@/stores/health';
+import { getPrefs, withPrefs } from '@/features/training/engine/prefs';
+import { estimateRecovery } from '@/features/training/engine/recovery';
+import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
+import { applyProfile } from '@/features/profile/applyProfile';
+import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
+import { generatePlan, planVolume } from '@/features/training/planGenerator';
 import { doneFineVolume } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { ExerciseList } from '@/features/exercises/ExerciseList';
@@ -245,55 +253,144 @@ function Meta({ icon, text, warn }: { icon: React.ComponentProps<typeof Icon>['n
   );
 }
 
+const SPLIT_CHOICES: Exclude<SplitPreference, 'auto' | 'custom'>[] = ['fullbody', 'upper_lower', 'torso_limbs', 'ppl', 'ul_ppl', 'bro'];
+
+/**
+ * План: выбор сплита. Для каждого варианта FORM собирает тренировки ПОД ТЕБЯ — те же правила, что и для
+ * основного плана: дни и время, недельный объём, исключённые и нелюбимые упражнения, ограничения,
+ * оборудование, восстановление. Можно сравнить и выбрать.
+ */
 function PlanTab({ bottom }: { bottom: number }) {
   const plan = usePlan((s) => s.plan);
-  if (!plan) return <EmptyState icon="calendar-outline" title="Плана пока нет" text="Заполни профиль — FORM создаст план автоматически." action="Профиль" onAction={() => router.push('/profile')} />;
+  const profile = useProfile((s) => s.profile);
+  const sessions = useWorkouts((s) => s.sessions);
+  const customs = useWorkouts((s) => s.customExercises);
+  const [pick, setPick] = useState<Exclude<SplitPreference, 'auto' | 'custom'> | null>(null);
+  const preview = useMemo(() => {
+    if (!profile || !plan || !pick) return null;
+    const prefs = getPrefs(profile);
+    const recovery = estimateRecovery({ profile: prefs.recoveryProfile, sessions, checkins: useCheckins.getState().byDate, health: useHealth.getState().days });
+    return generatePlan(withPrefs(profile, { preferredSplit: pick }), { previous: plan, sessions, customs, recovery });
+  }, [profile, plan, pick, sessions, customs]);
+  if (!plan || !profile) return <EmptyState icon="calendar-outline" title="Плана пока нет" text="Заполни профиль — FORM создаст план автоматически." action="Профиль" onAction={() => router.push('/profile')} />;
+  const prefs = getPrefs(profile);
+  const shown = preview ?? plan;
+  const isCurrent = !pick || (preview && preview.split === plan.split);
+  const best = plan.splitChoice?.candidates?.[0]?.split;
+  const cand = plan.splitChoice?.candidates?.find((c) => c.split === shown.split);
+  const vol = (shown.volume ?? []).filter((v) => ['chest', 'lats', 'quads', 'hamstrings'].includes(v.muscle));
+
   return (
     <FlatList
-      data={plan.templates}
+      data={shown.templates}
       keyExtractor={(t) => t.id}
       contentContainerStyle={{ paddingBottom: bottom, gap: 10 }}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
-        <View style={{ gap: space.md, marginBottom: space.sm }}>
-          <Card>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <T v="h2">{plan.splitLabel}</T>
-                <T v="small">
-                  {plan.daysPerWeek}× в неделю · {plan.sessionMinutes[0]}–{plan.sessionMinutes[1]} мин · {plan.weeklySetsTarget[0]}–{plan.weeklySetsTarget[1]} подх./группу
-                </T>
+        <View style={{ gap: space.sm, marginBottom: space.sm }}>
+          <T v="caption">Сплит</T>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <Chip label={`Мой план · ${plan.splitLabel}`} active={!pick} onPress={() => setPick(null)} />
+            {SPLIT_CHOICES.map((sp) => (
+              <Chip key={sp} label={`${SPLIT_PREF_LABEL[sp]}${best === sp ? ' ★' : ''}`} active={pick === sp} onPress={() => setPick(sp)} />
+            ))}
+          </ScrollView>
+          <Card style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <T v="h2" style={{ flex: 1 }}>
+                {shown.splitLabel}
+              </T>
+              {best === shown.split ? (
+                <View style={styles.bestBadge}>
+                  <T v="small" color={colors.onAccent} style={{ fontWeight: '800', fontSize: 11 }}>
+                    Лучший для тебя
+                  </T>
+                </View>
+              ) : null}
+            </View>
+            <T v="small">
+              {shown.daysPerWeek}× в неделю · {shown.sessionMinutes[0]}–{shown.sessionMinutes[1]} мин · {vol.map((v) => `${VM_LABEL[v.muscle].toLowerCase()} ${v.planned}/${v.target}`).join(' · ')}
+            </T>
+            {cand ? (
+              <View style={{ gap: 2 }}>
+                {cand.pros.slice(0, 3).map((x) => (
+                  <T key={x} v="small" color={colors.text} style={{ fontSize: 12 }}>
+                    <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>+ </T>
+                    {x}
+                  </T>
+                ))}
+                {cand.cons.slice(0, 2).map((x) => (
+                  <T key={x} v="small" color={colors.text} style={{ fontSize: 12 }}>
+                    <T v="small" color={colors.warning} style={{ fontWeight: '800', fontSize: 12 }}>− </T>
+                    {x}
+                  </T>
+                ))}
               </View>
-              <Button title="Детали" size="sm" variant="secondary" onPress={() => router.push('/plan')} />
-            </View>
-            <View style={{ marginTop: space.md }}>
-              <WeekStrip plan={plan} />
-            </View>
+            ) : null}
+            {prefs.excluded.length || prefs.limitations.length ? (
+              <T v="small" style={{ fontSize: 11 }} color={colors.muted}>
+                Учтено: {prefs.excluded.length ? `исключено упражнений — ${prefs.excluded.length}` : ''}{prefs.excluded.length && prefs.limitations.length ? ', ' : ''}{prefs.limitations.length ? `ограничений — ${prefs.limitations.length}` : ''}
+              </T>
+            ) : null}
+            {isCurrent ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <WeekStrip plan={plan} />
+                </View>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <Button
+                  title="Выбрать этот сплит"
+                  icon="checkmark"
+                  size="sm"
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    applyProfile(withPrefs(profile, { preferredSplit: pick! }));
+                    setPick(null);
+                    haptic.success();
+                    toast('План перестроен — упражнения с прогрессом сохранены');
+                  }}
+                />
+                <Button title="Подробнее" size="sm" variant="secondary" onPress={() => router.push('/plan')} />
+              </View>
+            )}
           </Card>
-          <T v="caption">Тренировки плана</T>
+          <T v="caption">{isCurrent ? 'Тренировки плана' : 'Так будут выглядеть тренировки'}</T>
         </View>
       }
       renderItem={({ item: t }) => (
-        <Card onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: t.id } })}>
+        <View style={styles.tplCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
+            <Pressable style={{ flex: 1 }} disabled={!isCurrent} onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: t.id } })} accessibilityRole="button">
               <T v="h3">{t.name}</T>
               <T v="small">
-                {t.focus} · ~{t.estMinutes} мин
+                {t.focus} · ~{t.estMinutes} мин · {t.exercises.reduce((a, e) => a + e.sets, 0)} подх.
               </T>
-            </View>
-            <Pressable hitSlop={8} onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: t.id } })} accessibilityLabel={`Изменить ${t.name}`} style={{ padding: 6 }}>
-              <Icon name="create-outline" size={20} color={colors.accent} />
             </Pressable>
+            {isCurrent ? (
+              <Pressable hitSlop={8} onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: t.id } })} accessibilityLabel={`Изменить ${t.name}`} style={{ padding: 6 }}>
+                <Icon name="create-outline" size={20} color={colors.accent} />
+              </Pressable>
+            ) : null}
           </View>
-          <View style={{ gap: 4, marginTop: 10 }}>
-            {t.exercises.map((pe, i) => (
-              <T key={i} v="small" numberOfLines={1}>
-                {getExercise(pe.exerciseId)?.name} · {pe.sets}×{pe.repMin}–{pe.repMax}
-              </T>
-            ))}
+          <View style={{ gap: 6, marginTop: 10 }}>
+            {t.exercises.map((pe, i) => {
+              const ex = getExercise(pe.exerciseId, customs);
+              return (
+                <Pressable key={i} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} accessibilityRole="button">
+                  {ex ? <ExerciseThumb ex={ex} size={36} /> : null}
+                  <T v="small" color={colors.text} numberOfLines={1} style={{ flex: 1 }}>
+                    {ex?.name}
+                  </T>
+                  <T v="small">
+                    {pe.sets}×{pe.repMin}–{pe.repMax}
+                  </T>
+                </Pressable>
+              );
+            })}
           </View>
-        </Card>
+        </View>
       )}
     />
   );
@@ -353,6 +450,8 @@ const HistoryRow = React.memo(function HistoryRow({ s }: { s: WorkoutSession }) 
 });
 
 const styles = themed({
+  bestBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.accent },
+  tplCard: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
   exRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2, minHeight: 40 },
   day: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

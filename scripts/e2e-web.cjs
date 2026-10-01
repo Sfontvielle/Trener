@@ -42,8 +42,15 @@ const check = async (name, fn) => {
   await page.getByText('Заполнить демо-историей (для проверки)').click();
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
+  const shot = async (name) => process.env.E2E_SHOTS && page.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png` });
   const dismiss = async () => {
-    if (await page.getByText('У тебя есть незавершённая тренировка').count()) await page.mouse.click(12, 12);
+    const d = page.getByText('У тебя есть незавершённая тренировка');
+    await d.waitFor({ timeout: 2500 }).catch(() => {});
+    if (await d.count()) {
+      await page.waitForTimeout(500); // дождаться появления, иначе тап по фону теряется
+      await page.mouse.click(12, 12);
+      await d.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+    }
   };
 
   await check('3. «Добавить еду» видна без прокрутки', async () => {
@@ -98,6 +105,87 @@ const check = async (name, fn) => {
     assert.ok((await page.getByLabel(/, текущее$/).count()) === 1);
     assert.ok((await page.getByLabel(/, впереди$/).count()) >= 1);
     await page.mouse.click(220, 40);
+  });
+
+  await check('15. Техника — отдельная кнопка, экран тренировки без прокрутки', async () => {
+    await page.goto(`${URL}/workout/active`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    const tech = await page.getByLabel('Техника выполнения').boundingBox();
+    assert.ok(tech && tech.y < 300, `кнопка «Техника» вверху: y=${tech && tech.y}`);
+    const cta = await page.getByText(/^Завершить подход \d$|^Следующее упражнение|^Завершить тренировку/).first().boundingBox();
+    assert.ok(cta && cta.y + cta.height <= 956, `CTA на экране: y=${cta && cta.y}`);
+    await shot('workout');
+  });
+
+  await check('16. Шторка упражнений закрывается свайпом вниз', async () => {
+    await page.getByLabel('Список упражнений').click();
+    await page.waitForTimeout(700);
+    const item = await page.getByLabel(/, текущее$/).boundingBox();
+    assert.ok(item, 'шторка открыта');
+    const x = 220, y = item.y - 30;
+    // Настоящий свайп пальцем (touch-события), как на iPhone
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: ty }] });
+    await touch('touchStart', y);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', y + i * 25); await page.waitForTimeout(16); }
+    await touch('touchEnd', y + 300);
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'шторка закрыта');
+  });
+
+  await check('17. Главная: Coach у иконки профиля, без прокрутки', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const coach = await page.getByLabel('FORM Coach — совет дня и чат').boundingBox();
+    const prof = await page.getByLabel('Профиль').first().boundingBox();
+    assert.ok(coach && prof && Math.abs(coach.y - prof.y) < 20, 'кнопка коуча рядом с профилем');
+    assert.equal(await page.getByText('Coach расчёт').count(), 0);
+    const overflow = await page.evaluate(() => [...document.querySelectorAll('div')].some((d) => d.scrollHeight > d.clientHeight + 4 && getComputedStyle(d).overflowY !== 'visible' && d.clientHeight > 500));
+    assert.ok(!overflow, 'главная помещается на экран');
+    await shot('home');
+  });
+
+  await check('18. Смена темы и акцента на лету — без ошибок', async () => {
+    await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/theme-start.png` });
+    const before = errors.length;
+    for (const t of ['Electric Blue', 'Светлая', 'Orange', 'Тёмная', 'Acid Green · по умолчанию']) {
+      await page.getByText(t, { exact: true }).last().click({ timeout: 4000 }).catch(async (e) => { if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/fail-${t}.png` }); throw e; });
+      await page.waitForTimeout(900);
+      if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/theme-${t}.png` });
+      assert.ok((await page.getByText('Оформление').count()) > 0, `экран жив после «${t}»`);
+    }
+    assert.equal(errors.length, before, errors.slice(before).join(' | '));
+  });
+
+  await check('19. Тренировки → План: выбор сплита', async () => {
+    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByText('План', { exact: true }).first().click();
+    await page.waitForTimeout(600);
+    await page.getByText('Full Body', { exact: true }).first().click();
+    await page.waitForTimeout(600);
+    assert.ok((await page.getByText('Выбрать этот сплит').count()) === 1);
+    await shot('split');
+    await page.getByText('Библиотека', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await shot('library');
+  });
+
+  await check('20. Коуч отвечает локально, без настройки', async () => {
+    await page.goto(`${URL}/coach`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    assert.equal(await page.getByText(/Настрой|подключи/i).count(), 0);
+    await page.getByLabel('Сообщение тренеру').fill('можно ли тренироваться при простуде');
+    await page.getByLabel('Отправить').click();
+    await page.waitForTimeout(1500);
+    assert.match(await page.evaluate(() => document.body.innerText), /врач/i);
+    await shot('coach');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {
