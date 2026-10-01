@@ -19,10 +19,13 @@ export function isValidGtin(code: string): boolean {
   return (10 - (sum % 10)) % 10 === check;
 }
 
-/** UPC-E (6–8 цифр) разворачивается в UPC-A — Open Food Facts хранит полную форму */
-export function normalizeBarcode(raw: string): string {
+/**
+ * UPC-E (8 цифр) разворачивается в UPC-A — Open Food Facts хранит полную форму.
+ * 8 цифр бывают и EAN-8, поэтому решает тип, который сообщает сканер (iOS: 'upc_e').
+ */
+export function normalizeBarcode(raw: string, type?: string): string {
   const d = raw.replace(/\D/g, '');
-  if (d.length === 8 && (d[0] === '0' || d[0] === '1') && !isValidGtin(d)) {
+  if (d.length === 8 && (d[0] === '0' || d[0] === '1') && (type === 'upc_e' || (!type && !isValidGtin(d)))) {
     const [ns, m, check] = [d[0], d.slice(1, 7), d[7]];
     const last = m[5];
     let body: string;
@@ -52,12 +55,12 @@ export class ScanGate {
   }
 
   /** true — только для первого валидного кода; дальше false до retry() */
-  accept(raw: string): string | null {
+  accept(raw: string, type?: string): string | null {
     if (this.phase === 'locked') {
       this.ignored++;
       return null;
     }
-    const code = normalizeBarcode(raw);
+    const code = normalizeBarcode(raw, type);
     if (!isValidGtin(code)) return null;
     this.phase = 'locked';
     this.lastCode = code;

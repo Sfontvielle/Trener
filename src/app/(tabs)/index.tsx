@@ -274,16 +274,18 @@ export default function Home() {
 }
 
 function Card({ title, right, onPress, children, accent }: { title: string; right?: React.ReactNode; onPress?: () => void; children: React.ReactNode; accent?: boolean }) {
+  // Нажимается только заголовок: внутри карточки могут быть свои кнопки (вложенные кнопки недопустимы)
   return (
-    <Pressable accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} disabled={!onPress} style={[styles.card, accent && { borderColor: colors.accentLine }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    <View style={[styles.card, accent && { borderColor: colors.accentLine }]}>
+      <Pressable accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} disabled={!onPress} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 22 }}>
         <T v="caption" style={{ flex: 1 }}>
           {title}
         </T>
         {right}
-      </View>
+        {onPress && !right ? <Icon name="chevron-forward" size={16} color={colors.muted} /> : null}
+      </Pressable>
       {children}
-    </Pressable>
+    </View>
   );
 }
 

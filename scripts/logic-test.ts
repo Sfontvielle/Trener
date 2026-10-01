@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { CoachAction, DailyCheckIn, ExerciseSet, MovementRestriction, UserProfile, WeightEntry, WorkoutSession } from '../src/types';
+import type { CoachAction, DailyCheckIn, WorkoutExercise, ExerciseSet, MovementRestriction, UserProfile, WeightEntry, WorkoutSession } from '../src/types';
 import { computeNutritionTarget } from '../src/features/nutrition/targets';
 import { reviewCalories } from '../src/features/nutrition/adaptive';
 import { weightTrend, weeklyRate } from '../src/features/progress/weightTrend';
@@ -16,6 +16,16 @@ import { checkAllowed, progressStatus, scoreExercise } from '../src/features/tra
 import { analyzeWorkout, suggestOrder } from '../src/features/training/engine/order';
 import { estimateMinutes } from '../src/features/training/engine/time';
 import { actionKey, applyToExercises, validateAction } from '../src/features/coach/actions';
+import { cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate } from '../src/features/food/scanner';
+import { currentIndexOf, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress } from '../src/features/training/workoutNav';
+import { chooseSplit, compareSplits } from '../src/features/training/engine/split';
+import { estimateRecovery } from '../src/features/training/engine/recovery';
+import { healthAvailability, fetchHealthDays, mergedMinutes } from '../src/services/health';
+import { healthContext, type HealthDay } from '../src/features/health/model';
+import { readinessFor } from '../src/features/recovery/derive';
+import { applyPalette, colors, paletteFor, resolveScheme, themed } from '../src/theme';
+import { buildJournal, dayMode } from '../src/features/journal/build';
+import { workoutDebrief } from '../src/features/training/debrief';
 import { generateWorkout } from '../src/features/training/generator';
 import { resolveToday } from '../src/features/training/today';
 import { suggestMeals } from '../src/features/nutrition/suggest';
@@ -417,4 +427,179 @@ test('Анализатор своей тренировки: 4 упражнени
   assert.ok(fixed.reduce((a, x) => a + x.sets, 0) <= 9);
   const p = excludeExercise(base, 'db_fly');
   assert.ok(analyzeWorkout({ list, profile: p, prefs: getPrefs(p), sessions: [] }).some((i) => i.level === 'danger'), 'конфликт с исключением');
+});
+
+// ─── Итерация: сканер, тренировка по одному упражнению, сплит-движок, восстановление, Health, темы, дневник ───
+
+test('Т1. Штрихкод: callback приходит 10 раз → обрабатывается один раз до «ещё раз»', () => {
+  const gate = new ScanGate();
+  const accepted = Array.from({ length: 10 }, () => gate.accept('4607001771630')).filter(Boolean);
+  assert.equal(accepted.length, 1, 'один поиск/одно добавление');
+  assert.equal(gate.ignored, 9);
+  assert.equal(gate.state, 'locked');
+  gate.retry();
+  assert.equal(gate.accept('4607001771630'), '4607001771630', 'после retry снова принимает');
+  const g2 = new ScanGate();
+  assert.equal(g2.accept('4607001771631'), null, 'неверная контрольная цифра (полу-резкий кадр) отбрасывается');
+  assert.equal(g2.state, 'scanning');
+  assert.ok(isValidGtin('5449000000996') && isValidGtin('96385074'));
+  assert.equal(normalizeBarcode('01234565', 'upc_e'), '012345000065', 'UPC-E разворачивается в UPC-A');
+  assert.equal(normalizeBarcode('96385074', 'ean8'), '96385074', 'EAN-8 остаётся как есть');
+});
+
+test('Т2. Камера: нет разрешения → понятный фолбэк, а не пустой экран', () => {
+  assert.equal(cameraGate(null), 'loading');
+  assert.equal(cameraGate({ granted: false, canAskAgain: true }), 'ask');
+  assert.equal(cameraGate({ granted: false, canAskAgain: false }), 'settings');
+  assert.equal(cameraGate({ granted: true, canAskAgain: true }), 'ready');
+  assert.equal(pickScanLens(['Back Camera', 'Back Dual Wide Camera', 'Back Triple Camera']), 'Back Triple Camera', 'виртуальная камера с макро-фокусом');
+  assert.equal(pickScanLens(['Back Camera']), 'Back Camera');
+  assert.equal(pickScanLens([]), undefined);
+});
+
+const wex = (id: string, done: number, total = 3): WorkoutExercise => ({
+  id: `we-${id}`, exerciseId: id, plannedSets: total, repMin: 8, repMax: 12, targetRir: 2, restSec: 90,
+  sets: Array.from({ length: total }, (_, i) => ({ id: `${id}-${i}`, weight: 50, reps: 10, done: i < done })),
+});
+const activeOf = (exs: WorkoutExercise[], currentIndex?: number): WorkoutSession => ({ id: 'a', date: today(), name: 'Upper A', focus: '', source: 'plan', startedAt: 1, exercises: exs, volumeFactor: 1, status: 'active', currentIndex });
+
+test('Т4–6. Тренировка: одно текущее упражнение, «следующее» = именно следующее, статусы навигатора', () => {
+  const s = activeOf([wex('bench_press', 3), wex('incline_db_press', 1), wex('lat_pulldown', 0), wex('seated_cable_row', 3)]);
+  assert.equal(currentIndexOf(s), 1, 'без сохранённого индекса — первое незавершённое');
+  assert.equal(nextIndex(s, 2), 3, 'следующее по порядку, даже если оно уже выполнено');
+  assert.equal(nextIndex(s, 3), -1);
+  assert.equal(prevIndex(s, 0), -1);
+  const items = navItems(s, 2);
+  assert.deepEqual(items.map((x) => x.state), ['completed', 'partial', 'current', 'completed']);
+  assert.ok(Math.abs(workoutProgress(s) - 7 / 12) < 1e-9);
+  const rem = remainingInfo(s);
+  assert.equal(rem.exercises, 2);
+  assert.ok(rem.minutes > 0);
+  assert.equal(currentIndexOf({ ...s, currentIndex: 3 }), 3, 'сохранённый индекс главнее');
+  assert.equal(currentIndexOf({ ...s, currentIndex: 9 }), 1, 'битый индекс не ломает экран');
+});
+
+test('Т7–8. Переход назад и перезапуск: подходы и позиция сохраняются (сериализация как в persist)', () => {
+  const s = activeOf([wex('bench_press', 2), wex('lat_pulldown', 0)], 1);
+  // Переход = смена currentIndex, подходы не трогаются
+  const back: WorkoutSession = { ...s, currentIndex: prevIndex(s, 1) };
+  assert.equal(back.exercises[0].sets.filter((x) => x.done).length, 2);
+  // Перезапуск: состояние уходит в хранилище JSON-ом и возвращается
+  const restored = JSON.parse(JSON.stringify(back)) as WorkoutSession;
+  assert.equal(currentIndexOf(restored), 0);
+  assert.equal(restored.exercises[0].sets.filter((x) => x.done).length, 2);
+  assert.equal(nextSetLabel(restored, 0, (w) => String(w), () => ''), '50 × 8–12', 'таймер отдыха знает следующий подход');
+});
+
+test('Т9. Сплит-движок: выбирает лучший вариант под человека, а не по таблице', () => {
+  const pick = (p: Partial<UserProfile>, t: Partial<ReturnType<typeof getPrefs>> = {}) => chooseSplit({ ...base, ...p }, { ...getPrefs(base), ...t }, []);
+  const d4 = pick({});
+  assert.equal(d4.split, 'upper_lower');
+  assert.ok(d4.candidates.length >= 4, 'сравнивается несколько кандидатов');
+  assert.ok(d4.candidates[0].score >= d4.candidates[d4.candidates.length - 1].score);
+  assert.ok(d4.candidates.find((c) => c.split === 'fullbody')!.cons.length > 0, 'у Full Body есть объяснённые минусы');
+  assert.equal(pick({ daysPerWeek: 3, level: 'beginner', sessionMinutes: 60 }).split, 'fullbody', 'новичку 3 дня — Full Body');
+  assert.notEqual(pick({ daysPerWeek: 3 }).split, 'fullbody', 'среднему уровню 3×70 мин — не Full Body');
+  assert.equal(pick({}, { priorityMuscles: ['biceps', 'triceps'] }).split, 'torso_limbs', 'приоритет рук меняет выбор');
+  assert.equal(pick({ daysPerWeek: 6 }).split, 'ppl_x2');
+  const cmp = compareSplits(d4, 'fullbody');
+  assert.ok(cmp.summary.length > 10);
+  const plan = generatePlan({ ...base, training: { ...getPrefs(base), preferredSplit: 'bro' } });
+  assert.equal(plan.split, 'bro');
+  assert.ok(plan.templates.length >= 4);
+});
+
+test('Т10. «Повышенное восстановление» не даёт бесконтрольный рост объёма', () => {
+  const d = today();
+  const ck = (sleep: number, sore: number, energy: number) => Object.fromEntries(Array.from({ length: 10 }, (_, i) => {
+    const date = addDays(d, -i);
+    return [date, { date, sleepHours: sleep, sleepQuality: 3, energy, stress: 3, soreness: sore, pain: false, createdAt: 0 } as DailyCheckIn];
+  }));
+  const bad = ck(5.4, 4, 2);
+  const good = ck(8, 2, 4);
+  const enhBad = estimateRecovery({ profile: 'enhanced', sessions: [], checkins: bad });
+  assert.ok(enhBad.factor <= 1, `плохой сон + усталость → не больше базы (${enhBad.factor})`);
+  assert.ok(enhBad.reasons.some((r) => r.includes('не компенсирует')));
+  const enhNoData = estimateRecovery({ profile: 'enhanced', sessions: [] });
+  assert.ok(enhNoData.factor <= 1.05, `без данных — не больше +5% (${enhNoData.factor})`);
+  const enhGood = estimateRecovery({ profile: 'enhanced', sessions: [], checkins: good });
+  const stdGood = estimateRecovery({ profile: 'standard', sessions: [], checkins: good });
+  assert.ok(enhGood.factor >= stdGood.factor && enhGood.factor <= 1.15, `${enhGood.factor} vs ${stdGood.factor}`);
+  const planBad = generatePlan(base, { recovery: enhBad });
+  const planStd = generatePlan(base);
+  const vol = (p: ReturnType<typeof generatePlan>) => p.volume!.reduce((a, v) => a + v.target, 0);
+  assert.ok(vol(planBad) <= vol(planStd), 'цель объёма не выросла');
+});
+
+test('Т11–12. Apple Health: отказ — приложение работает; данные есть — попадают в готовность с личной базой', async () => {
+  // В node (как в Expo Go) нативного модуля нет: статус «нужна сборка», чтение — пустое, без исключений
+  assert.equal(healthAvailability(), 'needs_dev_build');
+  assert.deepEqual(await fetchHealthDays(7), []);
+  const d = today();
+  const c: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, createdAt: 0 };
+  const withoutHealth = readinessFor(d, { [d]: c }, []);
+  assert.deepEqual(readinessFor(d, { [d]: c }, [], {}), withoutHealth, 'пустой Health = как без него');
+  assert.equal(readinessFor(d, {}, [], {}), undefined);
+
+  const days: Record<string, HealthDay> = {};
+  for (let i = 1; i <= 14; i++) days[addDays(d, -i)] = { date: addDays(d, -i), restingHr: 52, hrvMs: 60, sleepHours: 7.5 };
+  days[d] = { date: d, restingHr: 61, hrvMs: 45, sleepHours: 6.2, steps: 8430 };
+  const h = healthContext(days, d)!;
+  assert.equal(h.rhrBaseline, 52);
+  assert.equal(h.rhrDelta, 9);
+  assert.equal(h.hrvDeltaPct, -25);
+  const r = readinessFor(d, {}, [], days)!;
+  assert.equal(r.source, 'health', 'без чек-ина — по данным Health');
+  assert.ok(r.factors.some((f) => f.label.includes('HRV')) && r.factors.some((f) => f.label.includes('Пульс')));
+  const rc = readinessFor(d, { [d]: c }, [], days)!;
+  assert.ok(rc.score < withoutHealth!.score, 'HRV ниже базы и пульс выше снижают готовность при том же чек-ине');
+  assert.equal(Math.round(mergedMinutes([[0, 3_600_000], [1_800_000, 7_200_000], [10_800_000, 14_400_000]])), 180, 'пересекающиеся записи сна сливаются');
+});
+
+test('Т13. Темы: системная/тёмная/светлая, акценты, перекраска стилей и сохранение выбора', () => {
+  assert.equal(resolveScheme('system', 'light'), 'light');
+  assert.equal(resolveScheme('system', 'dark'), 'dark');
+  assert.equal(resolveScheme('system', null), 'dark', 'по умолчанию — тёмная FORM');
+  assert.equal(resolveScheme('light', 'dark'), 'light');
+  const dark = paletteFor('dark', 'lime');
+  const light = paletteFor('light', 'lime');
+  assert.equal(dark.accent, '#C8F53C');
+  assert.notEqual(light.bg, dark.bg);
+  assert.equal(light.surface, '#FFFFFF');
+  assert.notEqual(light.accent, dark.accent, 'на светлом фоне акцент затемнён (читаемость)');
+  const st = themed({ box: { backgroundColor: colors.surface, borderColor: colors.accent, color: '#123456' } });
+  applyPalette('light', 'blue');
+  assert.equal(st.box.backgroundColor, '#FFFFFF');
+  assert.equal(st.box.borderColor, paletteFor('light', 'blue').accent);
+  assert.equal(st.box.color, '#123456', 'не-токены не трогаются');
+  assert.equal(colors.bg, light.bg);
+  applyPalette('dark', 'lime');
+  assert.equal(st.box.backgroundColor, dark.surface);
+  // Сохранение выбора после перезапуска проверяется e2e: scripts/e2e-web.cjs
+});
+
+test('Т15. Дневник: автоматические события по времени, рекорд после тренировки, план — пунктиром', () => {
+  const d = today();
+  const t = (h: number, m = 0) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).getTime();
+  const prev: WorkoutSession = { id: 'p', date: addDays(d, -3), name: 'Upper A', focus: '', source: 'plan', startedAt: t(9) - 3 * 864e5, finishedAt: t(10) - 3 * 864e5, volumeFactor: 1, status: 'completed', exercises: [{ ...wex('bench_press', 3), sets: [set(80, 8), set(80, 8)] }] };
+  const cur: WorkoutSession = { id: 'c', date: d, name: 'Upper A', focus: '', source: 'plan', startedAt: t(18, 40), finishedAt: t(19, 42), volumeFactor: 1, status: 'completed', exercises: [{ ...wex('bench_press', 3), sets: [set(90, 8), set(85, 8)] }] };
+  const ev = buildJournal({
+    date: d,
+    checkin: { date: d, sleepHours: 7, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, createdAt: t(8, 10) },
+    weights: [{ id: 'w', date: d, kg: 81.6, createdAt: t(9) }],
+    entries: [{ id: 'e', date: d, productId: 'x', name: 'Овсянка', grams: 80, macros: { kcal: 610, protein: 30, fat: 10, carbs: 90 }, meal: 'breakfast', createdAt: t(10, 15) }],
+    sessions: [prev, cur],
+    notes: [{ id: 'n', date: d, at: t(12), text: 'Плохо спал' }],
+  });
+  assert.deepEqual(ev.map((e) => e.kind), ['checkin', 'weight', 'meal', 'note', 'workout_done', 'pr']);
+  assert.ok(ev.every((e, i) => i === 0 || e.at >= ev[i - 1].at), 'по времени');
+  assert.ok(ev.find((e) => e.kind === 'pr')!.sub!.includes('90'));
+  const planned = buildJournal({ date: d, weights: [], entries: [], sessions: [], planned: { name: 'Upper A', at: t(18, 30) } });
+  assert.equal(planned[0].planned, true);
+  assert.equal(dayMode(8, false), 'morning');
+  assert.equal(dayMode(15, true), 'after_workout');
+  assert.equal(dayMode(21, true), 'evening');
+  const deb = workoutDebrief(cur, [prev, cur]);
+  assert.equal(deb.prs.length, 1);
+  assert.ok(deb.lines.some((l) => l.includes('прогресс')));
 });

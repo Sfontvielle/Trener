@@ -67,7 +67,7 @@ export default function Scan() {
   };
 
   const onScanned = (r: BarcodeScanningResult) => {
-    const code = gate.accept(r.data);
+    const code = gate.accept(r.data, r.type);
     if (!code) return;
     haptic.success();
     void lookup(code);
