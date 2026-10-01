@@ -62,6 +62,9 @@ export function currentLocalInsights() {
     weights: s.weights,
     adjustments: s.ps.adjustments,
     plan: s.ps.plan,
+    checkins: s.checkins,
+    overrides: s.ps.overrides,
+    lastBackupAt: useProfile.getState().settings.lastBackupAt,
   });
 }
 

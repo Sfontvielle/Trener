@@ -11,9 +11,9 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   const rest = useWorkouts((s) => s.rest);
   const adjust = useWorkouts((s) => s.adjustRest);
   const stop = useWorkouts((s) => s.stopRest);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const firedFor = useRef<number | null>(null);
-  const pulse = useRef(new Animated.Value(0)).current;
+  const pulse = useState(() => new Animated.Value(0))[0];
 
   useEffect(() => {
     if (!rest) return;

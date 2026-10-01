@@ -15,16 +15,22 @@ import { haptic } from '@/services/haptics';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { MODE_LABEL } from '@/features/training/today';
 import { parseDecimal } from '@/utils/format';
+import { useBody } from '@/stores/body';
+import { useProfile } from '@/stores/profile';
 
 export default function CheckIn() {
   const d = today();
   const existing = useCheckins((s) => s.byDate[d]);
   const save = useCheckins((s) => s.save);
   const sessions = useWorkouts((s) => s.sessions);
-  const [c, setC] = useState<DailyCheckIn>(
-    existing ?? { date: d, sleepHours: 7.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() },
-  );
+  const [c, setC] = useState<DailyCheckIn>(() => existing ?? { date: d, sleepHours: 7.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() });
   const [saved, setSaved] = useState(false);
+  // Взвешивание прямо в чек-ине: одно утреннее действие вместо двух
+  const weights = useBody((s) => s.weights);
+  const todayWeight = weights.find((w) => w.date === d);
+  const lastKg = weights[weights.length - 1]?.kg ?? useProfile.getState().profile?.weightKg ?? 75;
+  const [logWeight, setLogWeight] = useState(!todayWeight);
+  const [kg, setKg] = useState(todayWeight?.kg ?? lastKg);
   const [showHealth, setShowHealth] = useState(!!(existing?.hrvMs || existing?.restingHr));
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
   const r = useMemo(() => computeReadiness(c, { sessions }), [c, sessions]);
@@ -119,12 +125,17 @@ export default function CheckIn() {
             </View>
           ) : null}
         </View>
+        <View style={{ gap: 8 }}>
+          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? 'Обновить вес' : 'Взвесился утром'} sub="Натощак, после туалета — для тренда веса" />
+          {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
+        </View>
         <Button
           title={`Сохранить · готовность ${r.score}`}
           size="lg"
           icon="checkmark"
           onPress={() => {
             save({ ...c, createdAt: Date.now() });
+            if (logWeight) useBody.getState().addWeight(d, Math.round(kg * 10) / 10);
             haptic.success();
             setSaved(true);
           }}

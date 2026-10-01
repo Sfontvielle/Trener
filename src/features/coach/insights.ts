@@ -1,11 +1,13 @@
+import { daysBetween, formatHours, today, weekdayIndex } from '@/utils/date';
 import type { DailyCheckIn, FoodEntry, NutritionTarget, ReadinessResult, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession, PlanAdjustment } from '@/types';
 import { adherence } from '@/features/training/analytics';
+import { checkDeload } from '@/features/training/deload';
+import { lastWeekSummary } from '@/features/progress/weekly';
 import type { TodayWorkout } from '@/features/training/today';
 import { getExercise } from '@/data/exercises';
 import { historyFor, recommend } from '@/features/training/progression';
 import { remaining, sumMacros } from '@/features/nutrition/status';
 import { reviewCalories } from '@/features/nutrition/adaptive';
-import { daysBetween, formatHours, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 
 /**
@@ -29,6 +31,9 @@ export function localInsights(args: {
   weights: WeightEntry[];
   adjustments: PlanAdjustment[];
   plan?: WorkoutPlan | null;
+  checkins?: Record<string, DailyCheckIn>;
+  overrides?: Record<string, { mode?: string }>;
+  lastBackupAt?: number;
   hour?: number;
 }): LocalInsight[] {
   const out: LocalInsight[] = [];
@@ -93,6 +98,23 @@ export function localInsights(args: {
         });
       }
     }
+  }
+
+  if (args.plan) {
+    const dl = checkDeload({ plan: args.plan, sessions: args.sessions, checkins: args.checkins ?? {}, adjustments: args.adjustments, overrides: args.overrides ?? {} });
+    if (dl.suggest) out.push({ kind: 'progression', priority: 72, text: `Пора разгрузиться: ${dl.reasons[0].toLowerCase()}. Включи разгрузочную неделю во вкладке «Тренировки».` });
+  }
+
+  // Понедельник — автоматические итоги прошлой недели
+  if (weekdayIndex(d) === 0) {
+    const w = lastWeekSummary({ sessions: args.sessions, plan: args.plan ?? null, entries: args.entries, target: args.target, weights: args.weights, checkins: args.checkins ?? {} });
+    if (w) out.push({ kind: 'general', priority: 50, text: `Итоги недели: ${w.headline}. Подробнее — в «Прогрессе».` });
+  }
+
+  // Резервная копия: данные хранятся только на телефоне
+  const doneCount = args.sessions.filter((x) => x.status === 'completed').length;
+  if (doneCount >= 8 && (!args.lastBackupAt || Date.now() - args.lastBackupAt > 30 * 86400000)) {
+    out.push({ kind: 'general', priority: 15, text: `У тебя ${doneCount} тренировок в истории, а копии нет уже давно. Профиль → «Сохранить резервную копию».` });
   }
 
   const lastW = args.weights[args.weights.length - 1];

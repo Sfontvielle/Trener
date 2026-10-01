@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space } from '@/theme';
@@ -21,12 +21,19 @@ import { suggestMeals, type MealSuggestion } from '@/features/nutrition/suggest'
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { applyCalorieDelta } from '@/features/profile/applyProfile';
 import { LOCAL_FOODS } from '@/data/foods';
-import { addDays, relativeDay, today } from '@/utils/date';
+import { addDays, daysBetween, relativeDay, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
+import { useDayKey } from '@/hooks/useDayKey';
+import { frequentProducts, sameMealYesterday } from '@/features/nutrition/quick';
 
 export default function Nutrition() {
-  const [date, setDate] = useState(today());
+  // Дата считается от «сегодня», которое само переключается после полуночи
+  const dayKey = useDayKey();
+  const [offset, setOffset] = useState(0);
+  const date = addDays(dayKey, offset);
+  const setDate = (d: string) => setOffset(Math.min(0, daysBetween(dayKey, d)));
+  const lastGrams = useNutrition((s) => s.lastGrams);
   const nut = useDayNutrition(date);
   const profile = useProfile((s) => s.profile);
   const products = useNutrition((s) => s.products);
@@ -35,7 +42,10 @@ export default function Nutrition() {
   const adjustments = usePlan((s) => s.adjustments);
   const weights = useBody((s) => s.weights);
   const [edit, setEdit] = useState<FoodEntry | null>(null);
-  const isToday = date === today();
+  const isToday = offset === 0;
+  const nowMeal = mealForHour(new Date().getHours());
+  const repeat = useMemo(() => (isToday ? sameMealYesterday(allEntries, date, nowMeal) : []), [isToday, allEntries, date, nowMeal]);
+  const frequent = useMemo(() => frequentProducts(allEntries, products, lastGrams, date), [allEntries, products, lastGrams, date]);
   const target = nut.target;
   const dp = isToday ? dayProgress() : 1;
 
@@ -152,6 +162,63 @@ export default function Nutrition() {
         </>
       ) : null}
 
+      {isToday && (repeat.length || frequent.length) ? (
+        <>
+          <SectionTitle title="Быстро добавить" />
+          {repeat.length ? (
+            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
+              <Icon name="repeat" size={20} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <T v="body" style={{ fontWeight: '700', fontSize: 15 }}>
+                  {MEAL_LABEL[nowMeal]} как вчера
+                </T>
+                <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+                  {repeat.map((e) => e.name).join(', ')} · {fmtNum(repeat.reduce((a, e) => a + e.macros.kcal, 0))} ккал
+                </T>
+              </View>
+              <Button
+                title="Повторить"
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  const st = useNutrition.getState();
+                  repeat.forEach((e) => {
+                    const p = st.products[e.productId] ?? LOCAL_FOODS.find((f) => f.id === e.productId);
+                    if (p) st.addEntry(p, e.grams, nowMeal, date);
+                  });
+                  haptic.success();
+                  toast(`${MEAL_LABEL[nowMeal]} добавлен`);
+                }}
+              />
+            </Card>
+          ) : null}
+          {frequent.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {frequent.map((f) => (
+                <Pressable
+                  key={f.product.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Добавить ${f.product.name} ${f.grams} грамм`}
+                  onPress={() => {
+                    useNutrition.getState().addEntry(f.product, f.grams, nowMeal, date);
+                    haptic.light();
+                    toast(`${f.product.name} — ${f.grams} г (изменить — тап по записи)`);
+                  }}
+                  style={styles.quick}
+                >
+                  <T v="small" color={colors.text} numberOfLines={1} style={{ fontWeight: '700', maxWidth: 150 }}>
+                    {f.product.name}
+                  </T>
+                  <T v="small" style={{ fontSize: 11 }}>
+                    + {f.grams} г · {Math.round((f.product.per100.kcal * f.grams) / 100)} ккал
+                  </T>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </>
+      ) : null}
+
       <SectionTitle title="Приёмы пищи" />
       {nut.entries.length === 0 ? (
         <Card style={{ alignItems: 'center', gap: 6 }}>
@@ -194,7 +261,7 @@ export default function Nutrition() {
       )}
       <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.lg }} onPress={() => router.push({ pathname: '/food/add', params: { date } })} />
 
-      <EditEntrySheet entry={edit} onClose={() => setEdit(null)} />
+      <EditEntrySheet key={edit?.id ?? 'none'} entry={edit} onClose={() => setEdit(null)} />
     </Screen>
   );
 }
@@ -228,11 +295,8 @@ function MacroRow({ label, eaten, target, state, base }: { label: string; eaten:
 }
 
 function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: () => void }) {
-  const [g, setG] = useState(100);
+  const [g, setG] = useState(entry?.grams ?? 100);
   const products = useNutrition((s) => s.products);
-  React.useEffect(() => {
-    if (entry) setG(entry.grams);
-  }, [entry]);
   const p = entry ? products[entry.productId] ?? LOCAL_FOODS.find((f) => f.id === entry.productId) : undefined;
   const m = entry ? (p ? macrosFor(p.per100, g) : { kcal: Math.round((entry.macros.kcal * g) / entry.grams), protein: 0, fat: 0, carbs: 0 }) : null;
   return (
@@ -262,5 +326,6 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.md },
   legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
+  quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, minHeight: 48, borderRadius: radius.sm },
 });

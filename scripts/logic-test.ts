@@ -172,3 +172,59 @@ test('Библиотека: уникальные id, техника и мышц�
     assert.ok(e.defaultReps[0] <= e.defaultReps[1], e.id);
   }
 });
+
+import { warmupSets, platesPerSide } from '../src/features/training/warmup';
+import { checkDeload } from '../src/features/training/deload';
+import { lastWeekSummary } from '../src/features/progress/weekly';
+import { frequentProducts, sameMealYesterday } from '../src/features/nutrition/quick';
+import { startOfWeek } from '../src/utils/date';
+import type { FoodEntry } from '../src/types';
+
+test('Разминка и блины: присед 100 кг → 20×10, 50×5, 70×3, 85×1; блины 25+15 на сторону', () => {
+  const w = warmupSets(getExercise('back_squat')!, 100);
+  assert.deepEqual(w.map((x) => x.weight), [20, 50, 70, 85]);
+  assert.deepEqual(warmupSets(getExercise('lateral_raise')!, 100), [], 'изоляции разминка не нужна');
+  assert.deepEqual(platesPerSide(100), [25, 15]);
+  assert.deepEqual(platesPerSide(82.5), [25, 5, 1.25]);
+  assert.equal(platesPerSide(15), null);
+});
+
+test('Разгрузка: застой e1RM в базовых → предлагается; свежий прогресс → нет', () => {
+  const plan = generatePlan(base);
+  const mains = plan.templates.map((t) => t.exercises[0].exerciseId);
+  const mk = (week: number, weight: number): WorkoutSession[] =>
+    mains.map((id, i) => ({
+      id: `s${week}-${i}`, date: addDays(today(), -(7 * (6 - week)) + i), name: 'x', focus: '', source: 'plan', templateId: plan.templates[i].id,
+      startedAt: week * 1e6 + i, finishedAt: week * 1e6 + i + 1, volumeFactor: 1, status: 'completed',
+      exercises: [{ id: 'we', exerciseId: id, plannedSets: 3, repMin: 6, repMax: 10, targetRir: 2, restSec: 120, sets: [set(weight, 8), set(weight, 8), set(weight, 8)] }],
+    }));
+  const flat = [0, 1, 2, 3, 4, 5].flatMap((wk) => mk(wk, 80));
+  const stalled = checkDeload({ plan, sessions: flat, checkins: {}, adjustments: [], overrides: {} });
+  assert.ok(stalled.suggest, stalled.reasons.join('; '));
+  assert.ok(stalled.stalled.length >= 2);
+  const growing = [0, 1, 2, 3, 4, 5].flatMap((wk) => mk(wk, 70 + wk * 2.5));
+  const ok = checkDeload({ plan, sessions: growing, checkins: {}, adjustments: [], overrides: {} });
+  assert.equal(ok.stalled.length, 0);
+  assert.ok(!ok.suggest || ok.weeksTrained >= 6, ok.reasons.join('; '));
+});
+
+test('Итоги недели и быстрое логирование еды', () => {
+  const plan = generatePlan(base);
+  const lastMon = addDays(startOfWeek(today()), -7);
+  const entry = (date: string, id: string, meal: FoodEntry['meal'], kcal = 600, protein = 40): FoodEntry => ({ id: date + id + meal, date, productId: id, name: id, grams: 100, macros: { kcal, protein, fat: 10, carbs: 50 }, meal, createdAt: 0 });
+  const entries = [entry(lastMon, 'local:cottage_5', 'breakfast', 2000, 140), entry(addDays(lastMon, 1), 'local:cottage_5', 'breakfast', 2500, 100)];
+  const sessions: WorkoutSession[] = [{ id: 'a', date: addDays(lastMon, 1), name: 'x', focus: '', source: 'plan', startedAt: 1, finishedAt: 2, volumeFactor: 1, status: 'completed', exercises: [] }];
+  const w = lastWeekSummary({ sessions, plan, entries, target: computeNutritionTarget(base), weights: [], checkins: {} });
+  assert.ok(w);
+  assert.equal(w!.workouts, 1);
+  assert.equal(w!.planned, 4);
+  assert.equal(w!.loggedDays, 2);
+  assert.equal(w!.proteinDays, 1);
+  const d = today();
+  const rep = sameMealYesterday([entry(addDays(d, -1), 'local:egg', 'breakfast'), entry(addDays(d, -1), 'local:oats_dry', 'breakfast')], d, 'breakfast');
+  assert.equal(rep.length, 2);
+  assert.equal(sameMealYesterday([entry(addDays(d, -1), 'local:egg', 'breakfast'), entry(d, 'local:egg', 'breakfast')], d, 'breakfast').length, 0, 'если уже поел — не предлагаем');
+  const freq = frequentProducts([entry(d, 'local:egg', 'breakfast'), entry(addDays(d, -1), 'local:egg', 'lunch'), entry(d, 'local:rice_cooked', 'lunch')], {}, { 'local:egg': 110 }, d);
+  assert.equal(freq.length, 1);
+  assert.equal(freq[0].grams, 110);
+});

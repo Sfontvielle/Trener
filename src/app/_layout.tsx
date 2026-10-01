@@ -9,8 +9,12 @@ import { useHydrated } from '@/stores/hydration';
 import { useProfile } from '@/stores/profile';
 import { DialogHost } from '@/components/Dialog';
 import { ErrorBoundaryView } from '@/components/ErrorBoundaryView';
+import { configureNotifications, syncReminders } from '@/services/notifications';
+import { usePlan } from '@/stores/plan';
 
 export { ErrorBoundaryView as ErrorBoundary };
+
+configureNotifications();
 
 SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
 
@@ -18,6 +22,15 @@ function Gate() {
   const hydrated = useHydrated();
   const profile = useProfile((s) => s.profile);
   const segments = useSegments();
+  const settings = useProfile((s) => s.settings);
+  const plan = usePlan((s) => s.plan);
+
+  // Напоминания всегда соответствуют текущему плану (смена расписания → перепланирование)
+  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, plan?.schedule, plan?.templates.map((t) => t.name)]);
+  const hasProfile = !!profile;
+  useEffect(() => {
+    if (hydrated && hasProfile) void syncReminders(useProfile.getState().settings, usePlan.getState().plan);
+  }, [hydrated, hasProfile, reminderKey]);
 
   useEffect(() => {
     if (!hydrated) return;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState} from 'react';
 import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { create } from 'zustand';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,7 +85,7 @@ export function DialogHost() {
 function ToastView() {
   const t = useDialog((s) => s.toast);
   const insets = useSafeAreaInsets();
-  const a = useRef(new Animated.Value(0)).current;
+  const a = useState(() => new Animated.Value(0))[0];
   useEffect(() => {
     if (!t) return;
     a.setValue(0);

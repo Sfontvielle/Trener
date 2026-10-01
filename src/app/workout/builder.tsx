@@ -31,7 +31,8 @@ export default function Builder() {
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const isTemplate = !!template;
-  const exercises = isTemplate ? tplExercises : draft?.exercises ?? [];
+  const draftExercises = draft?.exercises;
+  const exercises = useMemo(() => (isTemplate ? tplExercises : draftExercises ?? []), [isTemplate, tplExercises, draftExercises]);
   const setExercises = (next: PlannedExercise[]) => {
     if (isTemplate) setTplExercises(next);
     else if (draft) setDraft({ ...draft, exercises: next });

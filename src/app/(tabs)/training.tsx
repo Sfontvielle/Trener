@@ -18,6 +18,10 @@ import { sessionVolume, setsByGroup } from '@/features/training/analytics';
 import { plannedWeeklySets } from '@/features/training/planGenerator';
 import { ExerciseList } from '@/features/exercises/ExerciseList';
 import { WeekStrip } from '@/features/profile/PlanSummary';
+import { checkDeload, isDeloadActive } from '@/features/training/deload';
+import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
+import { useCheckins } from '@/stores/checkins';
+import { confirm, toast } from '@/components/Dialog';
 import { addDays, formatDayShort, relativeDay, startOfWeek, today, WEEKDAYS_SHORT } from '@/utils/date';
 
 type Seg = 'today' | 'plan' | 'history' | 'library';
@@ -63,6 +67,11 @@ function TodayTab({ bottom }: { bottom: number }) {
   const planned = useMemo(() => (plan ? plannedWeeklySets(plan.templates, plan.schedule) : {}), [plan]);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(d), i)), [d]);
   const doneDays = new Set(sessions.filter((s) => s.status === 'completed').map((s) => s.date));
+  const checkins = useCheckins((s) => s.byDate);
+  const overrides = usePlan((s) => s.overrides);
+  const adjustments = usePlan((s) => s.adjustments);
+  const deload = useMemo(() => checkDeload({ plan, sessions, checkins, adjustments, overrides }), [plan, sessions, checkins, adjustments, overrides]);
+  const deloadActive = isDeloadActive(overrides);
 
   return (
     <FlatList
@@ -73,6 +82,25 @@ function TodayTab({ bottom }: { bottom: number }) {
       ListHeaderComponent={
         <View style={{ gap: space.md }}>
           {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" onAction={resumeActive} /> : null}
+          {deloadActive ? (
+            <Banner tone="warning" icon="battery-charging" text="Идёт разгрузочная неделя: меньше подходов, больше запаса. Это и есть прогресс — сила вырастет после неё." action="Отменить" onAction={() => confirm('Отменить разгрузку?', 'Тренировки вернутся к обычному объёму.', 'Отменить разгрузку', () => { cancelDeload(); toast('Разгрузка отменена'); })} />
+          ) : deload.suggest ? (
+            <Card tone="warning" style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="battery-half" size={20} color={colors.warning} />
+                <T v="h3">Пора разгрузиться</T>
+              </View>
+              {deload.reasons.map((r) => (
+                <T key={r} v="small">
+                  • {r}
+                </T>
+              ))}
+              <T v="small" style={{ fontSize: 12 }}>
+                Неделя с −40% подходов и запасом 3–4 повтора снимает накопленную усталость — после неё веса обычно снова растут.
+              </T>
+              <Button title="Начать разгрузочную неделю" icon="battery-charging" size="sm" onPress={() => { const n = applyDeload(); toast(`Разгрузка: облегчено тренировок — ${n}`); }} />
+            </Card>
+          ) : null}
           <Card tone="accent">
             <T v="caption">Сегодня</T>
             {tw.kind === 'workout' && tw.template ? (

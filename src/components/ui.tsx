@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -284,7 +284,7 @@ export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
 
 /** Скелетон для состояний загрузки */
 export function Skeleton({ height = 16, width = '100%', style }: { height?: number; width?: number | `${number}%`; style?: StyleProp<ViewStyle> }) {
-  const a = useRef(new Animated.Value(0.4)).current;
+  const a = useState(() => new Animated.Value(0.4))[0];
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 1, duration: 700, useNativeDriver: true }), Animated.timing(a, { toValue: 0.4, duration: 700, useNativeDriver: true })]));
     loop.start();

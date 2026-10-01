@@ -20,6 +20,7 @@ import { GROUP_LABEL } from '@/data/exercises';
 import { addDays, daysBetween, formatDayShort, formatHours, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 import type { MuscleGroup } from '@/types';
+import { lastWeekSummary } from '@/features/progress/weekly';
 
 type Range = '7' | '30' | '90' | 'all';
 
@@ -73,11 +74,31 @@ export default function Progress() {
   const sleep = Object.values(checkins).filter((c) => c.date > addDays(d, -7));
   const avgSleep = sleep.length ? sleep.reduce((a, c) => a + c.sleepHours, 0) / sleep.length : null;
 
+  const week = useMemo(() => lastWeekSummary({ sessions, plan, entries, target, weights, checkins }), [sessions, plan, entries, target, weights, checkins]);
+
   return (
     <Screen tabBar>
       <T v="h1" style={{ marginBottom: space.md }}>
         Прогресс
       </T>
+
+      {week ? (
+        <Card tone="accent" style={{ marginBottom: space.md, gap: 10 }}>
+          <T v="caption">
+            Итоги недели · {formatDayShort(week.from)} – {formatDayShort(week.to)}
+          </T>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Stat label="Тренировки" value={`${week.workouts}/${week.planned || week.workouts}`} color={week.planned && week.workouts >= week.planned ? colors.accent : colors.text} />
+            <Stat label="Подходов" value={String(week.sets)} />
+            <Stat label="Ккал, ср." value={week.avgKcal ? String(week.avgKcal) : '—'} sub={target && week.avgKcal ? `цель ${target.kcal}` : undefined} />
+            <Stat label="Вес" value={week.weightDelta === null ? '—' : `${week.weightDelta >= 0 ? '+' : ''}${week.weightDelta.toFixed(1)}`} unit={week.weightDelta === null ? undefined : 'кг'} />
+          </View>
+          <T v="small" style={{ fontSize: 12 }}>
+            {week.loggedDays ? `Белок в норме ${week.proteinDays} из ${week.loggedDays} дней с записями. ` : 'Питание не записывалось. '}
+            {week.avgSleep ? `Сон в среднем ${formatHours(week.avgSleep)}.` : ''}
+          </T>
+        </Card>
+      ) : null}
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

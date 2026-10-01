@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { colors, radius, space } from '@/theme';
 import { Icon, T } from './ui';
@@ -59,10 +59,12 @@ export function NumberStepper({
   const fmt = (v: number) => (Number.isFinite(v) ? (decimals ? String(Math.round(v * 10 ** decimals) / 10 ** decimals).replace('.', ',') : String(Math.round(v))) : '');
   const [text, setText] = useState(fmt(value));
   const [focused, setFocused] = useState(false);
-  useEffect(() => {
+  // Внешнее изменение значения (±, пресеты) обновляет текст, если поле не редактируется
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
     if (!focused) setText(fmt(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, focused]);
+  }
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
   const bump = (d: number) => {
     haptic.tap();

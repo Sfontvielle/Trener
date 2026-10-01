@@ -66,6 +66,15 @@ export interface AppSettings {
   defaultRestSec: number;
   haptics: boolean;
   coachApiUrl: string; // пусто → берётся из EXPO_PUBLIC_COACH_API_URL
+  /** Уведомление об окончании отдыха, когда приложение свёрнуто */
+  restNotify: boolean;
+  /** Утреннее напоминание: чек-ин + взвешивание */
+  morningReminder: boolean;
+  morningTime: { hour: number; minute: number };
+  /** Напоминание в дни тренировок по плану */
+  trainingReminder: boolean;
+  trainingTime: { hour: number; minute: number };
+  lastBackupAt?: number;
 }
 
 // ─── Nutrition target & plan ────────────────────────────────────────────────
@@ -153,7 +162,7 @@ export interface DayOverride {
   volumeFactor?: number;
   /** Добавка к целевому RIR */
   rirDelta?: number;
-  mode?: 'normal' | 'reduced' | 'light' | 'recovery' | 'rest';
+  mode?: 'normal' | 'reduced' | 'light' | 'recovery' | 'rest' | 'deload';
   reason: string;
   source: 'readiness' | 'coach' | 'user';
   createdAt: number;
@@ -162,7 +171,7 @@ export interface DayOverride {
 export interface PlanAdjustment {
   id: ID;
   createdAt: number;
-  kind: 'calories' | 'volume' | 'plan_rebuild' | 'day_override';
+  kind: 'calories' | 'volume' | 'plan_rebuild' | 'day_override' | 'deload';
   summary: string;
   deltaKcal?: number;
   source: 'adaptive' | 'coach' | 'user' | 'goal_change';

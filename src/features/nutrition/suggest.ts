@@ -138,7 +138,8 @@ export function suggestMeals(args: {
     const small = p.serving && p.serving.grams <= 60;
     const step = small ? p.serving!.grams : 10;
     const density = p.per100.kcal;
-    const cap = small ? p.serving!.grams * 3 : density > 350 ? 120 : density > 230 ? 150 : density > 150 ? 250 : 350;
+    const driedFruit = !!p.tags?.includes('fruit') && density > 200;
+    const cap = small ? p.serving!.grams * 3 : driedFruit ? 50 : density > 350 ? 120 : density > 230 ? 150 : density > 150 ? 250 : 350;
     for (let g = step; g <= Math.min(max, cap); g += step) out.push(g);
     return out;
   };

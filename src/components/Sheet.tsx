@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@/theme';
@@ -30,11 +30,13 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
-  const anim = useRef(new Animated.Value(0)).current;
+  const anim = useState(() => new Animated.Value(0))[0];
+
+  // Монтируем сразу при открытии (во время рендера, без лишнего прохода эффекта)
+  if (visible && !mounted) setMounted(true);
 
   useEffect(() => {
     if (visible) {
-      setMounted(true);
       Animated.timing(anim, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     } else if (mounted) {
       Animated.timing(anim, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setMounted(false));

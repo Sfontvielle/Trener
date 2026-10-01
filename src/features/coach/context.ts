@@ -23,6 +23,7 @@ import { LOCAL_FOODS } from '@/data/foods';
 import { addDays, formatHours, today, WEEKDAYS_SHORT, toISODate } from '@/utils/date';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
 import { workingSets } from '@/features/training/progression';
+import { checkDeload, isDeloadActive } from '@/features/training/deload';
 
 /**
  * Структурированный контекст для AI Coach.
@@ -116,6 +117,12 @@ export function buildCoachContext(i: CoachInputs): string {
   }
   const vol7 = setsByGroup(i.sessions, addDays(d, -6), d);
   L.push(`Объём за 7 дней (подходы): ${Object.entries(vol7).map(([g, n]) => `${GROUP_LABEL[g]} ${r1(n as number)}`).join(', ') || '—'}`);
+
+  if (isDeloadActive(i.overrides)) L.push('Сейчас идёт разгрузочная неделя (объём ×0.6, RIR +2).');
+  else {
+    const dl = checkDeload({ plan: i.plan, sessions: i.sessions, checkins: i.checkins, adjustments: i.adjustments, overrides: i.overrides });
+    if (dl.reasons.length) L.push(`Сигналы для разгрузки: ${dl.reasons.join('; ')}${dl.suggest ? ' → рекомендована разгрузочная неделя' : ''}`);
+  }
 
   sec('LAST 30 DAYS');
   const adh = adherence(i.sessions, i.plan, 28);
