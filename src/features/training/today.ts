@@ -105,4 +105,5 @@ export const MODE_LABEL: Record<TodayWorkout['mode'], string> = {
   light: 'Облегчённая',
   recovery: 'Восстановительная',
   rest: 'Отдых',
+  deload: 'Разгрузка',
 };

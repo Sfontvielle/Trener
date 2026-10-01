@@ -17,6 +17,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultRestSec: 120,
   haptics: true,
   coachApiUrl: '',
+  restNotify: true,
+  morningReminder: false,
+  morningTime: { hour: 8, minute: 0 },
+  trainingReminder: false,
+  trainingTime: { hour: 18, minute: 0 },
 };
 
 export const useProfile = create<ProfileState>()(
@@ -28,6 +33,13 @@ export const useProfile = create<ProfileState>()(
       updateSettings: (s) => set((st) => ({ settings: { ...st.settings, ...s } })),
       reset: () => set({ profile: null, settings: DEFAULT_SETTINGS }),
     }),
-    persistOptions<ProfileState>('profile', 1, (s) => ({ profile: s.profile, settings: s.settings }) as ProfileState),
+    {
+      ...persistOptions<ProfileState>('profile', 1, (s) => ({ profile: s.profile, settings: s.settings }) as ProfileState),
+      // новые настройки получают значения по умолчанию у существующих пользователей
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ProfileState>;
+        return { ...current, ...p, settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) } };
+      },
+    },
   ),
 );

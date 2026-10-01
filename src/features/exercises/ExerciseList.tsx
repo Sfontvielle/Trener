@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import type { Equipment, Exercise, ExerciseCategory } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius } from '@/theme';
 import { Chip, EmptyState, Icon, T } from '@/components/ui';
 import { CATEGORY_LABEL, EQUIPMENT_LABEL, EXERCISES, MUSCLE_LABEL } from '@/data/exercises';
 import { useProfile } from '@/stores/profile';

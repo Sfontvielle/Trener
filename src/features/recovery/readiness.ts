@@ -1,7 +1,6 @@
+import { addDays, formatHours } from '@/utils/date';
 import type { DailyCheckIn, ISODate, ReadinessBand, ReadinessResult, WorkoutSession } from '@/types';
-import { addDays } from '@/utils/date';
 import { clamp } from '@/utils/format';
-import { formatHours } from '@/utils/date';
 
 /**
  * Готовность к нагрузке 0–100 по чек-ину + недавней нагрузке (+ HRV/пульс покоя из Apple Health, если есть).

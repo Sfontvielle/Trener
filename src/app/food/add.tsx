@@ -24,19 +24,13 @@ export default function AddFood() {
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
   const [q, setQ] = useState('');
-  const [remote, setRemote] = useState<FoodProduct[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<FoodProduct | null>(null);
+  // Результат онлайн-поиска привязан к запросу: «загрузка» = результат ещё не для текущего запроса
+  const [result, setResult] = useState<{ q: string; items: FoodProduct[]; error: string | null }>({ q: '', items: [], error: null });
+  // Возврат со сканера: продукт уже в кэше
+  const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? null : null));
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const reqId = useRef(0);
-
-  // Возврат со сканера: продукт уже в кэше
-  useEffect(() => {
-    if (params.productId && products[params.productId]) setSelected(products[params.productId]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.productId]);
 
   const recent = useMemo(() => recentIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [recentIds, products]);
   const cachedMatches = useMemo(() => {
@@ -46,32 +40,26 @@ export default function AddFood() {
   }, [q, products]);
   const local = useMemo(() => searchLocalFoods(q, 12), [q]);
 
+  const query = q.trim();
+  const online = query.length >= 3;
+  const remote = online && result.q === query ? result.items : [];
+  const error = online && result.q === query ? result.error : null;
+  const loading = online && result.q !== query;
+
   useEffect(() => {
-    const t = q.trim();
-    setError(null);
-    if (t.length < 3) {
-      setRemote([]);
-      setLoading(false);
-      return;
-    }
+    if (query.length < 3) return;
     // Если введены только цифры — это штрихкод
     const my = ++reqId.current;
-    setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = /^\d{8,14}$/.test(t) ? [await lookupBarcode(t)] : await searchProducts(t);
-        if (reqId.current !== my) return;
-        setRemote(res);
+        const res = /^\d{8,14}$/.test(query) ? [await lookupBarcode(query)] : await searchProducts(query);
+        if (reqId.current === my) setResult({ q: query, items: res, error: null });
       } catch (e) {
-        if (reqId.current !== my) return;
-        setRemote([]);
-        setError(foodErrorText(e));
-      } finally {
-        if (reqId.current === my) setLoading(false);
+        if (reqId.current === my) setResult({ q: query, items: [], error: foodErrorText(e) });
       }
     }, 450);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [query]);
 
   const sections: { key: string; title: string; data: FoodProduct[] }[] = [];
   if (q.trim().length < 2) {
@@ -147,7 +135,7 @@ export default function AddFood() {
           ) : null
         }
       />
-      <PortionSheet product={selected} date={date} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
+      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
       <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); setTimeout(() => setSelected(p), 250); }} />
       <CustomProductSheet visible={customOpen} initialName={q} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); setTimeout(() => setSelected(p), 250); }} />
     </Screen>
@@ -181,11 +169,8 @@ function PortionSheet({ product, date, onClose, onAdded }: { product: FoodProduc
   const lastGrams = useNutrition((s) => s.lastGrams);
   const entries = useNutrition((s) => s.entries);
   const target = usePlan((s) => s.target);
-  const [g, setG] = useState(100);
-  const [meal, setMeal] = useState<MealSlot>(mealForHour(new Date().getHours()));
-  useEffect(() => {
-    if (product) setG(lastGrams[product.id] ?? product.serving?.grams ?? 100);
-  }, [product, lastGrams]);
+  const [g, setG] = useState(() => (product ? lastGrams[product.id] ?? product.serving?.grams ?? 100 : 100));
+  const [meal, setMeal] = useState<MealSlot>(() => mealForHour(new Date().getHours()));
   if (!product) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
   const m = macrosFor(product.per100, g);
   const rem = target ? remaining(target, sumMacros(entries.filter((e) => e.date === date))) : null;
@@ -278,9 +263,12 @@ function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose
 function CustomProductSheet({ visible, onClose, onCreated, initialName }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string }) {
   const [name, setName] = useState('');
   const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '' });
-  useEffect(() => {
+  // При открытии листа подставляем то, что искали
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
     if (visible) setName(initialName.replace(/^\d+$/, ''));
-  }, [visible, initialName]);
+  }
   const num = (s: string) => {
     const n = parseDecimal(s);
     return Number.isFinite(n) ? n : 0;

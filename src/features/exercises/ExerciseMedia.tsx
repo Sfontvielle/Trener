@@ -21,7 +21,7 @@ export function ExerciseMedia({ exercise, height = 280 }: { exercise: Exercise; 
   const [phase, setPhase] = useState<0 | 1>(0);
   const [loaded, setLoaded] = useState(0);
   const [error, setError] = useState(false);
-  const t = useRef(new Animated.Value(0)).current;
+  const t = useState(() => new Animated.Value(0))[0];
   const loop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {

@@ -12,6 +12,12 @@ import { confirm } from '@/components/Dialog';
 import { today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { haptic } from '@/services/haptics';
+import { ensurePermission } from '@/services/notifications';
+
+/** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
+function askRestPermission() {
+  if (useProfile.getState().settings.restNotify) void ensurePermission();
+}
 
 function ctxBase() {
   const ws = useWorkouts.getState();
@@ -43,11 +49,12 @@ export function startTodayPlanned(templateOverride?: WorkoutTemplate) {
       source: 'plan',
       templateId: tpl.id,
       planned: tpl.exercises,
-      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: readiness?.band, volumeFactor: templateOverride ? 1 : tw.volumeFactor, rirDelta: templateOverride ? 0 : tw.rirDelta },
+      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: !templateOverride && tw.mode !== 'normal' && (!readiness || readiness.band === 'go') ? 'reduce' : readiness?.band, volumeFactor: templateOverride ? 1 : tw.volumeFactor, rirDelta: templateOverride ? 0 : tw.rirDelta },
       readinessScore: readiness?.score,
     });
     useWorkouts.getState().start(s);
     haptic.success();
+    askRestPermission();
     router.push('/workout/active');
   });
 }
@@ -69,6 +76,7 @@ export function startDraft(draft: WorkoutDraft) {
     useWorkouts.getState().start(s);
     useWorkouts.getState().setDraft(null);
     haptic.success();
+    askRestPermission();
     router.replace('/workout/active');
   });
 }

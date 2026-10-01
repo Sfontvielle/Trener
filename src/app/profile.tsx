@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import type { UserProfile } from '@/types';
 import { colors, radius, space } from '@/theme';
@@ -18,6 +18,13 @@ import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
 import { seedDemoData } from '@/features/profile/demo';
 import { coachBaseUrl } from '@/services/coachApi';
+import { ensurePermission } from '@/services/notifications';
+import { backupStats, exportBackup, pickBackup, restoreBackup } from '@/services/backup';
+import { relativeDay, toISODate } from '@/utils/date';
+
+const MORNING_TIMES = [[6, 30], [7, 0], [7, 30], [8, 0], [9, 0]] as const;
+const TRAINING_TIMES = [[7, 0], [12, 0], [17, 0], [18, 0], [19, 0]] as const;
+const hm = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`;
 
 type Section = 'goal' | 'body' | 'training' | 'life' | 'food' | null;
 const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', life: 'Активность', food: 'Питание и предпочтения' };
@@ -32,6 +39,44 @@ export default function Profile() {
   const [url, setUrl] = useState(settings.coachApiUrl);
   const [ping, setPing] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
   const [fact, setFact] = useState('');
+  const [notifDenied, setNotifDenied] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify', v: boolean) => {
+    if (v && Platform.OS !== 'web') {
+      const ok = await ensurePermission();
+      setNotifDenied(!ok);
+      if (!ok) return;
+    }
+    updateSettings({ [key]: v });
+  };
+
+  const doExport = async () => {
+    setBackupBusy(true);
+    try {
+      const r = await exportBackup();
+      updateSettings({ lastBackupAt: Date.now() });
+      toast(r === 'downloaded' ? 'Файл копии скачан' : 'Копия готова — сохрани в «Файлы» или iCloud');
+    } catch (e: any) {
+      toast(e?.message ?? 'Не удалось создать копию', 'alert-circle');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const doImport = async () => {
+    try {
+      const b = await pickBackup();
+      if (!b) return;
+      confirm('Восстановить из копии?', `${backupStats(b)}, от ${b.exportedAt.slice(0, 10)}. Текущие данные на этом устройстве будут заменены.`, 'Восстановить', () => {
+        restoreBackup(b);
+        toast('Данные восстановлены');
+        router.replace('/');
+      }, true);
+    } catch (e: any) {
+      toast(e?.message ?? 'Не удалось прочитать файл', 'alert-circle');
+    }
+  };
 
   if (!profile) return null;
   const open = (s: Exclude<Section, null>) => {
@@ -111,6 +156,29 @@ export default function Profile() {
         <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, таймер, рекорды (на iPhone)" />
       </Card>
 
+      <SectionTitle title="Напоминания" />
+      <Card style={{ gap: 6 }}>
+        {Platform.OS === 'web' ? <Banner text="Уведомления работают на iPhone (в web-превью недоступны)." /> : null}
+        {notifDenied ? <Banner tone="warning" icon="notifications-off-outline" text="Уведомления запрещены. Разреши их в Настройках iPhone → FORM." /> : null}
+        <Toggle value={settings.restNotify} onChange={(v) => toggleReminder('restNotify', v)} label="Конец отдыха" sub="Уведомление, если приложение свёрнуто во время отдыха" />
+        <Toggle value={settings.morningReminder} onChange={(v) => toggleReminder('morningReminder', v)} label="Утренний чек-ин" sub="Каждый день: самочувствие + вес" />
+        {settings.morningReminder ? (
+          <View style={styles.times}>
+            {MORNING_TIMES.map(([h, m]) => (
+              <Chip key={hm(h, m)} label={hm(h, m)} active={settings.morningTime.hour === h && settings.morningTime.minute === m} onPress={() => updateSettings({ morningTime: { hour: h, minute: m } })} style={{ height: 32 }} />
+            ))}
+          </View>
+        ) : null}
+        <Toggle value={settings.trainingReminder} onChange={(v) => toggleReminder('trainingReminder', v)} label="Тренировка по плану" sub="Только в дни тренировок, следует за расписанием" />
+        {settings.trainingReminder ? (
+          <View style={styles.times}>
+            {TRAINING_TIMES.map(([h, m]) => (
+              <Chip key={hm(h, m)} label={hm(h, m)} active={settings.trainingTime.hour === h && settings.trainingTime.minute === m} onPress={() => updateSettings({ trainingTime: { hour: h, minute: m } })} style={{ height: 32 }} />
+            ))}
+          </View>
+        ) : null}
+      </Card>
+
       <SectionTitle title="AI Coach" />
       <Card style={{ gap: 10 }}>
         <Field label="Адрес AI-сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="Сервер из папки server/ проекта. Без него тренер отвечает по расчётам FORM без AI." />
@@ -142,6 +210,13 @@ export default function Profile() {
       <SectionTitle title="Данные на устройстве" />
       <Card style={{ gap: 10 }}>
         <T v="small">Все данные хранятся локально на iPhone. В AI уходит только сводка, нужная для ответа.</T>
+        <T v="small" color={settings.lastBackupAt ? colors.textDim : colors.warning}>
+          {settings.lastBackupAt ? `Последняя копия: ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Резервной копии ещё нет — при потере телефона история пропадёт.'}
+        </T>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button title="Сохранить копию" icon="cloud-upload-outline" size="sm" loading={backupBusy} onPress={doExport} style={{ flex: 1 }} />
+          <Button title="Восстановить" icon="cloud-download-outline" size="sm" variant="secondary" onPress={doImport} style={{ flex: 1 }} />
+        </View>
         <Button
           title="Заполнить демо-историей (для проверки)"
           size="sm"
@@ -199,5 +274,6 @@ function Row({ label, value, onPress }: { label: string; value: string; onPress:
 
 const styles = StyleSheet.create({
   avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 8, borderRadius: radius.sm },
 });

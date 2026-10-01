@@ -20,6 +20,7 @@ import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { RestTimerBar } from '@/features/training/RestTimer';
+import { platesPerSide, usesBarbell, warmupSets } from '@/features/training/warmup';
 import { formatDuration, today } from '@/utils/date';
 import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
@@ -35,7 +36,7 @@ export default function ActiveWorkout() {
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; weId: string } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -261,6 +262,8 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
         </View>
       ) : null}
 
+      <WarmupHint ex={ex} we={we} unit={unit} />
+
       <View style={styles.headRow}>
         <T v="caption" style={{ width: 28 }}>#</T>
         <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{isBw ? `+${unitLabel(unit)}` : unitLabel(unit)}</T>
@@ -280,11 +283,48 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
   );
 });
 
+/** Разминка и раскладка блинов — подсказка, ничего не нужно вводить */
+function WarmupHint({ ex, we, unit }: { ex: Exercise; we: WorkoutExercise; unit: 'kg' | 'lb' }) {
+  const [open, setOpen] = useState(false);
+  const work = we.sets.find((s) => !s.done)?.weight ?? we.recommendation?.weight ?? 0;
+  const started = we.sets.some((s) => s.done);
+  const warm = started ? [] : warmupSets(ex, work);
+  const plates = usesBarbell(ex) && unit === 'kg' && work > 20 ? platesPerSide(work) : null;
+  if (!warm.length && !plates) return null;
+  return (
+    <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityLabel="Разминка и блины" style={styles.warm}>
+      <Icon name="flame-outline" size={15} color={colors.textDim} />
+      <View style={{ flex: 1, gap: 2 }}>
+        {warm.length ? (
+          <T v="small" style={{ fontSize: 12 }} numberOfLines={open ? undefined : 1}>
+            Разминка: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{warm.map((w) => `${fmtWeight(w.weight)}×${w.reps}`).join(' · ')}</T>
+          </T>
+        ) : null}
+        {plates && (open || !warm.length) ? (
+          <T v="small" style={{ fontSize: 12 }}>
+            {fmtWeight(work)} кг = гриф 20 + на сторону: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{plates.length ? plates.map((p) => fmtWeight(p)).join(' + ') : 'без блинов'}</T>
+          </T>
+        ) : null}
+      </View>
+      {plates && warm.length ? <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.muted} /> : null}
+    </Pressable>
+  );
+}
+
 const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete }: { weId: string; set: ExerciseSet; idx: number; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void }) {
   const [w, setW] = useState(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
   const [r, setR] = useState(set.reps ? String(set.reps) : '');
-  useEffect(() => setW(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : ''), [set.weight, unit]);
-  useEffect(() => setR(set.reps ? String(set.reps) : ''), [set.reps]);
+  // Синхронизация только при внешнем изменении (перенос веса из прошлого подхода, смена единиц).
+  // Если значение совпадает с тем, что уже введено, текст не трогаем — иначе «82,» превращалось бы в «82».
+  const [prev, setPrev] = useState({ weight: set.weight, reps: set.reps, unit });
+  if (prev.weight !== set.weight || prev.reps !== set.reps || prev.unit !== unit) {
+    setPrev({ weight: set.weight, reps: set.reps, unit });
+    const typedW = parseDecimal(w);
+    if (prev.unit !== unit || !(Number.isFinite(typedW) && fromDisplayWeight(typedW, unit) === set.weight) && !(set.weight === 0 && w === '')) {
+      setW(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
+    }
+    if (parseInt(r, 10) !== set.reps && !(set.reps === 0 && r === '')) setR(set.reps ? String(set.reps) : '');
+  }
   const upd = (patch: Partial<ExerciseSet>) => useWorkouts.getState().updateSet(weId, set.id, patch);
   const setFeel = (f: SetFeel) => {
     haptic.tap();
@@ -419,6 +459,7 @@ const styles = StyleSheet.create({
   check: { width: 48, height: 46, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
+  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
   alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim },
   rpe: { width: 48, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, StyleProp, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { colors } from '@/theme';
@@ -23,7 +23,7 @@ export function Ring({
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const target = Math.max(0, Math.min(1, progress));
-  const a = useRef(new Animated.Value(0)).current;
+  const a = useState(() => new Animated.Value(0))[0];
   const [shown, setShown] = useState(0);
   useEffect(() => {
     const id = a.addListener(({ value }) => setShown(value));
@@ -44,7 +44,7 @@ export function Ring({
 /** Горизонтальная полоса прогресса макроса */
 export function Bar({ progress, color = colors.accent, height = 6, style }: { progress: number; color?: string; height?: number; style?: StyleProp<ViewStyle> }) {
   const p = Math.max(0, Math.min(1, progress));
-  const a = useRef(new Animated.Value(0)).current;
+  const a = useState(() => new Animated.Value(0))[0];
   useEffect(() => {
     Animated.timing(a, { toValue: p, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [p, a]);
@@ -61,10 +61,11 @@ export interface LinePoint {
   raw?: number;
 }
 
+const pad = { l: 8, r: 40, t: 12, b: 20 };
+
 /** Линейный график тренда веса: точки — замеры, линия — сглаженный тренд */
 export function TrendChart({ points, height = 170, unit = 'кг', labels }: { points: LinePoint[]; height?: number; unit?: string; labels?: [string, string] }) {
   const [w, setW] = useState(0);
-  const pad = { l: 8, r: 40, t: 12, b: 20 };
   const data = useMemo(() => {
     if (points.length < 2 || !w) return null;
     const vals = points.flatMap((p) => (p.raw !== undefined ? [p.y, p.raw] : [p.y]));
