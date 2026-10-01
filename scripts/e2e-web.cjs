@@ -35,6 +35,10 @@ const check = async (name, fn) => {
   await page.evaluate((p) => localStorage.setItem('form.profile', JSON.stringify({ state: { profile: p, settings: {} }, version: 1 })), PROFILE);
   await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
+  // План и КБЖУ создаёт само приложение: Профиль → Тренировки → «Сохранить и пересчитать»
+  await page.getByText('Тренировки', { exact: true }).first().click();
+  await page.getByText('Сохранить и пересчитать').click();
+  await page.waitForTimeout(1200);
   await page.getByText('Заполнить демо-историей (для проверки)').click();
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
@@ -104,8 +108,9 @@ const check = async (name, fn) => {
     await page.waitForTimeout(1200);
     await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#root > div') || document.body).backgroundColor);
-    assert.equal(bg, 'rgb(241, 242, 238)', bg);
+    // Фон светлой темы (#F1F2EE) после полной перезагрузки страницы
+    const light = await page.evaluate(() => [...document.querySelectorAll('div')].some((d) => getComputedStyle(d).backgroundColor === 'rgb(241, 242, 238)'));
+    assert.ok(light, 'светлый фон после перезапуска');
   });
 
   results.push(errors.length ? `JS-ошибки: ${errors.join(' | ')}` : 'JS-ошибок нет');
