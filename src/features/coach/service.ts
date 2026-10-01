@@ -7,6 +7,8 @@ import { useNutrition } from '@/stores/nutrition';
 import { useCheckins } from '@/stores/checkins';
 import { useCoach } from '@/stores/coach';
 import { useHealth } from '@/stores/health';
+import { useJournal } from '@/stores/journal';
+import { healthContext } from '@/features/health/model';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from '@/features/training/today';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
@@ -55,6 +57,8 @@ export function currentContext(): string {
     memory: s.memory,
     rejected: useCoach.getState().rejected,
     active: s.ws.active,
+    notes: useJournal.getState().notes.filter((n) => n.date === today()).map((n) => `${new Date(n.at).toTimeString().slice(0, 5)} ${n.text}`),
+    health: healthContext(useHealth.getState().days, today()),
   });
 }
 

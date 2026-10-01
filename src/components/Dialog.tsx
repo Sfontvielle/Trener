@@ -14,12 +14,16 @@ interface DialogButton {
   style?: 'default' | 'cancel' | 'destructive';
   onPress?: () => void;
 }
+export interface ToastAction {
+  label: string;
+  onPress: () => void;
+}
 interface DialogState {
   dialog: { title: string; message?: string; buttons: DialogButton[] } | null;
-  toast: { text: string; icon?: IconName; id: number } | null;
+  toast: { text: string; icon?: IconName; id: number; action?: ToastAction } | null;
   show: (title: string, message?: string, buttons?: DialogButton[]) => void;
   hide: () => void;
-  showToast: (text: string, icon?: IconName) => void;
+  showToast: (text: string, icon?: IconName, action?: ToastAction) => void;
 }
 
 export const useDialog = create<DialogState>((set) => ({
@@ -27,7 +31,7 @@ export const useDialog = create<DialogState>((set) => ({
   toast: null,
   show: (title, message, buttons = [{ text: 'OK' }]) => set({ dialog: { title, message, buttons } }),
   hide: () => set({ dialog: null }),
-  showToast: (text, icon) => set({ toast: { text, icon, id: Date.now() } }),
+  showToast: (text, icon, action) => set({ toast: { text, icon, id: Date.now(), action } }),
 }));
 
 export function confirm(title: string, message: string, confirmText: string, onConfirm: () => void, destructive = false) {
@@ -37,8 +41,9 @@ export function confirm(title: string, message: string, confirmText: string, onC
   ]);
 }
 
-export function toast(text: string, icon?: IconName) {
-  useDialog.getState().showToast(text, icon);
+/** Короткое уведомление; action — кнопка (например, «Отменить» после быстрого добавления) */
+export function toast(text: string, icon?: IconName, action?: ToastAction) {
+  useDialog.getState().showToast(text, icon, action);
 }
 
 export function DialogHost() {
@@ -91,20 +96,35 @@ function ToastView() {
     a.setValue(0);
     Animated.sequence([
       Animated.timing(a, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(2200),
+      Animated.delay(t.action ? 3600 : 2200),
       Animated.timing(a, { toValue: 0, duration: 250, useNativeDriver: true }),
     ]).start();
   }, [t, a]);
   if (!t) return null;
   return (
     <Animated.View
-      pointerEvents="none"
+      pointerEvents={t.action ? 'box-none' : 'none'}
       style={[styles.toast, { top: insets.top + 8, opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}
     >
       <Icon name={t.icon ?? 'checkmark-circle'} size={18} color={colors.accent} />
       <T v="small" color={colors.text} style={{ flexShrink: 1, fontWeight: '600' }}>
         {t.text}
       </T>
+      {t.action ? (
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={10}
+          onPress={() => {
+            t.action!.onPress();
+            useDialog.setState({ toast: null });
+          }}
+          style={{ marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 4 }}
+        >
+          <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+            {t.action.label}
+          </T>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }

@@ -487,6 +487,8 @@ export interface WorkoutSession {
   sessionRpe?: number; // общая тяжесть 1–10
   notes?: string;
   status: 'active' | 'completed' | 'discarded';
+  /** Активная тренировка: какое упражнение открыто (сохраняется — восстанавливается после перезапуска) */
+  currentIndex?: number;
 }
 
 /** Сгенерированная/собранная, но ещё не начатая тренировка */

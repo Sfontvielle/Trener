@@ -54,6 +54,10 @@ export interface CoachInputs {
   memory: CoachMemoryItem[];
   /** Ключи предложений, от которых пользователь отказался навсегда */
   rejected?: string[];
+  /** Заметки пользователя за сегодня (дневник) */
+  notes?: string[];
+  /** Apple Health за сегодня и отклонения от персональной базы */
+  health?: { sleepHours?: number; steps?: number; restingHr?: number; rhrDelta?: number; hrvMs?: number; hrvDeltaPct?: number; activeKcal?: number };
   /** Идущая сейчас тренировка */
   active?: WorkoutSession | null;
   now?: Date;
@@ -137,6 +141,16 @@ export function buildCoachContext(i: CoachInputs): string {
       const subs = substitutesFor(x.id, p, prefs, [], 3).map((e) => `${e.name} [${e.id}]`).join(', ');
       L.push(`- ${nameId(x.id)}: ${x.plan}${x.done ? `; сделано: ${x.done}` : ''}${last ? `; прошлый раз ${last.date}: ${workingSets(last.sets).map((st) => `${st.weight}×${st.reps}`).join(', ')}` : ''}${subs ? `; допустимые замены: ${subs}` : ''}`);
     }
+  }
+
+  if (i.notes?.length) {
+    sec('TODAY NOTES (дневник пользователя)');
+    for (const n of i.notes) L.push(`- ${n}`);
+  }
+  if (i.health) {
+    const h = i.health;
+    sec('APPLE HEALTH (сегодня, база — личная)');
+    L.push([h.sleepHours ? `сон ${formatHours(h.sleepHours)}` : '', h.steps ? `шаги ${h.steps}` : '', h.restingHr ? `пульс покоя ${h.restingHr}${h.rhrDelta !== undefined ? ` (${h.rhrDelta >= 0 ? '+' : ''}${h.rhrDelta} к базе 14 дн)` : ''}` : '', h.hrvMs ? `HRV ${h.hrvMs} мс${h.hrvDeltaPct !== undefined ? ` (${h.hrvDeltaPct >= 0 ? '+' : ''}${h.hrvDeltaPct}% к базе 21 дн)` : ''}` : '', h.activeKcal ? `активные ккал ${h.activeKcal}` : ''].filter(Boolean).join('; ') || 'нет данных');
   }
 
   sec('READINESS / SLEEP');
