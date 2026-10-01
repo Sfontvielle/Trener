@@ -6,7 +6,8 @@ import { e1rm, historyFor } from './progression';
 /**
  * Автоматическое обнаружение необходимости разгрузки.
  * Сигналы: застой e1RM в нескольких базовых упражнениях, накопленная усталость (готовность),
- * много недель подряд без разгрузки. Нужно ≥2 сигнала либо явный застой в ≥2 упражнениях.
+ * тяжесть сессий (RPE/отказ), много недель подряд без разгрузки. Один плохой день — не повод:
+ * нужно ≥2 разных сигнала либо явный застой в ≥2 упражнениях.
  */
 export interface DeloadCheck {
   suggest: boolean;
@@ -65,12 +66,20 @@ export function checkDeload(args: {
   const avgSore = recentCheckins.length ? recentCheckins.reduce((a, c) => a + c.soreness + (6 - c.energy), 0) / recentCheckins.length : 0;
   const fatigued = recentCheckins.length >= 4 && avgSore >= 7;
 
+  // Тяжесть сессий: RPE ≥ 9 в 3+ из последних 5 тренировок или частые «тяжело/до отказа» в подходах
+  const last5 = [...done].sort((a, b) => b.startedAt - a.startedAt).slice(0, 5);
+  const hardRpe = last5.filter((s) => (s.sessionRpe ?? 0) >= 9).length;
+  const sets5 = last5.flatMap((s) => s.exercises.flatMap((we) => we.sets.filter((x) => x.done && !x.warmup)));
+  const grind = sets5.length >= 20 && sets5.filter((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0)).length / sets5.length >= 0.5;
+  const strained = hardRpe >= 3 || grind;
+
   const reasons: string[] = [];
+  if (strained) reasons.push(hardRpe >= 3 ? `${hardRpe} из 5 последних тренировок с RPE 9–10` : 'Больше половины подходов — до отказа или «тяжело»');
   if (stalled.length) reasons.push(`Нет прироста в ${stalled.length === 1 ? 'упражнении' : 'упражнениях'}: ${stalled.slice(0, 3).join(', ')}`);
   if (fatigued) reasons.push('Неделю подряд высокая усталость и мало энергии по чек-инам');
   if (weeksTrained >= 6) reasons.push(`${weeksTrained} нед. тренировок без разгрузки`);
 
-  const signals = (stalled.length ? 1 : 0) + (fatigued ? 1 : 0) + (weeksTrained >= 6 ? 1 : 0);
+  const signals = (stalled.length ? 1 : 0) + (fatigued ? 1 : 0) + (weeksTrained >= 6 ? 1 : 0) + (strained ? 1 : 0);
   const suggest = stalled.length >= 2 || signals >= 2 || weeksTrained >= 8;
   return { suggest, reasons, weeksTrained, stalled };
 }

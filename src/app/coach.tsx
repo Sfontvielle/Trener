@@ -2,13 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { CoachMessage } from '@/types';
+import type { CoachAction, CoachMessage } from '@/types';
 import { colors, radius, space } from '@/theme';
 import { Header } from '@/components/Screen';
 import { Button, Chip, Icon, IconButton, T } from '@/components/ui';
 import { confirm, toast } from '@/components/Dialog';
 import { useCoach } from '@/stores/coach';
-import { applyCoachAction, sendCoachMessage } from '@/features/coach/service';
+import { applyCoachAction, declineCoachAction, sendCoachMessage } from '@/features/coach/service';
 import { coachBaseUrl } from '@/services/coachApi';
 import { haptic } from '@/services/haptics';
 
@@ -155,27 +155,53 @@ function Bubble({ m }: { m: CoachMessage }) {
                   </T>
                 ) : null}
               </View>
-              {a.applied ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Icon name="checkmark-circle" size={18} color={colors.accent} />
-                  <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
-                    Применено
-                  </T>
-                </View>
-              ) : (
-                <Button
-                  title="Применить"
-                  size="sm"
-                  onPress={() => {
-                    applyCoachAction(m.id, a);
-                    haptic.success();
-                    toast('План изменён');
-                  }}
-                />
-              )}
+              <ActionState messageId={m.id} a={a} />
             </View>
           ))}
         </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** AI предлагает → приложение проверило → пользователь решает */
+function ActionState({ messageId, a }: { messageId: string; a: CoachAction }) {
+  if (a.applied || a.declined || a.invalid) {
+    const label = a.applied ? 'Применено' : a.declined ? 'Не менять' : `Отклонено FORM: ${a.invalid}`;
+    const color = a.applied ? colors.accent : a.invalid ? colors.warning : colors.textDim;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, maxWidth: '45%' }}>
+        <Icon name={a.applied ? 'checkmark-circle' : a.invalid ? 'alert-circle' : 'close-circle'} size={16} color={color} />
+        <T v="small" color={color} style={{ fontWeight: '700', fontSize: 12 }}>
+          {label}
+        </T>
+      </View>
+    );
+  }
+  const replace = a.type === 'replace_exercise';
+  return (
+    <View style={{ gap: 6, alignItems: 'flex-end' }}>
+      <Button
+        title="Применить"
+        size="sm"
+        onPress={() => {
+          const r = applyCoachAction(messageId, a);
+          if (r.ok) haptic.success();
+          else haptic.warning();
+          toast(r.message);
+        }}
+      />
+      <Pressable accessibilityRole="button" hitSlop={6} onPress={() => declineCoachAction(messageId, a)}>
+        <T v="small" color={colors.textDim} style={{ fontSize: 12, fontWeight: '600' }}>
+          Не менять
+        </T>
+      </Pressable>
+      {replace ? (
+        <Pressable accessibilityRole="button" hitSlop={6} onPress={() => declineCoachAction(messageId, a, true)}>
+          <T v="small" color={colors.textDim} style={{ fontSize: 11 }}>
+            Больше не предлагать
+          </T>
+        </Pressable>
       ) : null}
     </View>
   );

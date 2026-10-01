@@ -2,7 +2,7 @@ import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Exercise, ExerciseSet, SetFeel, WorkoutExercise } from '@/types';
+import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise } from '@/types';
 import { colors, radius, space } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Bar } from '@/components/charts';
@@ -20,12 +20,21 @@ import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { RestTimerBar } from '@/features/training/RestTimer';
+import { exerciseFlag, prefDiscomfort, prefDislike, prefExclude, prefFavorite } from '@/features/training/prefActions';
 import { platesPerSide, usesBarbell, warmupSets } from '@/features/training/warmup';
 import { formatDuration, today } from '@/utils/date';
 import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 
 const FEEL_RIR: Record<SetFeel, number> = { easy: 3, ok: 2, hard: 0 };
+const PAIN_AREAS: { label: string; area?: BodyArea }[] = [
+  { label: 'Плечо', area: 'shoulder' },
+  { label: 'Спина / поясница', area: 'lower_back' },
+  { label: 'Колено', area: 'knee' },
+  { label: 'Локоть', area: 'elbow' },
+  { label: 'Запястье', area: 'wrist' },
+  { label: 'Другое' },
+];
 
 export default function ActiveWorkout() {
   const insets = useSafeAreaInsets();
@@ -35,6 +44,7 @@ export default function ActiveWorkout() {
   const unit = useProfile((s) => s.settings.weightUnit);
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; weId: string } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [painFor, setPainFor] = useState<string | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -68,6 +78,14 @@ export default function ActiveWorkout() {
     const r = readinessFor(today(), useCheckins.getState().byDate, sessions);
     return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0 };
   };
+
+  /** После исключения/дискомфорта — предложить замену, только если в упражнении ещё есть невыполненные подходы */
+  const offerReplace = (weId: string) => {
+    const we = useWorkouts.getState().active?.exercises.find((x) => x.id === weId);
+    if (!we || we.sets.every((x) => x.done)) return;
+    setTimeout(() => setPicker({ mode: 'swap', weId }), 300);
+  };
+  const painWe = active.exercises.find((e) => e.id === painFor);
 
   const onPick = (ex: Exercise) => {
     const st = useWorkouts.getState();
@@ -124,6 +142,22 @@ export default function ActiveWorkout() {
           <View style={{ gap: 8 }}>
             <MenuRow icon="information-circle-outline" label="Техника и мышцы" onPress={() => { setMenuFor(null); router.push({ pathname: '/exercise/[id]', params: { id: menuWe.exerciseId } }); }} />
             <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
+            <MenuRow icon={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'star' : 'star-outline'} label={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'Убрать из избранного' : 'Добавить в избранное'} onPress={() => { toast(prefFavorite(menuWe.exerciseId), 'star'); setMenuFor(null); }} />
+            <MenuRow icon="thumbs-down-outline" label={exerciseFlag(menuWe.exerciseId) === 'disliked' ? 'Снять «не нравится»' : 'Мне не нравится'} onPress={() => { toast(prefDislike(menuWe.exerciseId)); setMenuFor(null); }} />
+            <MenuRow icon="medkit-outline" label="Дискомфорт при выполнении" onPress={() => { const id = menuWe.id; setMenuFor(null); setTimeout(() => setPainFor(id), 250); }} />
+            <MenuRow
+              icon="ban-outline"
+              label="Не предлагать больше"
+              onPress={() => {
+                const exId = menuWe.exerciseId;
+                const weId = menuWe.id;
+                setMenuFor(null);
+                confirm('Не предлагать упражнение?', 'Оно не будет попадать в план, генерацию и замены. Сегодняшнюю тренировку можно сразу перестроить заменой.', 'Не предлагать', () => {
+                  toast(prefExclude(exId));
+                  offerReplace(weId);
+                });
+              }}
+            />
             <MenuRow icon="arrow-up" label="Переместить выше" onPress={() => { useWorkouts.getState().moveExercise(menuWe.id, -1); setMenuFor(null); }} />
             <MenuRow icon="arrow-down" label="Переместить ниже" onPress={() => { useWorkouts.getState().moveExercise(menuWe.id, 1); setMenuFor(null); }} />
             <MenuRow
@@ -136,6 +170,29 @@ export default function ActiveWorkout() {
                 confirm('Удалить упражнение?', 'Выполненные в нём подходы тоже удалятся.', 'Удалить', () => useWorkouts.getState().removeExercise(id), true);
               }}
             />
+          </View>
+        ) : null}
+      </Sheet>
+
+      <Sheet visible={!!painWe} onClose={() => setPainFor(null)} title="Где дискомфорт?" subtitle="Упражнение не будет назначаться автоматически, пока ты сам его не вернёшь">
+        {painWe ? (
+          <View style={{ gap: 8 }}>
+            {PAIN_AREAS.map((a) => (
+              <MenuRow
+                key={a.label}
+                icon="body-outline"
+                label={a.label}
+                onPress={() => {
+                  const weId = painWe.id;
+                  toast(prefDiscomfort(painWe.exerciseId, a.area));
+                  setPainFor(null);
+                  offerReplace(weId);
+                }}
+              />
+            ))}
+            <T v="small" style={{ fontSize: 12, marginTop: 4 }}>
+              Острая, резкая или нарастающая боль — прекрати упражнение. Если боль не проходит — обратись к врачу. FORM не ставит диагнозов.
+            </T>
           </View>
         ) : null}
       </Sheet>
@@ -190,6 +247,7 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
   const sessions = useWorkouts((s) => s.sessions);
   const ex = getExercise(we.exerciseId, customs);
   const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 3) : []), [ex, sessions]);
+  const [whyOpen, setWhyOpen] = useState(false);
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
@@ -258,6 +316,18 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
             <T v="small" style={{ fontSize: 12 }}>
               {rec.rationale}
             </T>
+            {we.why ? (
+              <Pressable accessibilityRole="button" onPress={() => setWhyOpen(!whyOpen)} hitSlop={6} style={{ marginTop: 4 }}>
+                <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '700' }}>
+                  {whyOpen ? 'Скрыть' : 'Почему столько подходов?'}
+                </T>
+              </Pressable>
+            ) : null}
+            {whyOpen && we.why ? (
+              <T v="small" style={{ fontSize: 12, marginTop: 2 }}>
+                {we.why}
+              </T>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -273,6 +343,8 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
       {we.sets.map((s, i) => (
         <SetRow key={s.id} weId={we.id} set={s} idx={i} unit={unit} onComplete={completeSet} />
       ))}
+      <SetTip we={we} step={ex.increment || 2.5} unit={unit} />
+      <QuickAdjust we={we} step={ex.increment || 2.5} unit={unit} bodyweight={isBw} />
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
         <Button title="Подход" icon="add" size="sm" variant="secondary" onPress={() => useWorkouts.getState().addSet(we.id)} style={{ flex: 1 }} />
         {we.sets.length > 0 && !we.sets[we.sets.length - 1].done ? (
@@ -282,6 +354,84 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
     </View>
   );
 });
+
+/**
+ * Контекстная подсказка по ходу упражнения: два подхода подряд ниже диапазона → снизить вес,
+ * два «легко» с повторами у верха диапазона → добавить. Меняются только оставшиеся подходы и только по кнопке.
+ */
+function SetTip({ we, step, unit }: { we: WorkoutExercise; step: number; unit: 'kg' | 'lb' }) {
+  const [hiddenAt, setHiddenAt] = useState(-1);
+  const done = we.sets.filter((s) => s.done);
+  const todo = we.sets.filter((s) => !s.done);
+  if (done.length < 2 || !todo.length || hiddenAt === done.length) return null;
+  const [a, b] = done.slice(-2);
+  const w = todo[0].weight;
+  if (w <= 0) return null;
+  let tip: { text: string; weight: number } | null = null;
+  if (a.reps < we.repMin && b.reps < we.repMin) {
+    const nw = Math.max(0, Math.round((w * 0.93) / step) * step);
+    if (nw < w) tip = { text: `Два подхода ниже ${we.repMin} повт. — снизить вес оставшихся до ${fmtWeight(nw, unit)} ${unitLabel(unit)}?`, weight: nw };
+  } else if ((a.rir ?? 0) >= 3 && (b.rir ?? 0) >= 3 && a.reps >= we.repMax && b.reps >= we.repMax) {
+    tip = { text: `Легко и у верха диапазона — добавить до ${fmtWeight(w + step, unit)} ${unitLabel(unit)}?`, weight: w + step };
+  }
+  if (!tip) return null;
+  const apply = () => {
+    const st = useWorkouts.getState();
+    todo.forEach((x) => st.updateSet(we.id, x.id, { weight: tip!.weight }));
+    haptic.success();
+    setHiddenAt(done.length);
+  };
+  return (
+    <View style={styles.tip}>
+      <Icon name="sparkles-outline" size={15} color={colors.accent} />
+      <T v="small" color={colors.text} style={{ flex: 1, fontSize: 12 }}>
+        {tip.text}
+      </T>
+      <Pressable accessibilityRole="button" hitSlop={6} onPress={apply}>
+        <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
+          Применить
+        </T>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Скрыть подсказку" hitSlop={6} onPress={() => setHiddenAt(done.length)}>
+        <Icon name="close" size={14} color={colors.muted} />
+      </Pressable>
+    </View>
+  );
+}
+
+/** Одна рука: быстрые ± для текущего (первого невыполненного) подхода, без клавиатуры */
+function QuickAdjust({ we, step, unit, bodyweight }: { we: WorkoutExercise; step: number; unit: 'kg' | 'lb'; bodyweight: boolean }) {
+  const cur = we.sets.find((s) => !s.done);
+  if (!cur) return null;
+  const upd = (patch: Partial<ExerciseSet>) => {
+    haptic.tap();
+    useWorkouts.getState().updateSet(we.id, cur.id, patch);
+  };
+  const stepTxt = String(step).replace('.', ',');
+  return (
+    <View style={styles.quick}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Минус ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.max(0, Math.round((cur.weight - step) * 100) / 100) })} style={styles.qBtn}>
+        <T v="small" style={{ fontWeight: '800' }}>−{stepTxt}</T>
+      </Pressable>
+      <T v="body" style={{ fontWeight: '800', minWidth: 56, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+        {bodyweight && !cur.weight ? 'свой' : fmtWeight(cur.weight, unit)}
+      </T>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Плюс ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.round((cur.weight + step) * 100) / 100 })} style={styles.qBtn}>
+        <T v="small" style={{ fontWeight: '800' }}>+{stepTxt}</T>
+      </Pressable>
+      <View style={{ width: 10 }} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Минус повтор" onPress={() => upd({ reps: Math.max(0, cur.reps - 1) })} style={styles.qBtn}>
+        <Icon name="remove" size={18} />
+      </Pressable>
+      <T v="body" style={{ fontWeight: '800', minWidth: 28, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+        {cur.reps}
+      </T>
+      <Pressable accessibilityRole="button" accessibilityLabel="Плюс повтор" onPress={() => upd({ reps: cur.reps + 1 })} style={styles.qBtn}>
+        <Icon name="add" size={18} />
+      </Pressable>
+    </View>
+  );
+}
 
 /** Разминка и раскладка блинов — подсказка, ничего не нужно вводить */
 function WarmupHint({ ex, we, unit }: { ex: Exercise; we: WorkoutExercise; unit: 'kg' | 'lb' }) {
@@ -382,7 +532,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete }: { weId
           {(['easy', 'ok', 'hard'] as SetFeel[]).map((f) => (
             <Pressable key={f} onPress={() => setFeel(f)} style={[styles.feel, set.feel === f && { backgroundColor: f === 'hard' ? colors.warning : colors.accent }]} accessibilityRole="button" accessibilityState={{ selected: set.feel === f }}>
               <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={set.feel === f ? colors.onAccent : colors.textDim}>
-                {f === 'easy' ? 'Легко' : f === 'ok' ? 'Нормально' : 'Тяжело'}
+                {f === 'easy' ? 'Легко · RIR 3+' : f === 'ok' ? 'Норм · RIR 2' : 'Тяжело · 0–1'}
               </T>
             </Pressable>
           ))}
@@ -460,6 +610,9 @@ const styles = StyleSheet.create({
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
   warm: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
+  tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  quick: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2 },
+  qBtn: { minWidth: 44, height: 40, paddingHorizontal: 8, borderRadius: radius.sm, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
   alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim },
   rpe: { width: 48, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

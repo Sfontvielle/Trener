@@ -51,8 +51,8 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
       <Pressable accessibilityLabel="Плюс 15 секунд" onPress={() => adjust(15)} style={styles.adj} hitSlop={6}>
         <T v="small" style={{ fontWeight: '800' }}>+15</T>
       </Pressable>
-      <Pressable accessibilityLabel="Закрыть таймер" onPress={stop} style={[styles.adj, { backgroundColor: done ? colors.accent : colors.surface3 }]} hitSlop={6}>
-        <Icon name={done ? 'checkmark' : 'close'} size={20} color={done ? colors.onAccent : colors.text} />
+      <Pressable accessibilityRole="button" accessibilityLabel={done ? 'Закрыть таймер' : 'Пропустить отдых'} onPress={() => { haptic.tap(); stop(); }} style={[styles.skip, done && { backgroundColor: colors.accent }]} hitSlop={6}>
+        {done ? <Icon name="checkmark" size={20} color={colors.onAccent} /> : <T v="small" style={{ fontWeight: '800' }}>Пропустить</T>}
       </Pressable>
     </Animated.View>
   );
@@ -76,5 +76,6 @@ const styles = StyleSheet.create({
     boxShadow: '0px 8px 24px rgba(0,0,0,0.5)',
   },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.accentDim },
+  skip: { paddingHorizontal: 12, minWidth: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   adj: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
 });

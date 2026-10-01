@@ -46,7 +46,10 @@ export interface UserProfile {
   location: TrainingLocation;
   equipment: Equipment[];
   limitations: string; // свободный текст: «правое плечо, вертикальный жим»
+  /** @deprecated старое поле (v1): читается как excluded c reason='user'. Новые данные — в training */
   avoidExerciseIds: ID[];
+  /** Структурированные тренировочные предпочтения и ограничения (v2) */
+  training?: TrainingPreferences;
   likedFoods: string[];
   dislikedFoods: string[];
   dietRestrictions: string[]; // 'vegetarian' | 'lactose' | 'gluten' | ...
@@ -100,7 +103,91 @@ export interface NutritionTarget {
   computedAt: number;
 }
 
-export type SplitType = 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'ppl_x2';
+export type SplitType = 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'ppl_x2' | 'upper_lower_full';
+
+/** Выбор пользователя: auto — FORM решает; custom — шаблоны правятся вручную и не перегенерируются */
+export type SplitPreference = 'auto' | 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'custom';
+
+/** Детальные мышечные группы для расчёта объёма (движок) */
+export type VolumeMuscle =
+  | 'chest'
+  | 'lats'
+  | 'upper_back'
+  | 'front_delts'
+  | 'side_delts'
+  | 'rear_delts'
+  | 'biceps'
+  | 'triceps'
+  | 'quads'
+  | 'hamstrings'
+  | 'glutes'
+  | 'calves'
+  | 'abs';
+
+export type BodyArea = 'lower_back' | 'shoulder' | 'knee' | 'elbow' | 'wrist' | 'hip' | 'neck';
+
+/** Тип нагрузки/движения, который может быть нежелателен (не диагноз — описание движения) */
+export type MovementRestriction =
+  | 'heavy_axial'
+  | 'hip_hinge'
+  | 'bent_over'
+  | 'spinal_flexion'
+  | 'spinal_rotation'
+  | 'overhead_press'
+  | 'deep_chest_stretch'
+  | 'barbell_bench'
+  | 'hanging'
+  | 'upright_row'
+  | 'deep_knee_flexion'
+  | 'lunges'
+  | 'knee_extension'
+  | 'elbow_extension'
+  | 'elbow_flexion'
+  | 'wrist_extension'
+  | 'hip_flexion'
+  | 'neck_load';
+
+export type LimitationSeverity = 'mild' | 'moderate' | 'severe';
+
+export interface TrainingLimitation {
+  id: ID;
+  area: BodyArea;
+  /** Какие движения вызывают дискомфорт */
+  movements: MovementRestriction[];
+  severity: LimitationSeverity;
+  note?: string;
+  /** doctor — рекомендация врача/физиотерапевта: всегда жёсткий запрет */
+  source: 'user' | 'doctor';
+  createdAt: number;
+}
+
+export interface ExcludedExercise {
+  exerciseId: ID;
+  /** user — «не предлагать», discomfort — дискомфорт при выполнении, doctor — запрет специалиста */
+  reason: 'user' | 'discomfort' | 'doctor';
+  area?: BodyArea;
+  note?: string;
+  createdAt: number;
+}
+
+export type SetStyle = 'auto' | 2 | 3;
+export type RepStyle = 'auto' | 'heavy' | 'moderate' | 'light';
+
+export interface TrainingPreferences {
+  preferredSplit: SplitPreference;
+  preferredExercises: ID[];
+  dislikedExercises: ID[];
+  excluded: ExcludedExercise[];
+  /** Движения, которые не предлагать вообще (без привязки к зоне) */
+  excludedMovements: MovementRestriction[];
+  limitations: TrainingLimitation[];
+  setStyle: SetStyle;
+  repStyle: RepStyle;
+  priorityMuscles: VolumeMuscle[];
+  lowPriorityMuscles: VolumeMuscle[];
+  /** Ручная поправка недельного объёма, подходов (расширенная настройка / AI) */
+  volumeAdjust: Partial<Record<VolumeMuscle, number>>;
+}
 
 export type MuscleGroup =
   | 'chest'
@@ -123,6 +210,12 @@ export interface PlannedExercise {
   targetRir: number;
   restSec: number;
   note?: string;
+  /** Слот программы (для преемственности упражнений при перестройке плана) */
+  slot?: string;
+  /** Почему столько подходов / почему это упражнение — для UX «Почему?» */
+  why?: string;
+  /** Целевой вес, заданный тренером/пользователем (иначе — из прогрессии) */
+  targetWeight?: number;
 }
 
 export interface WorkoutTemplate {
@@ -134,6 +227,8 @@ export interface WorkoutTemplate {
   muscles: MuscleGroup[];
   exercises: PlannedExercise[];
   estMinutes: number;
+  /** Тип дня в сплите (upA, loB, push…) — стабилен между перестройками плана */
+  key?: string;
 }
 
 export interface WorkoutPlan {
@@ -151,6 +246,12 @@ export interface WorkoutPlan {
   rotation: ID[];
   rationale: CalcStep[];
   createdAt: number;
+  /** Как выбран сплит: auto/выбор пользователя + причины */
+  splitChoice?: { preference: SplitPreference; reasons: string[] };
+  /** Недельный объём по детальным группам: цель и запланировано */
+  volume?: { muscle: VolumeMuscle; target: number; planned: number }[];
+  /** Решения генератора, которые стоит показать пользователю */
+  notes?: string[];
 }
 
 /** Корректировка конкретного дня (readiness, AI Coach, ручная) */
@@ -163,6 +264,8 @@ export interface DayOverride {
   /** Добавка к целевому RIR */
   rirDelta?: number;
   mode?: 'normal' | 'reduced' | 'light' | 'recovery' | 'rest' | 'deload';
+  /** Изменённый состав тренировки только на этот день (замена/перестановка/подходы от тренера) */
+  exercises?: PlannedExercise[];
   reason: string;
   source: 'readiness' | 'coach' | 'user';
   createdAt: number;
@@ -342,6 +445,7 @@ export interface WorkoutExercise {
   sets: ExerciseSet[];
   recommendation?: Recommendation;
   note?: string;
+  why?: string;
 }
 
 export type WorkoutSource = 'plan' | 'generated' | 'custom' | 'quick';
@@ -430,21 +534,57 @@ export interface FoodEntry {
 export type CoachActionType =
   | 'set_day_mode' // снизить объём / лёгкая / восстановительная / отдых сегодня
   | 'swap_today' // заменить сегодняшний шаблон другим
-  | 'adjust_calories'; // изменить калорийность
+  | 'adjust_calories' // изменить калорийность
+  | 'replace_exercise'
+  | 'exclude_exercise'
+  | 'favorite_exercise'
+  | 'change_sets'
+  | 'change_rep_range'
+  | 'change_target_weight'
+  | 'change_rest_time'
+  | 'reorder_exercises'
+  | 'reduce_today_volume'
+  | 'increase_today_volume'
+  | 'change_split'
+  | 'reschedule_workout'
+  | 'generate_workout'
+  | 'apply_deload'
+  | 'adjust_weekly_volume'
+  | 'suggest_meal';
+
+export interface CoachActionParams {
+  mode?: DayOverride['mode'];
+  volumeFactor?: number;
+  rirDelta?: number;
+  templateId?: ID | null;
+  deltaKcal?: number;
+  reason?: string;
+  exerciseId?: ID;
+  toExerciseId?: ID;
+  /** today — только сегодня, plan — в шаблоне плана */
+  scope?: 'today' | 'plan';
+  sets?: number;
+  repMin?: number;
+  repMax?: number;
+  weightKg?: number;
+  restSec?: number;
+  order?: ID[];
+  muscle?: VolumeMuscle;
+  deltaSets?: number;
+  split?: SplitPreference;
+  minutes?: number;
+}
 
 export interface CoachAction {
   id: ID;
   type: CoachActionType;
   label: string;
-  params: {
-    mode?: DayOverride['mode'];
-    volumeFactor?: number;
-    rirDelta?: number;
-    templateId?: ID | null;
-    deltaKcal?: number;
-    reason?: string;
-  };
+  params: CoachActionParams;
   applied?: boolean;
+  /** Пользователь отказался */
+  declined?: boolean;
+  /** Приложение отклонило действие при валидации (причина) */
+  invalid?: string;
 }
 
 export interface CoachMessage {

@@ -102,7 +102,7 @@ export function TrainingHub() {
         {genOpen ? (
           <View style={styles.gen}>
             <T v="h3">Сгенерировать тренировку</T>
-            <T v="small">FORM учтёт готовность, недавно нагруженные мышцы, недельный объём и оборудование.</T>
+            <T v="small">FORM учтёт сплит, готовность, недавно нагруженные мышцы, остаток недельного объёма, ограничения и оборудование.</T>
             <T v="caption" style={{ marginTop: space.sm }}>
               Время
             </T>
@@ -125,10 +125,16 @@ export function TrainingHub() {
             </View>
           </View>
         ) : (
-          <Row icon="sparkles" title="Сгенерировать тренировку" sub="Под сегодняшнюю готовность и доступное время" onPress={() => setGenOpen(true)} />
+          <Row
+            icon="sparkles"
+            title={tw.kind === 'workout' ? 'Сгенерировать другую' : 'Сгенерировать тренировку'}
+            sub={tw.kind === 'workout' ? 'Если план сегодня не подходит: другое время или фокус' : 'День твоего сплита с наибольшим недобором объёма'}
+            onPress={() => setGenOpen(true)}
+          />
         )}
         <Row icon="construct-outline" title="Собрать свою" sub="Выбери упражнения из библиотеки" onPress={() => run(openCustomBuilder)} />
-        <Row icon="flash-outline" title="Быстрая тренировка" sub="~30 минут на всё тело, короткий отдых" onPress={() => run(() => openGenerated(30, 'full', true))} />
+        <Row icon="flash-outline" title="Быстрая тренировка" sub="~30 минут: главное из твоего сплита, короткий отдых" onPress={() => run(() => openGenerated(30, 'auto', true))} />
+        <Row icon="library-outline" title="Библиотека упражнений" sub="Техника, альтернативы, избранное и исключения" onPress={() => run(() => router.push({ pathname: '/training', params: { seg: 'library' } }))} />
         {draft && draft.exercises.length > 0 ? (
           <Row icon="document-text-outline" title="Черновик тренировки" sub={`${draft.name} · ${draft.exercises.length} упр.`} onPress={() => run(() => router.push('/workout/builder'))} />
         ) : null}

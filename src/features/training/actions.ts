@@ -87,7 +87,7 @@ export function openGenerated(minutes: number, focus: GenFocus, quick = false) {
   const { ws, readiness } = ctxBase();
   const plan = usePlan.getState().plan;
   const preferIds = plan?.templates.flatMap((t) => t.exercises.map((e) => e.exerciseId)) ?? [];
-  const r = generateWorkout({ profile, sessions: ws.sessions, minutes, focus, readiness, preferIds, quick });
+  const r = generateWorkout({ profile, sessions: ws.sessions, minutes, focus, readiness, preferIds, quick, plan, customs: ws.customExercises });
   useWorkouts.getState().setDraft({ ...r.draft, name: r.draft.name });
   router.push({ pathname: '/workout/builder', params: { rationale: r.rationale.join('\n') } });
 }

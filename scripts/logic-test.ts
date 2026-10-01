@@ -4,13 +4,18 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { DailyCheckIn, ExerciseSet, UserProfile, WeightEntry, WorkoutSession } from '../src/types';
+import type { CoachAction, DailyCheckIn, ExerciseSet, MovementRestriction, UserProfile, WeightEntry, WorkoutSession } from '../src/types';
 import { computeNutritionTarget } from '../src/features/nutrition/targets';
 import { reviewCalories } from '../src/features/nutrition/adaptive';
 import { weightTrend, weeklyRate } from '../src/features/progress/weightTrend';
 import { recommend } from '../src/features/training/progression';
 import { computeReadiness } from '../src/features/recovery/readiness';
-import { generatePlan, isAvailable, plannedWeeklySets } from '../src/features/training/planGenerator';
+import { alternativesFor, generatePlan, isAvailable, plannedWeeklySets } from '../src/features/training/planGenerator';
+import { excludeExercise, getPrefs, includeExercise, markDiscomfort, toggleFavorite, withPrefs } from '../src/features/training/engine/prefs';
+import { checkAllowed, progressStatus, scoreExercise } from '../src/features/training/engine/scoring';
+import { analyzeWorkout, suggestOrder } from '../src/features/training/engine/order';
+import { estimateMinutes } from '../src/features/training/engine/time';
+import { actionKey, applyToExercises, validateAction } from '../src/features/coach/actions';
 import { generateWorkout } from '../src/features/training/generator';
 import { resolveToday } from '../src/features/training/today';
 import { suggestMeals } from '../src/features/nutrition/suggest';
@@ -227,4 +232,189 @@ test('Итоги недели и быстрое логирование еды', 
   const freq = frequentProducts([entry(d, 'local:egg', 'breakfast'), entry(addDays(d, -1), 'local:egg', 'lunch'), entry(d, 'local:rice_cooked', 'lunch')], {}, { 'local:egg': 110 }, d);
   assert.equal(freq.length, 1);
   assert.equal(freq[0].grams, 110);
+});
+
+// ─── Персональный программист: сплит, объём, исключения, ограничения, порядок, AI-валидация ───
+
+const allIds = (plan: ReturnType<typeof generatePlan>) => plan.templates.flatMap((t) => t.exercises.map((e) => e.exerciseId));
+const FOCUSES = ['auto', 'push', 'pull', 'legs', 'upper', 'lower', 'full'] as const;
+
+test('1. 4 дня + предпочтение Upper/Lower → не Full Body', () => {
+  const plan = generatePlan(withPrefs(base, { preferredSplit: 'upper_lower' }));
+  assert.equal(plan.split, 'upper_lower');
+  assert.ok(!plan.templates.some((t) => /full/i.test(t.name)), plan.templates.map((t) => t.name).join(', '));
+  assert.ok(plan.splitChoice?.reasons.some((r) => r.includes('Ты выбрал')), 'объяснение выбора');
+});
+
+test('2. Исключённая становая тяга не появляется нигде', () => {
+  const p = excludeExercise(base, 'deadlift');
+  for (const d of [2, 3, 4, 5, 6]) {
+    for (const sp of ['auto', 'fullbody', 'upper_lower', 'ppl'] as const) {
+      const plan = generatePlan(withPrefs({ ...p, daysPerWeek: d }, { preferredSplit: sp }));
+      assert.ok(!allIds(plan).includes('deadlift'), `план ${d}д ${sp}`);
+    }
+  }
+  for (const focus of FOCUSES) {
+    const r = generateWorkout({ profile: p, sessions: [], minutes: 75, focus });
+    assert.ok(!r.draft.exercises.some((e) => e.exerciseId === 'deadlift'), `генератор ${focus}`);
+  }
+  assert.ok(!alternativesFor('romanian_deadlift', p).some((e) => e.id === 'deadlift'), 'и не предлагается как замена');
+});
+
+test('3. Поясница + тяжёлые наклоны/тяги → нет классической становой', () => {
+  const lim = { id: 'l1', area: 'lower_back' as const, movements: ['hip_hinge', 'heavy_axial'] as MovementRestriction[], severity: 'moderate' as const, source: 'user' as const, createdAt: 0 };
+  const p = withPrefs(base, { limitations: [lim] });
+  for (const d of [3, 4, 5, 6]) {
+    const plan = generatePlan({ ...p, daysPerWeek: d });
+    const ids = allIds(plan);
+    assert.ok(!ids.includes('deadlift') && !ids.includes('good_morning'), `${d} дн: ${ids.join(',')}`);
+    assert.ok(plan.notes?.some((n) => n.includes('Становая')), 'объяснение, что отфильтровано');
+  }
+  for (const focus of ['lower', 'legs', 'full'] as const) {
+    const r = generateWorkout({ profile: p, sessions: [], minutes: 75, focus });
+    assert.ok(!r.draft.exercises.some((e) => e.exerciseId === 'deadlift'), focus);
+  }
+});
+
+test('4. Избранный жим гантелей получает больший score и попадает в план', () => {
+  const ex = getExercise('db_bench_press')!;
+  const slot = { key: 'press', muscle: 'chest' as const, role: 'main' as const, patterns: ['h_push' as const] };
+  const plain = scoreExercise(ex, slot, { profile: base, prefs: getPrefs(base), sessions: [] }).score;
+  const p = toggleFavorite(base, 'db_bench_press');
+  const fav = scoreExercise(ex, slot, { profile: p, prefs: getPrefs(p), sessions: [] }).score;
+  assert.ok(fav > plain, `${fav} > ${plain}`);
+  assert.ok(allIds(generatePlan(p)).includes('db_bench_press'));
+});
+
+test('5. Недельная цель груди 12 → в плане ~12 подходов, не 18', () => {
+  const plan = generatePlan(base);
+  const chest = plan.volume!.find((v) => v.muscle === 'chest')!;
+  assert.equal(chest.target, 12);
+  assert.ok(chest.planned >= 10 && chest.planned <= 14, `грудь ${chest.planned}`);
+  for (const v of plan.volume!) if (v.target >= 6) assert.ok(v.planned <= v.target * 1.35 + 2, `${v.muscle} ${v.planned}/${v.target} — перебор`);
+});
+
+test('6. Стиль 2 подхода → большинство упражнений по 2, объём компенсирован', () => {
+  const p = withPrefs(base, { setStyle: 2 });
+  const plan = generatePlan(p);
+  const all = plan.templates.flatMap((t) => t.exercises);
+  const two = all.filter((e) => e.sets === 2).length;
+  assert.ok(two / all.length >= 0.7, `${two}/${all.length}`);
+  assert.ok(all.every((e) => e.sets <= 3), 'максимум 3 (основное упражнение)');
+  for (const m of ['chest', 'quads', 'lats'] as const) {
+    const v = plan.volume!.find((x) => x.muscle === m)!;
+    assert.ok(v.planned >= v.target * 0.75, `${m} ${v.planned}/${v.target}`);
+  }
+  assert.ok(plan.notes?.some((n) => /2 подход|на 1 подход больше/.test(n)), 'объяснение компенсации');
+});
+
+test('7. Своя тренировка: разведение, жим, разгибания, наклонный → жим, наклонный, разведение, разгибания', () => {
+  const pe = (id: string) => ({ exerciseId: id, sets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 90 });
+  const r = suggestOrder([pe('db_fly'), pe('bench_press'), pe('triceps_pushdown'), pe('incline_db_press')]);
+  assert.ok(r.changed);
+  assert.deepEqual(r.order.map((x) => x.exerciseId), ['bench_press', 'incline_db_press', 'db_fly', 'triceps_pushdown']);
+  assert.ok(r.why.length > 20, 'есть объяснение');
+});
+
+test('8. «Дискомфорт при выполнении» → упражнения нет в следующей генерации', () => {
+  const plan = generatePlan(base);
+  const victim = plan.templates[0].exercises[0].exerciseId;
+  const p = markDiscomfort(base, victim, 'shoulder');
+  const next = generatePlan(p, { previous: plan });
+  assert.ok(!allIds(next).includes(victim), victim);
+  for (const focus of FOCUSES) assert.ok(!generateWorkout({ profile: p, sessions: [], minutes: 75, focus }).draft.exercises.some((e) => e.exerciseId === victim), focus);
+  assert.ok(!checkAllowed(getExercise(victim)!, p, getPrefs(p)).ok);
+  // Вернуть можно только явно
+  assert.ok(checkAllowed(getExercise(victim)!, includeExercise(p, victim), getPrefs(includeExercise(p, victim))).ok);
+});
+
+test('9. Упражнение с прогрессом не заменяется при перестройке плана', () => {
+  const plan = generatePlan(base);
+  const t = plan.templates[0];
+  const slotPe = t.exercises.find((e) => e.slot?.endsWith('.press'))!;
+  // Пользователь вручную поставил в слот тренажёр — и прогрессирует в нём
+  slotPe.exerciseId = 'machine_chest_press';
+  const sessions: WorkoutSession[] = [0, 1, 2, 3].map((i) => ({
+    id: `p${i}`, date: addDays(today(), -18 + i * 6), name: t.name, focus: '', source: 'plan', templateId: t.id, startedAt: i, finishedAt: i + 1, volumeFactor: 1, status: 'completed',
+    exercises: [{ id: `we${i}`, exerciseId: 'machine_chest_press', plannedSets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 120, sets: [set(60 + i * 5, 10), set(60 + i * 5, 9), set(60 + i * 5, 8)] }],
+  }));
+  assert.equal(progressStatus('machine_chest_press', sessions).status, 'progressing');
+  const next = generatePlan({ ...base, sessionMinutes: 75 }, { previous: plan, sessions });
+  const sameT = next.templates.find((x) => x.key === t.key)!;
+  const kept = sameT.exercises.find((e) => e.slot === slotPe.slot)!;
+  assert.equal(kept.exerciseId, 'machine_chest_press');
+  assert.ok(kept.why?.includes('прогресс'), kept.why);
+});
+
+test('10. 4 дня в авто → не Full Body; Full Body — только где уместен', () => {
+  assert.notEqual(generatePlan(base).split, 'fullbody');
+  assert.notEqual(generatePlan({ ...base, daysPerWeek: 5 }).split, 'fullbody');
+  assert.notEqual(generatePlan({ ...base, daysPerWeek: 3, sessionMinutes: 70 }).split, 'fullbody', '3 дня, средний, 70 мин');
+  assert.equal(generatePlan({ ...base, daysPerWeek: 2 }).split, 'fullbody');
+  // Генератор «Авто» берёт день текущего сплита, а не «Всё тело» по умолчанию
+  const plan = generatePlan(base);
+  const r = generateWorkout({ profile: base, sessions: [], minutes: 70, focus: 'auto', plan });
+  assert.ok(!/Всё тело/.test(r.draft.name), r.draft.name);
+});
+
+test('11. Тренировки укладываются во время', () => {
+  for (const minutes of [40, 50, 60, 75, 90]) {
+    for (const d of [3, 4, 5]) {
+      for (const style of ['auto', 2, 3] as const) {
+        const p = withPrefs({ ...base, daysPerWeek: d, sessionMinutes: minutes }, { setStyle: style });
+        const plan = generatePlan(p);
+        for (const t of plan.templates) assert.ok(t.estMinutes <= minutes + 6, `${minutes} мин, ${d} дн, стиль ${style}: ${t.name} ${t.estMinutes}`);
+      }
+    }
+    const r = generateWorkout({ profile: base, sessions: [], minutes, focus: 'auto' });
+    assert.ok(estimateMinutes(r.draft.exercises) <= minutes + 4, `генератор ${minutes}: ${estimateMinutes(r.draft.exercises)}`);
+  }
+  const quick = generateWorkout({ profile: base, sessions: [], minutes: 25, focus: 'auto', quick: true });
+  assert.ok(quick.draft.exercises.length >= 3 && estimateMinutes(quick.draft.exercises) <= 30);
+});
+
+test('12. AI-действие с исключённым упражнением отклоняется валидацией', () => {
+  const p = excludeExercise(base, 'deadlift');
+  const plan = generatePlan(p);
+  const todayExercises = plan.templates.find((t) => t.key?.startsWith('lo'))!.exercises;
+  const from = todayExercises[0].exerciseId;
+  const ctx = { profile: p, plan, todayExercises };
+  const act = (type: CoachAction['type'], params: CoachAction['params']): CoachAction => ({ id: 'a', type, label: 'x', params });
+  const bad = validateAction(act('replace_exercise', { exerciseId: from, toExerciseId: 'deadlift', scope: 'today' }), ctx);
+  assert.equal(bad.ok, false);
+  assert.ok(!bad.ok && bad.reason.includes('Не предлагать'), !bad.ok ? bad.reason : '');
+  assert.equal(validateAction(act('favorite_exercise', { exerciseId: 'deadlift' }), ctx).ok, false);
+  assert.equal(validateAction(act('replace_exercise', { exerciseId: 'bench_press_unknown', toExerciseId: 'leg_press' }), ctx).ok, false, 'неизвестное упражнение');
+  assert.equal(validateAction(act('change_sets', { exerciseId: from, sets: 12 }), ctx).ok, false, 'границы чисел');
+  assert.equal(validateAction(act('adjust_calories', { deltaKcal: 900 }), ctx).ok, false);
+  // Допустимая замена проходит, отказ «больше не предлагать» — блокирует
+  const good = act('replace_exercise', { exerciseId: from, toExerciseId: alternativesFor(from, p)[0].id, scope: 'today' });
+  assert.equal(validateAction(good, ctx).ok, true);
+  assert.equal(validateAction(good, { ...ctx, rejected: [actionKey(good)] }).ok, false);
+  // Применение к списку упражнений сохраняет состав
+  const swapped = applyToExercises(todayExercises, good);
+  assert.equal(swapped.length, todayExercises.length);
+  assert.ok(swapped.some((e) => e.exerciseId === good.params.toExerciseId));
+});
+
+test('Миграция: старый avoidExerciseIds → исключения без потерь', () => {
+  const legacy = { ...base, avoidExerciseIds: ['ohp'] };
+  const prefs = getPrefs(legacy);
+  assert.equal(prefs.excluded[0].exerciseId, 'ohp');
+  assert.equal(prefs.preferredSplit, 'auto');
+  assert.ok(!allIds(generatePlan(legacy)).includes('ohp'));
+  const back = includeExercise(legacy, 'ohp');
+  assert.deepEqual(back.avoidExerciseIds, []);
+});
+
+test('Анализатор своей тренировки: 4 упражнения на грудь по 4 подхода → предупреждение и исправление', () => {
+  const pe = (id: string) => ({ exerciseId: id, sets: 4, repMin: 8, repMax: 12, targetRir: 2, restSec: 90 });
+  const list = [pe('bench_press'), pe('incline_db_press'), pe('db_fly'), pe('cable_crossover')];
+  const issues = analyzeWorkout({ list, profile: base, prefs: getPrefs(base), sessions: [], weeklyTargets: { chest: 12 } });
+  const over = issues.find((i) => i.id === 'over-chest');
+  assert.ok(over && over.fix);
+  const fixed = over!.fix!(list);
+  assert.ok(fixed.reduce((a, x) => a + x.sets, 0) <= 9);
+  const p = excludeExercise(base, 'db_fly');
+  assert.ok(analyzeWorkout({ list, profile: p, prefs: getPrefs(p), sessions: [] }).some((i) => i.level === 'danger'), 'конфликт с исключением');
 });

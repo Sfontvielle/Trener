@@ -12,15 +12,20 @@ import { useProfile } from '@/stores/profile';
 import { useNutrition } from '@/stores/nutrition';
 import { useCheckins } from '@/stores/checkins';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
-import { adherence, progressRows, setsByGroup, workoutsInRange } from '@/features/training/analytics';
+import { adherence, progressRows, workoutsInRange } from '@/features/training/analytics';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { targetWeeklyChangeKg } from '@/features/nutrition/targets';
 import { readinessFor } from '@/features/recovery/derive';
-import { GROUP_LABEL } from '@/data/exercises';
 import { addDays, daysBetween, formatDayShort, formatHours, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
-import type { MuscleGroup } from '@/types';
-import { lastWeekSummary } from '@/features/progress/weekly';
+import { lastWeekSummary, weeklyProposals, type WeeklyProposal } from '@/features/progress/weekly';
+import { applyProfile } from '@/features/profile/applyProfile';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { doneFineVolume, weeklyTargets } from '@/features/training/engine/volume';
+import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
+import { estimateMinutes } from '@/features/training/engine/time';
+import { toast } from '@/components/Dialog';
+import { getExercise } from '@/data/exercises';
 
 type Range = '7' | '30' | '90' | 'all';
 
@@ -34,6 +39,7 @@ export default function Progress() {
   const profile = useProfile((s) => s.profile);
   const entries = useNutrition((s) => s.entries);
   const checkins = useCheckins((s) => s.byDate);
+  const customs = useWorkouts((s) => s.customExercises);
   const d = today();
 
   const trend = useMemo(() => weightTrend(weights), [weights]);
@@ -52,16 +58,22 @@ export default function Progress() {
   const adh = useMemo(() => adherence(sessions, plan, 28), [sessions, plan]);
   const weekly = useMemo(() => Array.from({ length: 8 }, (_, i) => workoutsInRange(sessions, addDays(d, -7 * (8 - i) + 1), addDays(d, -7 * (7 - i)))), [sessions, d]);
 
+  // Объём по детальным группам: прямые подходы за 7 дней против недельной цели
   const volume = useMemo(() => {
-    const cur = setsByGroup(sessions, addDays(d, -13), d);
-    const prev = setsByGroup(sessions, addDays(d, -27), addDays(d, -14));
-    const groups: MuscleGroup[] = ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'glutes', 'biceps', 'triceps'];
-    return groups
-      .map((g) => ({ g, cur: cur[g] ?? 0, prev: prev[g] ?? 0 }))
-      .filter((x) => x.cur > 0 || x.prev > 0)
-      .map((x) => ({ ...x, pct: x.prev > 0 ? Math.round(((x.cur - x.prev) / x.prev) * 100) : null }));
-  }, [sessions, d]);
+    if (!profile) return [];
+    const tg = weeklyTargets(profile, getPrefs(profile));
+    const cur = doneFineVolume(sessions, addDays(d, -6), d, customs);
+    const prev = doneFineVolume(sessions, addDays(d, -13), addDays(d, -7), customs);
+    return VOLUME_MUSCLES.filter((m) => tg[m] > 0).map((m) => ({ m, cur: cur[m], prev: prev[m], target: tg[m] }));
+  }, [sessions, d, profile, customs]);
+  const proposals = useMemo(() => (profile ? weeklyProposals({ profile, plan, sessions, customs }) : []), [profile, plan, sessions, customs]);
+  const [doneProposals, setDoneProposals] = useState<string[]>([]);
   const prs = useMemo(() => progressRows(sessions).filter((r) => r.sessions >= 1).slice(0, 8), [sessions]);
+  // Сила: средний прирост e1RM по упражнениям с 2+ тренировками
+  const strength = useMemo(() => {
+    const rows = progressRows(sessions, [], 60).filter((r) => r.sessions >= 2);
+    return rows.length ? Math.round(rows.reduce((a, r) => a + r.gainPct, 0) / rows.length) : null;
+  }, [sessions]);
 
   const readiness7 = useMemo(() => {
     const vals: number[] = [];
@@ -97,6 +109,26 @@ export default function Progress() {
             {week.loggedDays ? `Белок в норме ${week.proteinDays} из ${week.loggedDays} дней с записями. ` : 'Питание не записывалось. '}
             {week.avgSleep ? `Сон в среднем ${formatHours(week.avgSleep)}.` : ''}
           </T>
+        </Card>
+      ) : null}
+
+      {proposals.filter((p) => !doneProposals.includes(p.id)).length ? (
+        <Card style={{ marginBottom: space.md, gap: 10 }}>
+          <T v="caption">Предложение FORM на неделю</T>
+          {proposals
+            .filter((p) => !doneProposals.includes(p.id))
+            .map((p) => (
+              <View key={p.id} style={{ gap: 6 }}>
+                <T v="body" style={{ fontWeight: '800' }}>
+                  {p.text}
+                </T>
+                <T v="small">{p.why}</T>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Button title="Применить" size="sm" onPress={() => { applyProposal(p); setDoneProposals([...doneProposals, p.id]); }} style={{ flex: 1 }} />
+                  <Button title="Не менять" size="sm" variant="secondary" onPress={() => setDoneProposals([...doneProposals, p.id])} style={{ flex: 1 }} />
+                </View>
+              </View>
+            ))}
         </Card>
       ) : null}
 
@@ -160,31 +192,38 @@ export default function Progress() {
         <Card style={{ flex: 1 }}>
           <Stat label="Выполнение плана" value={adh.pct === null ? '—' : `${adh.pct}%`} color={adh.pct === null ? colors.text : adh.pct >= 85 ? colors.accent : adh.pct >= 65 ? colors.warning : colors.danger} sub={`${adh.workoutsDone}/${adh.workoutsPlanned} трен · 28 дн`} />
           <T v="small" style={{ fontSize: 11, marginTop: 6 }}>
-            Учитывает пропуски и недоделанные подходы
+            {strength !== null ? `Сила: ${strength >= 0 ? '+' : ''}${strength}% e1RM за 60 дн` : 'Учитывает пропуски и недоделанные подходы'}
           </T>
         </Card>
       </View>
 
-      <SectionTitle title="Объём · 14 дней vs прошлые 14" />
-      {volume.length ? (
-        <Card style={{ gap: 10 }}>
-          {volume.map((v) => (
-            <View key={v.g} style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <T v="body" style={{ flex: 1, fontSize: 15 }}>
-                {GROUP_LABEL[v.g]}
-              </T>
-              <T v="small" style={{ width: 80, textAlign: 'right' }}>
-                {Math.round(v.cur)} подх.
-              </T>
-              <T v="body" style={{ width: 64, textAlign: 'right', fontWeight: '800', fontSize: 15 }} color={v.pct === null ? colors.textDim : v.pct >= 0 ? colors.accent : colors.warning}>
-                {v.pct === null ? 'новое' : `${v.pct > 0 ? '+' : ''}${v.pct}%`}
-              </T>
-            </View>
-          ))}
+      <SectionTitle title="Объём за 7 дней · цель" />
+      {volume.some((v) => v.cur > 0 || v.prev > 0) ? (
+        <Card style={{ gap: 8 }}>
+          {volume.map((v) => {
+            const pct = Math.min(1.3, v.cur / Math.max(1, v.target));
+            return (
+              <View key={v.m} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <T v="small" style={{ width: 118, fontSize: 13 }} color={colors.text} numberOfLines={1}>
+                  {VM_LABEL[v.m]}
+                </T>
+                <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.surface3, overflow: 'hidden' }}>
+                  <View style={{ width: `${(pct / 1.3) * 100}%`, height: 8, borderRadius: 4, backgroundColor: pct >= 0.8 ? colors.accent : pct >= 0.5 ? colors.warning : colors.danger }} />
+                  <View style={{ position: 'absolute', left: `${(1 / 1.3) * 100}%`, top: 0, bottom: 0, width: 2, backgroundColor: colors.text, opacity: 0.6 }} />
+                </View>
+                <T v="small" style={{ width: 46, textAlign: 'right', fontSize: 12, fontVariant: ['tabular-nums'] }} color={colors.text}>
+                  {Math.round(v.cur)}/{v.target}
+                </T>
+              </View>
+            );
+          })}
+          <T v="small" style={{ fontSize: 11 }}>
+            Прямые рабочие подходы. Метка — недельная цель; косвенная работа (например, трицепс в жимах) не считается.
+          </T>
         </Card>
       ) : (
         <Card>
-          <T v="small">После первых тренировок здесь появится динамика объёма по мышечным группам.</T>
+          <T v="small">После первых тренировок здесь появится объём по каждой мышечной группе против недельной цели.</T>
         </Card>
       )}
 
@@ -228,4 +267,26 @@ export default function Progress() {
       </Card>
     </Screen>
   );
+}
+
+/** Применение недельного предложения — только по кнопке пользователя */
+function applyProposal(p: WeeklyProposal) {
+  const profile = useProfile.getState().profile;
+  if (!profile) return;
+  if (p.kind === 'days' && p.days) {
+    applyProfile({ ...profile, daysPerWeek: p.days, preferredDays: [] });
+    toast(`План перестроен на ${p.days} дн. в неделю`);
+    return;
+  }
+  const ps = usePlan.getState();
+  if (p.kind === 'replace' && p.fromId && p.toId && ps.plan) {
+    const customs = useWorkouts.getState().customExercises;
+    for (const t of ps.plan.templates) {
+      if (!t.exercises.some((e) => e.exerciseId === p.fromId)) continue;
+      const exercises = t.exercises.map((e) => (e.exerciseId === p.fromId ? { ...e, exerciseId: p.toId!, why: `Замена из-за плато в «${getExercise(p.fromId!, customs)?.name}»` } : e));
+      ps.updateTemplate({ ...t, exercises, estMinutes: estimateMinutes(exercises, customs) });
+    }
+    ps.addAdjustment({ kind: 'volume', summary: `Замена: ${p.text} (плато)`, source: 'user' });
+    toast('Упражнение заменено в плане');
+  }
 }

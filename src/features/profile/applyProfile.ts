@@ -3,12 +3,13 @@ import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useBody } from '@/stores/body';
 import { useCoach } from '@/stores/coach';
+import { useWorkouts } from '@/stores/workouts';
 import { generatePlan } from '@/features/training/planGenerator';
 import { computeNutritionTarget, GOAL_LABEL } from '@/features/nutrition/targets';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { today } from '@/utils/date';
 
-const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays'];
+const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays', 'training'];
 const NUTRITION_KEYS: (keyof UserProfile)[] = ['goal', 'ratePctPerWeek', 'sex', 'age', 'heightCm', 'weightKg', 'stepsPerDay', 'workStyle', 'activity', 'daysPerWeek', 'sessionMinutes'];
 
 /**
@@ -35,7 +36,8 @@ export function applyProfile(next: UserProfile, opts: { force?: boolean } = {}):
   const target = needTarget ? computeNutritionTarget(next, { weightKg: trendW, adjustmentKcal: adj }) : planState.target!;
 
   if (needPlan) {
-    const plan = generatePlan(next);
+    const ws = useWorkouts.getState();
+    const plan = generatePlan(next, { previous: planState.plan, sessions: ws.sessions, customs: ws.customExercises });
     const summary = !prev ? 'Стартовый план создан' : goalChanged ? `Цель изменена: ${GOAL_LABEL[next.goal]} — план и питание пересчитаны` : 'Параметры тренировок изменены — план перестроен';
     planState.setPlan(plan, target, summary, goalChanged ? 'goal_change' : 'user');
     if (prev && needTarget) {

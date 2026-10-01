@@ -24,12 +24,25 @@ const SYSTEM = `Ты — FORM Coach, персональный тренер, ну
 - Про тренировки: учитывай готовность, недавно нагруженные группы, ограничения/травмы из профиля и памяти.
 
 Изменения плана (actions):
-- Если по данным есть смысл изменить сегодняшнюю тренировку или калории — предложи action. Пользователь нажмёт «Применить», и план реально изменится.
-- set_day_mode: mode = reduced (−15%) | light (−30%, +1 RIR) | recovery (−50%, +2 RIR, лёгкие веса) | rest (день отдыха); volumeFactor 0.4–1.0; rirDelta 0–3.
-- swap_today: templateId — id шаблона из списка templates в контексте (или null = отдых сегодня). Используй, чтобы перенести тяжёлую тренировку.
-- adjust_calories: deltaKcal от −300 до +300 (шаг 50). Только если тренд веса за 2+ недели расходится с целью, не по одному взвешиванию.
-- label — короткая подпись кнопки (до 40 символов), reason — одно предложение почему.
-- Не предлагай action без причины. Максимум 2 actions.
+- Ты не меняешь данные сам. Ты ПРЕДЛАГАЕШЬ action; приложение проверяет его по правилам (исключённые упражнения, ограничения, границы чисел) и показывает пользователю кнопки [Применить] [Не менять]. Недопустимое действие будет отклонено — поэтому сразу предлагай только допустимое.
+- Упражнения указывай ТОЛЬКО по id из контекста (раздел «Упражнения сегодня», «План», «Допустимые замены»). Никогда не предлагай упражнения из «Исключено» и движения, запрещённые ограничениями. «Не нравится» — только если нет альтернативы.
+- Числа считает приложение: подходы, объём, вес берутся из контекста. Ты выбираешь направление и объясняешь почему.
+- Поля action: type, label (подпись кнопки до 40 символов), reason (одно предложение почему). Остальные поля указывай только нужные для типа:
+  • set_day_mode: mode = reduced (−15%) | light (−30%, +1 RIR) | recovery (−50%, +2 RIR) | rest; volumeFactor 0.4–1.0; rirDelta 0–3.
+  • swap_today / reschedule_workout: templateId из списка шаблонов (пустая строка = отдых сегодня).
+  • replace_exercise: exerciseId → toExerciseId (та же мышца и движение, доступное оборудование), scope today|plan.
+  • exclude_exercise / favorite_exercise: exerciseId.
+  • change_sets (sets 1–6) / change_rep_range (repMin, repMax) / change_rest_time (restSec 30–300): exerciseId, scope.
+  • change_target_weight: exerciseId, weightKg (не больше ±15% от последнего рабочего веса).
+  • reorder_exercises: order — полный список exerciseId сегодняшней тренировки в новом порядке.
+  • reduce_today_volume (volumeFactor 0.4–0.95) / increase_today_volume (1.05–1.25, только при хорошей готовности).
+  • change_split: split = auto|fullbody|upper_lower|ppl|ul_ppl.
+  • generate_workout: minutes 15–120.
+  • apply_deload: только если несколько сигналов усталости/плато сразу, не из-за одного плохого дня.
+  • adjust_weekly_volume: muscle (chest, lats, upper_back, front_delts, side_delts, rear_delts, biceps, triceps, quads, hamstrings, glutes, calves, abs), deltaSets −6…+6.
+  • adjust_calories: deltaKcal −300…+300 (шаг 50) — только если тренд веса за 2+ недели расходится с целью.
+  • suggest_meal: reason — что именно съесть (информационное).
+- Не предлагай action без причины. Максимум 3 actions. Не повторяй предложения из раздела «Пользователь отказался».
 
 Память (memory):
 - Если пользователь сообщил устойчивую особенность (не любит продукт, предпочитает время тренировок, реакция сустава на упражнение, график, привычки) — добавь её в memory коротко, от третьего лица («Не любит рыбу»). Не дублируй то, что уже есть в памяти. Временные состояния («сегодня устал») в память не пиши.
@@ -39,6 +52,15 @@ const SYSTEM = `Ты — FORM Coach, персональный тренер, ну
 - Если пользователь сообщает боль в груди, потерю сознания, сильную одышку, острую/сильную боль, травму, онемение, симптомы, похожие на неотложное состояние, — НЕ продолжай тренировочную оптимизацию: скажи остановить нагрузку, при острых симптомах — вызвать скорую (103/112), при травме — обратиться к врачу. safety = true. В этом случае можно предложить action set_day_mode rest.
 - Для боли в суставе без острых признаков: исключить болезненные движения, предложить замену, посоветовать специалиста, если боль повторяется.
 - Не поддерживай экстремальные дефициты, обезвоживание, препараты.`;
+
+const ACTION_TYPES = [
+  'set_day_mode', 'swap_today', 'adjust_calories', 'replace_exercise', 'exclude_exercise', 'favorite_exercise', 'change_sets', 'change_rep_range',
+  'change_target_weight', 'change_rest_time', 'reorder_exercises', 'reduce_today_volume', 'increase_today_volume', 'change_split',
+  'reschedule_workout', 'generate_workout', 'apply_deload', 'adjust_weekly_volume', 'suggest_meal',
+];
+// Обязательны только type/label/reason; параметры — опциональные (лимит structured outputs на union-типы)
+const ACTION_FIELDS = ['type', 'label', 'reason'];
+const nullable = (t) => t;
 
 const SCHEMA = {
   type: 'object',
@@ -52,16 +74,29 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['type', 'label', 'mode', 'volumeFactor', 'rirDelta', 'templateId', 'deltaKcal', 'reason'],
+        required: ACTION_FIELDS,
         properties: {
-          type: { type: 'string', enum: ['set_day_mode', 'swap_today', 'adjust_calories'] },
+          type: { type: 'string', enum: ACTION_TYPES },
           label: { type: 'string' },
-          mode: { anyOf: [{ type: 'string', enum: ['reduced', 'light', 'recovery', 'rest'] }, { type: 'null' }] },
-          volumeFactor: { anyOf: [{ type: 'number' }, { type: 'null' }] },
-          rirDelta: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
-          templateId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          deltaKcal: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
           reason: { type: 'string' },
+          mode: nullable({ type: 'string', enum: ['normal', 'reduced', 'light', 'recovery', 'rest'] }),
+          volumeFactor: nullable({ type: 'number' }),
+          rirDelta: nullable({ type: 'integer' }),
+          templateId: nullable({ type: 'string', description: 'id шаблона; пустая строка = отдых' }),
+          deltaKcal: nullable({ type: 'integer' }),
+          exerciseId: nullable({ type: 'string' }),
+          toExerciseId: nullable({ type: 'string' }),
+          scope: nullable({ type: 'string', enum: ['today', 'plan'] }),
+          sets: nullable({ type: 'integer' }),
+          repMin: nullable({ type: 'integer' }),
+          repMax: nullable({ type: 'integer' }),
+          weightKg: nullable({ type: 'number' }),
+          restSec: nullable({ type: 'integer' }),
+          order: nullable({ type: 'array', items: { type: 'string' } }),
+          muscle: nullable({ type: 'string' }),
+          deltaSets: nullable({ type: 'integer' }),
+          split: nullable({ type: 'string', enum: ['auto', 'fullbody', 'upper_lower', 'ppl', 'ul_ppl'] }),
+          minutes: nullable({ type: 'integer' }),
         },
       },
     },
@@ -147,7 +182,7 @@ async function callModel({ history, context, question, summary, memory, mode }) 
   return {
     reply: String(parsed.reply || '').trim(),
     safety: !!parsed.safety,
-    actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 2) : [],
+    actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 3) : [],
     memory: Array.isArray(parsed.memory) ? parsed.memory.slice(0, 5) : [],
   };
 }
