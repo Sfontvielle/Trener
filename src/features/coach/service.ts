@@ -1,4 +1,4 @@
-import type { CoachAction, CoachMessage } from '@/types';
+import type { CoachAction, CoachMessage, PlannedExercise, VolumeMuscle } from '@/types';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
@@ -8,7 +8,13 @@ import { useCheckins } from '@/stores/checkins';
 import { useCoach } from '@/stores/coach';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from '@/features/training/today';
-import { applyCalorieDelta } from '@/features/profile/applyProfile';
+import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
+import { excludeExercise, getPrefs, toggleFavorite, withPrefs } from '@/features/training/engine/prefs';
+import { estimateMinutes } from '@/features/training/engine/time';
+import { makeWorkoutExercise } from '@/features/training/session';
+import { applyDeload } from '@/features/training/deloadActions';
+import { openGenerated } from '@/features/training/actions';
+import { actionKey, applyToExercises, validateAction, validateActions, type ActionContext } from './actions';
 import { askCoach, CoachApiError, coachErrorText, summarizeConversation, type CoachApiAction } from '@/services/coachApi';
 import { buildCoachContext } from './context';
 import { detectSafety, safetyReply } from './safety';
@@ -46,6 +52,8 @@ export function currentContext(): string {
     checkins: s.checkins,
     readiness: s.readiness,
     memory: s.memory,
+    rejected: useCoach.getState().rejected,
+    active: s.ws.active,
   });
 }
 
@@ -68,60 +76,201 @@ export function currentLocalInsights() {
   });
 }
 
-function mapActions(list: CoachApiAction[]): CoachAction[] {
-  const out: CoachAction[] = [];
-  const plan = usePlan.getState().plan;
-  for (const a of list) {
-    if (a.type === 'swap_today' && a.templateId && !plan?.templates.some((t) => t.id === a.templateId)) continue;
-    if (a.type === 'adjust_calories' && (!a.deltaKcal || Math.abs(a.deltaKcal) > 400)) continue;
-    out.push({
-      id: uid('act_'),
-      type: a.type,
-      label: a.label || 'Применить',
-      params: {
-        mode: a.mode ?? undefined,
-        volumeFactor: a.volumeFactor ?? undefined,
-        rirDelta: a.rirDelta ?? undefined,
-        templateId: a.type === 'swap_today' ? a.templateId : undefined,
-        deltaKcal: a.deltaKcal ?? undefined,
-        reason: a.reason,
-      },
-    });
-  }
-  return out;
+/** Контекст для валидации действий: сегодняшние упражнения — из активной тренировки или плана дня */
+export function actionContext(): ActionContext {
+  const s = snapshot();
+  const active = s.ws.active;
+  const todayExercises: PlannedExercise[] = active
+    ? active.exercises.map((we) => ({ exerciseId: we.exerciseId, sets: we.plannedSets, repMin: we.repMin, repMax: we.repMax, targetRir: we.targetRir, restSec: we.restSec }))
+    : s.todayW.template?.exercises ?? [];
+  return { profile: s.profile, plan: s.ps.plan, todayExercises, sessions: s.ws.sessions, customs: s.ws.customExercises, rejected: useCoach.getState().rejected };
 }
 
-const MODE_DEFAULTS = { reduced: [0.85, 0], light: [0.7, 1], recovery: [0.5, 2], rest: [0, 0] } as const;
+const num = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const str = (v: string | null | undefined) => (typeof v === 'string' && v ? v : undefined);
 
-/** Применение предложенного изменения: план реально меняется */
-export function applyCoachAction(messageId: string, action: CoachAction): string {
-  const d = today();
-  const ps = usePlan.getState();
-  const reason = action.params.reason || action.label;
-  if (action.type === 'set_day_mode') {
-    const mode = action.params.mode ?? 'reduced';
-    const def = mode === 'normal' ? [1, 0] : MODE_DEFAULTS[mode as keyof typeof MODE_DEFAULTS];
-    ps.setOverride({
-      date: d,
-      mode,
-      volumeFactor: mode === 'rest' ? undefined : action.params.volumeFactor ?? def[0],
-      rirDelta: action.params.rirDelta ?? def[1],
-      templateId: mode === 'rest' ? null : ps.overrides[d]?.templateId,
-      reason,
-      source: 'coach',
-      createdAt: Date.now(),
-    });
-    ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
-  } else if (action.type === 'swap_today') {
-    ps.setOverride({ date: d, templateId: action.params.templateId ?? null, mode: action.params.templateId ? 'normal' : 'rest', reason, source: 'coach', createdAt: Date.now() });
-    ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
-  } else if (action.type === 'adjust_calories' && action.params.deltaKcal) {
-    applyCalorieDelta(action.params.deltaKcal, reason, 'coach');
-  }
+function mapActions(list: CoachApiAction[]): CoachAction[] {
+  const mapped: CoachAction[] = list.map((a) => ({
+    id: uid('act_'),
+    type: a.type,
+    label: a.label || 'Применить',
+    params: {
+      mode: a.mode ?? undefined,
+      volumeFactor: num(a.volumeFactor),
+      rirDelta: num(a.rirDelta),
+      templateId: a.type === 'swap_today' || a.type === 'reschedule_workout' ? str(a.templateId) ?? null : undefined,
+      deltaKcal: num(a.deltaKcal),
+      reason: a.reason,
+      exerciseId: str(a.exerciseId),
+      toExerciseId: str(a.toExerciseId),
+      scope: a.scope ?? undefined,
+      sets: num(a.sets),
+      repMin: num(a.repMin),
+      repMax: num(a.repMax),
+      weightKg: num(a.weightKg),
+      restSec: num(a.restSec),
+      order: Array.isArray(a.order) ? a.order : undefined,
+      muscle: (str(a.muscle ?? undefined) as VolumeMuscle | undefined) ?? undefined,
+      deltaSets: num(a.deltaSets),
+      split: a.split ?? undefined,
+      minutes: num(a.minutes),
+    },
+  }));
+  // Модель предлагает — приложение проверяет. Недопустимые действия видны, но без кнопки «Применить»
+  return validateActions(mapped, actionContext());
+}
+
+const MODE_DEFAULTS = { reduced: [0.85, 0], light: [0.7, 1], recovery: [0.5, 2], rest: [0, 0], deload: [0.6, 3] } as const;
+
+function markAction(messageId: string, actionId: string, patch: Partial<CoachAction>) {
   const coach = useCoach.getState();
   const msg = coach.messages.find((m) => m.id === messageId);
-  if (msg?.actions) coach.patchMessage(messageId, { actions: msg.actions.map((a) => (a.id === action.id ? { ...a, applied: true } : a)) });
-  return reason;
+  if (msg?.actions) coach.patchMessage(messageId, { actions: msg.actions.map((a) => (a.id === actionId ? { ...a, ...patch } : a)) });
+}
+
+/** «Не менять» / «Больше не предлагать эту замену» */
+export function declineCoachAction(messageId: string, action: CoachAction, forever = false) {
+  if (forever) useCoach.getState().addRejected(actionKey(action));
+  markAction(messageId, action.id, { declined: true });
+}
+
+/** Изменение состава тренировки: в активной сессии — сразу, иначе — только на сегодня (override) или в шаблонах плана */
+function applyExerciseChange(action: CoachAction) {
+  const p = action.params;
+  const d = today();
+  const ws = useWorkouts.getState();
+  const ps = usePlan.getState();
+  const active = ws.active;
+  if (p.scope !== 'plan' && active && (action.type === 'reorder_exercises' || active.exercises.some((we) => we.exerciseId === p.exerciseId))) {
+    const ctx = { sessions: ws.sessions, customs: ws.customExercises, volumeFactor: 1, rirDelta: 0 };
+    ws.patchActive((s) => {
+      if (action.type === 'reorder_exercises') {
+        const rest = [...s.exercises];
+        const order = (p.order ?? []).map((id) => rest.splice(rest.findIndex((x) => x.exerciseId === id), 1)[0]).filter(Boolean);
+        return { ...s, exercises: [...order, ...rest] };
+      }
+      return {
+        ...s,
+        exercises: s.exercises.map((we) => {
+          if (we.exerciseId !== p.exerciseId) return we;
+          const pe: PlannedExercise = { exerciseId: we.exerciseId, sets: we.plannedSets, repMin: we.repMin, repMax: we.repMax, targetRir: we.targetRir, restSec: we.restSec };
+          const next = applyToExercises([pe], action)[0];
+          // Сделанные подходы сохраняются; меняются только будущие
+          if (action.type === 'replace_exercise') return makeWorkoutExercise(next, ctx) ?? we;
+          const doneSets = we.sets.filter((x) => x.done);
+          let sets = we.sets;
+          if (action.type === 'change_sets') {
+            const todo = we.sets.filter((x) => !x.done);
+            const need = Math.max(0, next.sets - doneSets.length);
+            const tmpl = todo[0] ?? we.sets[we.sets.length - 1];
+            sets = [...doneSets, ...todo.slice(0, need), ...Array.from({ length: Math.max(0, need - todo.length) }, () => ({ id: uid('s_'), weight: tmpl?.weight ?? 0, reps: tmpl?.reps ?? next.repMin, done: false }))];
+          }
+          if (action.type === 'change_target_weight' && p.weightKg !== undefined) sets = sets.map((x) => (x.done ? x : { ...x, weight: p.weightKg! }));
+          return { ...we, plannedSets: next.sets, repMin: next.repMin, repMax: next.repMax, restSec: next.restSec, sets };
+        }),
+      };
+    });
+    return;
+  }
+  if (p.scope === 'plan' && ps.plan) {
+    for (const t of ps.plan.templates) {
+      if (!t.exercises.some((x) => x.exerciseId === p.exerciseId)) continue;
+      const exercises = applyToExercises(t.exercises, action);
+      ps.updateTemplate({ ...t, exercises, estMinutes: estimateMinutes(exercises, ws.customExercises) });
+    }
+    ps.addAdjustment({ kind: 'volume', summary: `План: ${action.label}`, source: 'coach' });
+    return;
+  }
+  const readiness = readinessFor(d, useCheckins.getState().byDate, ws.sessions);
+  const tw = resolveToday({ date: d, plan: ps.plan, sessions: ws.sessions, override: ps.overrides[d], readiness });
+  if (!tw.template) return;
+  const cur = ps.overrides[d];
+  ps.setOverride({ ...(cur ?? { date: d, source: 'coach' as const, createdAt: Date.now() }), date: d, templateId: tw.template.id, exercises: applyToExercises(tw.template.exercises, action), reason: action.params.reason || action.label, source: 'coach' });
+  ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
+}
+
+/**
+ * Применение подтверждённого пользователем действия. Перед применением — повторная валидация:
+ * за время между ответом и нажатием состояние могло измениться (упражнение исключено, тренировка завершена).
+ */
+export function applyCoachAction(messageId: string, action: CoachAction): { ok: boolean; message: string } {
+  const v = validateAction(action, actionContext());
+  if (!v.ok) {
+    markAction(messageId, action.id, { invalid: v.reason });
+    return { ok: false, message: `Не применено: ${v.reason}` };
+  }
+  const d = today();
+  const ps = usePlan.getState();
+  const p = action.params;
+  const reason = p.reason || action.label;
+  const profile = useProfile.getState().profile!;
+  let message = 'План изменён';
+  switch (action.type) {
+    case 'set_day_mode': {
+      const mode = p.mode ?? 'reduced';
+      const def = mode === 'normal' ? [1, 0] : MODE_DEFAULTS[mode as keyof typeof MODE_DEFAULTS];
+      ps.setOverride({ ...ps.overrides[d], date: d, mode, volumeFactor: mode === 'rest' ? undefined : p.volumeFactor ?? def[0], rirDelta: p.rirDelta ?? def[1], templateId: mode === 'rest' ? null : ps.overrides[d]?.templateId, reason, source: 'coach', createdAt: Date.now() });
+      ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
+      break;
+    }
+    case 'swap_today':
+    case 'reschedule_workout':
+      ps.setOverride({ date: d, templateId: p.templateId ?? null, mode: p.templateId ? 'normal' : 'rest', reason, source: 'coach', createdAt: Date.now() });
+      ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
+      break;
+    case 'reduce_today_volume':
+    case 'increase_today_volume': {
+      const vf = p.volumeFactor ?? (action.type === 'reduce_today_volume' ? 0.85 : 1.1);
+      ps.setOverride({ ...ps.overrides[d], date: d, mode: vf < 1 ? 'reduced' : 'normal', volumeFactor: vf, rirDelta: p.rirDelta ?? 0, reason, source: 'coach', createdAt: Date.now() });
+      ps.addAdjustment({ kind: 'day_override', summary: `Сегодня: ${action.label}`, source: 'coach' });
+      break;
+    }
+    case 'adjust_calories':
+      applyCalorieDelta(p.deltaKcal!, reason, 'coach');
+      message = 'Калории изменены';
+      break;
+    case 'replace_exercise':
+    case 'change_sets':
+    case 'change_rep_range':
+    case 'change_rest_time':
+    case 'change_target_weight':
+    case 'reorder_exercises':
+      applyExerciseChange(action);
+      message = 'Тренировка изменена';
+      break;
+    case 'exclude_exercise':
+      applyProfile(excludeExercise(profile, p.exerciseId!, 'user', { note: reason }));
+      message = 'Упражнение исключено, план обновлён';
+      break;
+    case 'favorite_exercise':
+      if (!getPrefs(profile).preferredExercises.includes(p.exerciseId!)) applyProfile(toggleFavorite(profile, p.exerciseId!));
+      message = 'Добавлено в избранное';
+      break;
+    case 'change_split':
+      applyProfile(withPrefs(profile, { preferredSplit: p.split! }));
+      message = 'Сплит изменён, план перестроен';
+      break;
+    case 'adjust_weekly_volume': {
+      const prefs = getPrefs(profile);
+      const cur = prefs.volumeAdjust[p.muscle!] ?? 0;
+      applyProfile(withPrefs(profile, { volumeAdjust: { ...prefs.volumeAdjust, [p.muscle!]: cur + p.deltaSets! } }));
+      message = 'Недельный объём изменён';
+      break;
+    }
+    case 'apply_deload':
+      applyDeload();
+      message = 'Разгрузочная неделя запланирована';
+      break;
+    case 'generate_workout':
+      openGenerated(p.minutes ?? profile.sessionMinutes, 'auto');
+      message = 'Тренировка сгенерирована';
+      break;
+    case 'suggest_meal':
+      message = 'Ок';
+      break;
+  }
+  markAction(messageId, action.id, { applied: true });
+  return { ok: true, message };
 }
 
 const HISTORY_WINDOW = 16;
@@ -167,7 +316,7 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     const off = offlineAnswer({ question: text, profile: s.profile, target: s.ps.target, entries: s.nut.entries, recentProducts, todayW: s.todayW, readiness: s.readiness, insights: currentLocalInsights() });
     const note = coachErrorText(e);
     const rateLimited = e instanceof CoachApiError && e.kind === 'rate_limited';
-    return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? note : `${note}\n\n${off.text}`, actions: off.actions, offline: true });
+    return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? note : `${note}\n\n${off.text}`, actions: validateActions(off.actions, actionContext()), offline: true });
   }
 }
 

@@ -3,9 +3,8 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, EmptyState, Icon, SectionTitle, T } from '@/components/ui';
+import { Banner, Button, Card, EmptyState, Icon, SectionTitle, T } from '@/components/ui';
 import { confirm, toast } from '@/components/Dialog';
-import { applyProfile } from '@/features/profile/applyProfile';
 import { getExercise, CATEGORY_LABEL, EQUIPMENT_LABEL } from '@/data/exercises';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
@@ -13,6 +12,9 @@ import { ExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { Anatomy } from '@/features/exercises/Anatomy';
 import { e1rm, historyFor } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { checkAllowed } from '@/features/training/engine/scoring';
+import { prefDislike, prefExclude, prefFavorite, prefInclude } from '@/features/training/prefActions';
 import { formatDayShort } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 
@@ -112,25 +114,7 @@ export default function ExerciseScreen() {
         <T v="small">Ты ещё не выполнял это упражнение.</T>
       )}
 
-      {profile && !ex.custom ? (
-        <Button
-          title={profile.avoidExerciseIds.includes(ex.id) ? 'Вернуть в мои планы' : 'Не использовать в моих планах'}
-          icon={profile.avoidExerciseIds.includes(ex.id) ? 'refresh' : 'ban-outline'}
-          variant="outline"
-          size="sm"
-          style={{ marginTop: space.lg }}
-          onPress={() => {
-            const avoided = profile.avoidExerciseIds.includes(ex.id);
-            const next = avoided ? profile.avoidExerciseIds.filter((x) => x !== ex.id) : [...profile.avoidExerciseIds, ex.id];
-            const run = () => {
-              applyProfile({ ...profile, avoidExerciseIds: next });
-              toast(avoided ? 'Упражнение снова доступно, план перестроен' : 'Исключено — план перестроен с заменой');
-            };
-            if (avoided) run();
-            else confirm('Исключить упражнение?', 'FORM перестроит план и подберёт замену. Например, если движение вызывает дискомфорт.', 'Исключить', run);
-          }}
-        />
-      ) : null}
+      {profile ? <ExercisePrefButtons id={ex.id} /> : null}
 
       {alts.length ? (
         <>
@@ -148,5 +132,33 @@ export default function ExerciseScreen() {
         </>
       ) : null}
     </Screen>
+  );
+}
+
+/** Избранное / Не нравится / Не предлагать — сразу перестраивают план */
+function ExercisePrefButtons({ id }: { id: string }) {
+  const profile = useProfile((s) => s.profile);
+  if (!profile) return null;
+  const t = getPrefs(profile);
+  const excluded = t.excluded.find((e) => e.exerciseId === id);
+  const fav = t.preferredExercises.includes(id);
+  const dis = t.dislikedExercises.includes(id);
+  const blocked = getExercise(id) ? checkAllowed(getExercise(id)!, profile, t) : { ok: true as const };
+  return (
+    <View style={{ gap: 8, marginTop: space.lg }}>
+      {!blocked.ok && !excluded ? <Banner tone="warning" icon="shield-checkmark-outline" text={`Не попадает в план: ${blocked.reason}`} /> : null}
+      {excluded ? <Banner tone="warning" icon="ban-outline" text={excluded.reason === 'discomfort' ? 'Исключено из-за дискомфорта — не назначается автоматически.' : 'В списке «Не предлагать».'} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Button title={fav ? 'В избранном' : 'В избранное'} icon={fav ? 'star' : 'star-outline'} size="sm" variant={fav ? 'primary' : 'secondary'} style={{ flex: 1 }} onPress={() => toast(prefFavorite(id))} />
+        <Button title={dis ? 'Не нравится ✓' : 'Не нравится'} icon="thumbs-down-outline" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => toast(prefDislike(id))} />
+      </View>
+      <Button
+        title={excluded ? 'Вернуть в мои планы' : 'Не предлагать больше'}
+        icon={excluded ? 'refresh' : 'ban-outline'}
+        variant="outline"
+        size="sm"
+        onPress={() => (excluded ? toast(prefInclude(id)) : confirm('Не предлагать упражнение?', 'FORM перестроит план и подберёт замену. Вернуть можно здесь или в Профиль → Предпочтения.', 'Не предлагать', () => toast(prefExclude(id))))}
+      />
+    </View>
   );
 }

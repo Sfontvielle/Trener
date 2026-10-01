@@ -1,4 +1,8 @@
-import type { DailyCheckIn, FoodEntry, ISODate, NutritionTarget, WeightEntry, WorkoutPlan, WorkoutSession } from '@/types';
+import type { DailyCheckIn, Exercise, FoodEntry, ISODate, NutritionTarget, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession } from '@/types';
+import { getExercise } from '@/data/exercises';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { progressStatus } from '@/features/training/engine/scoring';
+import { substitutesFor } from '@/features/training/engine/substitute';
 import { addDays, startOfWeek, today, weekdayIndex } from '@/utils/date';
 import { sessionVolume } from '@/features/training/analytics';
 import { weightTrend } from './weightTrend';
@@ -64,4 +68,52 @@ export function lastWeekSummary(args: {
   if (days.length && args.target) parts.push(`белок в норме ${proteinDays}/${days.length} дн.`);
   if (weightDelta !== null) parts.push(`вес ${weightDelta >= 0 ? '+' : ''}${weightDelta.toFixed(1)} кг`);
   return { from, to, workouts: done.length, planned, sets, loggedDays: days.length, avgKcal, proteinDays, weightDelta, avgSleep, headline: parts.join(' · ') };
+}
+
+export interface WeeklyProposal {
+  id: string;
+  kind: 'days' | 'replace';
+  text: string;
+  why: string;
+  days?: number;
+  fromId?: string;
+  toId?: string;
+}
+
+/**
+ * Предложения недельного обзора (применяются только по кнопке пользователя):
+ *  • фактическая частота стабильно ниже плана → план под реальное число дней (чтобы группы не выпадали);
+ *  • плато в упражнении плана 3+ тренировки → замена близким аналогом (той же мышцы и движения).
+ */
+export function weeklyProposals(args: { profile: UserProfile; plan: WorkoutPlan | null; sessions: WorkoutSession[]; customs?: Exercise[]; ref?: ISODate }): WeeklyProposal[] {
+  const { profile, plan, sessions } = args;
+  if (!plan) return [];
+  const ref = args.ref ?? today();
+  const out: WeeklyProposal[] = [];
+  const weekStart = startOfWeek(ref);
+  const first = sessions.filter((s) => s.status === 'completed').map((s) => s.date).sort()[0];
+  if (first && first <= addDays(weekStart, -21)) {
+    const perWeek = [1, 2, 3].map((w) => sessions.filter((s) => s.status === 'completed' && s.date >= addDays(weekStart, -7 * w) && s.date < addDays(weekStart, -7 * (w - 1))).length);
+    const avg = perWeek.reduce((a, b) => a + b, 0) / 3;
+    const n = Math.max(2, Math.round(avg));
+    if (perWeek.every((x) => x < profile.daysPerWeek) && n < profile.daysPerWeek) {
+      out.push({ id: `days-${n}`, kind: 'days', days: n, text: `План на ${n} ${n <= 4 ? 'дня' : 'дней'} в неделю вместо ${profile.daysPerWeek}`, why: `3 недели подряд выходило ${perWeek.reverse().join(' / ')} тренировки — при плане на ${profile.daysPerWeek} часть мышц выпадает. План под реальную частоту сохранит объём на каждую группу.` });
+    }
+  }
+  const prefs = getPrefs(profile);
+  const seen = new Set<string>();
+  for (const t of plan.templates) {
+    for (const pe of t.exercises) {
+      if (seen.has(pe.exerciseId)) continue;
+      seen.add(pe.exerciseId);
+      const st = progressStatus(pe.exerciseId, sessions);
+      if (st.status !== 'plateau') continue;
+      const sub = substitutesFor(pe.exerciseId, profile, prefs, args.customs ?? [], 1)[0];
+      const ex = getExercise(pe.exerciseId, args.customs ?? []);
+      if (!sub || !ex) continue;
+      out.push({ id: `replace-${pe.exerciseId}-${sub.id}`, kind: 'replace', fromId: pe.exerciseId, toId: sub.id, text: `«${ex.name}» → «${sub.name}»`, why: `${st.sessions} тренировок без прироста в «${ex.name}». Новый стимул той же мышцы и движения обычно сдвигает плато; рабочие веса подберутся за 1–2 тренировки.` });
+      if (out.filter((x) => x.kind === 'replace').length >= 2) break;
+    }
+  }
+  return out;
 }

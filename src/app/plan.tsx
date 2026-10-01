@@ -9,7 +9,7 @@ import { usePlan } from '@/stores/plan';
 import { useProfile } from '@/stores/profile';
 import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
-import { PlanOverview } from '@/features/profile/PlanSummary';
+import { PlanOverview, PlanWhy } from '@/features/profile/PlanSummary';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { GOAL_LABEL } from '@/features/nutrition/targets';
@@ -46,6 +46,9 @@ export default function PlanScreen() {
         </Card>
       ) : null}
       <PlanOverview plan={plan} target={target} />
+      <View style={{ marginTop: space.md }}>
+        <PlanWhy plan={plan} onChange={() => router.push('/training-prefs')} />
+      </View>
 
       {review ? (
         <>

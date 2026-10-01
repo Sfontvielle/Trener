@@ -5,174 +5,123 @@ import type {
   MuscleGroup,
   PlannedExercise,
   SplitType,
+  TrainingPreferences,
   UserProfile,
+  VolumeMuscle,
   WorkoutPlan,
+  WorkoutSession,
   WorkoutTemplate,
 } from '@/types';
-import { EXERCISES, GROUP_LABEL, getExercise, secondsPerSet } from '@/data/exercises';
+import { EXERCISES, GROUP_LABEL, getExercise } from '@/data/exercises';
 import { uid } from '@/utils/id';
+import { getPrefs } from './engine/prefs';
+import { checkAllowed, hasEquipment, pickForSlot, type SelectionContext, type SlotRole, type SlotSpec } from './engine/scoring';
+import { chooseSplit, SPLIT_LABEL } from './engine/split';
+import { baseWeeklySets, plannedFineVolume, setLimits, weeklyTargets } from './engine/volume';
+import { fineTargets, isSmallMuscle, VM_ACC, VM_LABEL, VOLUME_MUSCLES } from './engine/muscles';
+import { orderExercises } from './engine/order';
+import { estimateMinutes } from './engine/time';
+import { substitutesFor } from './engine/substitute';
+
+export { estimateMinutes };
 
 /**
- * Генерация стартового плана: сплит, расписание, упражнения, подходы, диапазоны повторений.
- * Слот — «место» в тренировке с приоритетным списком упражнений; выбирается первое,
- * которое доступно по оборудованию/месту и не в списке исключений пользователя.
+ * Генератор плана.
+ *  1) сплит: выбор пользователя или авто (дни, уровень, цель, время, приоритеты, фактическая частота);
+ *  2) дни сплита состоят из слотов «мышца + тип движения + роль»;
+ *  3) упражнение для слота — лучший по скорингу среди ДОПУСТИМЫХ (исключения и ограничения фильтруются
+ *     полностью), с приоритетом преемственности: упражнение с прогрессом не меняется без причины;
+ *  4) подходы распределяются от НЕДЕЛЬНОЙ цели по каждой детальной группе, с учётом стиля (2/3/авто);
+ *  5) тренировка подгоняется под время, упражнения сортируются (базовые → изоляция → мелкие);
+ *  6) каждое решение сопровождается объяснением («Почему?»).
  */
 
-type Role = 'main' | 'secondary' | 'accessory';
-interface Slot {
-  candidates: string[];
-  role: Role;
-  sets: number;
-}
-
-const S = (role: Role, sets: number, ...candidates: string[]): Slot => ({ role, sets, candidates });
-
-// Кандидаты по паттернам движения (от «лучшего» к альтернативам)
-const C = {
-  hPushMain: ['bench_press', 'db_bench_press', 'smith_bench_press', 'machine_chest_press', 'push_up'],
-  hPushSec: ['incline_db_press', 'incline_bench_press', 'machine_chest_press', 'db_bench_press', 'decline_push_up', 'push_up'],
-  vPush: ['ohp', 'seated_db_press', 'machine_shoulder_press', 'arnold_press', 'pike_push_up'],
-  vPushSec: ['seated_db_press', 'machine_shoulder_press', 'arnold_press', 'pike_push_up'],
-  fly: ['cable_crossover', 'pec_deck', 'db_fly', 'incline_db_fly', 'push_up'],
-  lateral: ['lateral_raise', 'cable_lateral_raise', 'band_pull_apart'],
-  rear: ['face_pull', 'reverse_pec_deck', 'rear_delt_fly', 'band_pull_apart'],
-  vPull: ['pull_up', 'lat_pulldown', 'chin_up', 'assisted_pull_up', 'inverted_row'],
-  vPullSec: ['lat_pulldown', 'close_grip_pulldown', 'chin_up', 'assisted_pull_up', 'pull_up', 'inverted_row'],
-  hPull: ['barbell_row', 'tbar_row', 'seated_cable_row', 'db_row', 'chest_supported_row', 'inverted_row'],
-  hPullSec: ['seated_cable_row', 'chest_supported_row', 'db_row', 'machine_row', 'inverted_row'],
-  curl: ['ez_curl', 'barbell_curl', 'db_curl', 'cable_curl', 'band_curl'],
-  curlSec: ['incline_db_curl', 'hammer_curl', 'cable_curl', 'db_curl', 'band_curl'],
-  tri: ['rope_pushdown', 'triceps_pushdown', 'skullcrusher', 'db_overhead_ext', 'bench_dip', 'diamond_push_up'],
-  triSec: ['overhead_cable_ext', 'db_overhead_ext', 'skullcrusher', 'db_kickback', 'diamond_push_up'],
-  squat: ['back_squat', 'hack_squat', 'leg_press', 'smith_squat', 'goblet_squat', 'bulgarian_split_squat', 'bodyweight_squat'],
-  squatSec: ['leg_press', 'hack_squat', 'front_squat', 'goblet_squat', 'bulgarian_split_squat', 'bodyweight_squat'],
-  lunge: ['bulgarian_split_squat', 'walking_lunge', 'step_up', 'bodyweight_lunge'],
-  hinge: ['romanian_deadlift', 'db_rdl', 'good_morning', 'kb_swing', 'single_leg_bridge'],
-  hingeMain: ['deadlift', 'trap_bar_deadlift', 'romanian_deadlift', 'db_rdl', 'kb_swing'],
-  legCurl: ['lying_leg_curl', 'seated_leg_curl', 'nordic_curl', 'db_rdl'],
-  legExt: ['leg_extension', 'bodyweight_lunge'],
-  glute: ['hip_thrust', 'cable_kickback', 'glute_bridge', 'single_leg_bridge'],
-  calf: ['standing_calf_raise', 'seated_calf_raise', 'leg_press_calf', 'db_calf_raise'],
-  core: ['cable_crunch', 'hanging_leg_raise', 'ab_wheel', 'plank', 'dead_bug', 'crunch'],
-  coreSec: ['pallof_press', 'plank', 'side_plank', 'reverse_crunch', 'dead_bug'],
+export const LEVEL_LABEL: Record<UserProfile['level'], string> = {
+  beginner: 'новичок',
+  intermediate: 'средний',
+  advanced: 'продвинутый',
 };
 
-interface TemplateDef {
-  key: string;
+const s = (key: string, muscle: VolumeMuscle, role: SlotRole, patterns: SlotSpec['patterns'], fallback?: SlotSpec['fallback']): SlotSpec => ({ key, muscle, role, patterns, fallback });
+const OHP_FALLBACK: SlotSpec['fallback'] = { muscle: 'chest', patterns: ['h_push'] };
+
+export interface DayDef {
   name: string;
   focus: string;
   muscles: MuscleGroup[];
-  slots: Slot[];
+  slots: SlotSpec[];
 }
 
-const T: Record<string, TemplateDef> = {
-  fbA: { key: 'fbA', name: 'Full Body A', focus: 'Ноги · грудь · спина', muscles: ['quads', 'chest', 'back', 'shoulders', 'abs'], slots: [S('main', 3, ...C.squat), S('main', 3, ...C.hPushMain), S('secondary', 3, ...C.hPull), S('accessory', 2, ...C.lateral), S('accessory', 2, ...C.curl), S('accessory', 2, ...C.core)] },
-  fbB: { key: 'fbB', name: 'Full Body B', focus: 'Тяга · плечи · спина', muscles: ['hamstrings', 'glutes', 'shoulders', 'back', 'triceps'], slots: [S('main', 3, ...C.hingeMain), S('main', 3, ...C.vPush), S('secondary', 3, ...C.vPull), S('accessory', 2, ...C.lunge), S('accessory', 2, ...C.tri), S('accessory', 2, ...C.calf)] },
-  fbC: { key: 'fbC', name: 'Full Body C', focus: 'Ноги · грудь · руки', muscles: ['quads', 'chest', 'back', 'biceps', 'triceps'], slots: [S('main', 3, ...C.squatSec), S('secondary', 3, ...C.hPushSec), S('secondary', 3, ...C.hPullSec), S('accessory', 2, ...C.legCurl), S('accessory', 2, ...C.rear), S('accessory', 2, ...C.coreSec)] },
-  upA: { key: 'upA', name: 'Upper A', focus: 'Грудь · спина · плечи · руки', muscles: ['chest', 'back', 'shoulders', 'biceps', 'triceps'], slots: [S('main', 4, ...C.hPushMain), S('main', 4, ...C.hPull), S('secondary', 3, ...C.vPushSec), S('secondary', 3, ...C.vPullSec), S('accessory', 3, ...C.lateral), S('accessory', 2, ...C.curl), S('accessory', 2, ...C.tri)] },
-  loA: { key: 'loA', name: 'Lower A', focus: 'Квадрицепс · ягодицы · икры', muscles: ['quads', 'glutes', 'hamstrings', 'calves', 'abs'], slots: [S('main', 4, ...C.squat), S('secondary', 3, ...C.hinge), S('secondary', 3, ...C.lunge), S('accessory', 3, ...C.legExt), S('accessory', 3, ...C.calf), S('accessory', 2, ...C.core)] },
-  upB: { key: 'upB', name: 'Upper B', focus: 'Спина · плечи · грудь · руки', muscles: ['back', 'shoulders', 'chest', 'biceps', 'triceps'], slots: [S('main', 4, ...C.vPull), S('main', 3, ...C.vPush), S('secondary', 3, ...C.hPushSec), S('secondary', 3, ...C.hPullSec), S('accessory', 3, ...C.rear), S('accessory', 2, ...C.curlSec), S('accessory', 2, ...C.triSec)] },
-  loB: { key: 'loB', name: 'Lower B', focus: 'Бицепс бедра · ягодицы · квадрицепс', muscles: ['hamstrings', 'glutes', 'quads', 'calves', 'abs'], slots: [S('main', 4, ...C.hingeMain), S('secondary', 3, ...C.squatSec), S('secondary', 3, ...C.glute), S('accessory', 3, ...C.legCurl), S('accessory', 3, ...C.calf), S('accessory', 2, ...C.coreSec)] },
-  push: { key: 'push', name: 'Push', focus: 'Грудь · плечи · трицепс', muscles: ['chest', 'shoulders', 'triceps'], slots: [S('main', 4, ...C.hPushMain), S('secondary', 3, ...C.vPushSec), S('secondary', 3, ...C.hPushSec), S('accessory', 3, ...C.lateral), S('accessory', 3, ...C.tri), S('accessory', 2, ...C.triSec)] },
-  pull: { key: 'pull', name: 'Pull', focus: 'Спина · задняя дельта · бицепс', muscles: ['back', 'biceps', 'shoulders'], slots: [S('main', 4, ...C.vPull), S('main', 3, ...C.hPull), S('secondary', 3, ...C.hPullSec), S('accessory', 3, ...C.rear), S('accessory', 3, ...C.curl), S('accessory', 2, ...C.curlSec)] },
-  legs: { key: 'legs', name: 'Legs', focus: 'Квадрицепс · бицепс бедра · ягодицы', muscles: ['quads', 'hamstrings', 'glutes', 'calves'], slots: [S('main', 4, ...C.squat), S('secondary', 3, ...C.hinge), S('secondary', 3, ...C.squatSec), S('accessory', 3, ...C.legCurl), S('accessory', 3, ...C.calf), S('accessory', 2, ...C.core)] },
-  pushB: { key: 'pushB', name: 'Push B', focus: 'Плечи · грудь · трицепс', muscles: ['shoulders', 'chest', 'triceps'], slots: [S('main', 4, ...C.vPush), S('secondary', 3, ...C.hPushSec), S('accessory', 3, ...C.fly), S('accessory', 3, ...C.lateral), S('accessory', 3, ...C.triSec)] },
-  pullB: { key: 'pullB', name: 'Pull B', focus: 'Спина · бицепс · задняя дельта', muscles: ['back', 'biceps', 'shoulders'], slots: [S('main', 4, ...C.hPull), S('secondary', 3, ...C.vPullSec), S('accessory', 3, ...C.rear), S('accessory', 3, ...C.curlSec), S('accessory', 2, ...C.curl)] },
-  legsB: { key: 'legsB', name: 'Legs B', focus: 'Задняя поверхность · ягодицы · квадрицепс', muscles: ['hamstrings', 'glutes', 'quads', 'calves'], slots: [S('main', 4, ...C.hingeMain), S('secondary', 3, ...C.lunge), S('secondary', 3, ...C.glute), S('accessory', 3, ...C.legExt), S('accessory', 3, ...C.calf), S('accessory', 2, ...C.coreSec)] },
+export const DAYS: Record<string, DayDef> = {
+  upA: { name: 'Upper A', focus: 'Грудь · спина · плечи · руки', muscles: ['chest', 'back', 'shoulders', 'biceps', 'triceps'], slots: [s('press', 'chest', 'main', ['h_push']), s('row', 'upper_back', 'main', ['h_pull']), s('vpull', 'lats', 'secondary', ['v_pull']), s('press2', 'chest', 'secondary', ['h_push', 'fly']), s('lat', 'side_delts', 'accessory', ['lateral']), s('tri', 'triceps', 'accessory', ['tri_ext']), s('bi', 'biceps', 'accessory', ['curl'])] },
+  upB: { name: 'Upper B', focus: 'Спина · плечи · грудь · руки', muscles: ['back', 'shoulders', 'chest', 'biceps', 'triceps'], slots: [s('vpull', 'lats', 'main', ['v_pull']), s('ohp', 'front_delts', 'main', ['v_push'], OHP_FALLBACK), s('press', 'chest', 'secondary', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('lat', 'side_delts', 'accessory', ['lateral']), s('bi', 'biceps', 'accessory', ['curl']), s('tri', 'triceps', 'accessory', ['tri_ext'])] },
+  loA: { name: 'Lower A', focus: 'Квадрицепс · ягодицы · икры', muscles: ['quads', 'glutes', 'hamstrings', 'calves', 'abs'], slots: [s('squat', 'quads', 'main', ['squat']), s('hinge', 'hamstrings', 'secondary', ['hinge']), s('lunge', 'quads', 'secondary', ['lunge', 'squat']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('glute', 'glutes', 'accessory', ['glute']), s('calf', 'calves', 'accessory', ['calf']), s('abs', 'abs', 'accessory', ['core'])] },
+  loB: { name: 'Lower B', focus: 'Бицепс бедра · ягодицы · квадрицепс', muscles: ['hamstrings', 'glutes', 'quads', 'calves', 'abs'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('squat', 'quads', 'secondary', ['squat']), s('glute', 'glutes', 'secondary', ['glute', 'lunge']), s('ext', 'quads', 'accessory', ['leg_ext']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('calf', 'calves', 'accessory', ['calf']), s('abs', 'abs', 'accessory', ['core'])] },
+  push: { name: 'Push', focus: 'Грудь · плечи · трицепс', muscles: ['chest', 'shoulders', 'triceps'], slots: [s('press', 'chest', 'main', ['h_push']), s('ohp', 'front_delts', 'secondary', ['v_push'], OHP_FALLBACK), s('press2', 'chest', 'secondary', ['h_push']), s('fly', 'chest', 'accessory', ['fly']), s('lat', 'side_delts', 'accessory', ['lateral']), s('tri', 'triceps', 'accessory', ['tri_ext'])] },
+  pull: { name: 'Pull', focus: 'Спина · задняя дельта · бицепс', muscles: ['back', 'biceps', 'shoulders'], slots: [s('vpull', 'lats', 'main', ['v_pull']), s('row', 'upper_back', 'main', ['h_pull']), s('vpull2', 'lats', 'secondary', ['v_pull', 'h_pull']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('bi', 'biceps', 'accessory', ['curl']), s('bi2', 'biceps', 'accessory', ['curl'])] },
+  legs: { name: 'Legs', focus: 'Квадрицепс · бицепс бедра · ягодицы', muscles: ['quads', 'hamstrings', 'glutes', 'calves'], slots: [s('squat', 'quads', 'main', ['squat']), s('hinge', 'hamstrings', 'secondary', ['hinge']), s('squat2', 'quads', 'secondary', ['squat', 'lunge']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('glute', 'glutes', 'accessory', ['glute']), s('calf', 'calves', 'accessory', ['calf']), s('abs', 'abs', 'accessory', ['core'])] },
+  pushB: { name: 'Push B', focus: 'Плечи · грудь · трицепс', muscles: ['shoulders', 'chest', 'triceps'], slots: [s('ohp', 'front_delts', 'main', ['v_push'], OHP_FALLBACK), s('press', 'chest', 'secondary', ['h_push']), s('fly', 'chest', 'accessory', ['fly']), s('lat', 'side_delts', 'accessory', ['lateral']), s('tri', 'triceps', 'accessory', ['tri_ext'])] },
+  pullB: { name: 'Pull B', focus: 'Спина · бицепс · задняя дельта', muscles: ['back', 'biceps', 'shoulders'], slots: [s('row', 'upper_back', 'main', ['h_pull']), s('vpull', 'lats', 'secondary', ['v_pull']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('bi', 'biceps', 'accessory', ['curl'])] },
+  legsB: { name: 'Legs B', focus: 'Задняя поверхность · ягодицы · квадрицепс', muscles: ['hamstrings', 'glutes', 'quads', 'calves'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('lunge', 'quads', 'secondary', ['lunge', 'squat']), s('glute', 'glutes', 'secondary', ['glute']), s('ext', 'quads', 'accessory', ['leg_ext']), s('calf', 'calves', 'accessory', ['calf']), s('abs', 'abs', 'accessory', ['core'])] },
+  fbA: { name: 'Full Body A', focus: 'Ноги · грудь · спина', muscles: ['quads', 'chest', 'back', 'shoulders', 'abs'], slots: [s('squat', 'quads', 'main', ['squat']), s('press', 'chest', 'main', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull']), s('lat', 'side_delts', 'accessory', ['lateral']), s('bi', 'biceps', 'accessory', ['curl']), s('abs', 'abs', 'accessory', ['core'])] },
+  fbB: { name: 'Full Body B', focus: 'Тяга · спина · плечи', muscles: ['hamstrings', 'glutes', 'back', 'shoulders', 'triceps'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('vpull', 'lats', 'main', ['v_pull']), s('ohp', 'front_delts', 'secondary', ['v_push'], OHP_FALLBACK), s('lunge', 'quads', 'accessory', ['lunge', 'leg_ext']), s('tri', 'triceps', 'accessory', ['tri_ext']), s('calf', 'calves', 'accessory', ['calf'])] },
+  fbC: { name: 'Full Body C', focus: 'Ноги · грудь · руки', muscles: ['quads', 'chest', 'back', 'biceps', 'triceps'], slots: [s('squat', 'quads', 'secondary', ['squat']), s('press', 'chest', 'secondary', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull', 'v_pull']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('glute', 'glutes', 'accessory', ['glute'])] },
 };
 
-const SPLITS: Record<SplitType, { label: string; rotation: string[] }> = {
-  fullbody: { label: 'Full Body', rotation: ['fbA', 'fbB', 'fbC'] },
-  upper_lower: { label: 'Верх / Низ', rotation: ['upA', 'loA', 'upB', 'loB'] },
-  ppl: { label: 'Push / Pull / Legs', rotation: ['push', 'pull', 'legs'] },
-  ul_ppl: { label: 'Верх / Низ + PPL', rotation: ['upA', 'loA', 'push', 'pull', 'legs'] },
-  ppl_x2: { label: 'PPL × 2', rotation: ['push', 'pull', 'legs', 'pushB', 'pullB', 'legsB'] },
-};
-
-const DEFAULT_DAYS: Record<number, number[]> = {
-  1: [2],
-  2: [0, 3],
-  3: [0, 2, 4],
-  4: [0, 1, 3, 4],
-  5: [0, 1, 2, 4, 5],
-  6: [0, 1, 2, 3, 4, 5],
-};
-
-export function chooseSplit(p: UserProfile): SplitType {
-  const d = p.daysPerWeek;
-  if (d <= 3) return d === 3 && p.level === 'advanced' ? 'ppl' : 'fullbody';
-  if (d === 4) return 'upper_lower';
-  if (d === 5) return 'ul_ppl';
-  return 'ppl_x2';
+export function rotationFor(split: SplitType, days: number): string[] {
+  switch (split) {
+    case 'fullbody':
+      return days <= 2 ? ['fbA', 'fbB'] : ['fbA', 'fbB', 'fbC'];
+    case 'upper_lower':
+      return days <= 2 ? ['upA', 'loA'] : ['upA', 'loA', 'upB', 'loB'];
+    case 'upper_lower_full':
+      return ['upA', 'loA', 'fbA'];
+    case 'ppl':
+      return ['push', 'pull', 'legs'];
+    case 'ul_ppl':
+      return ['upA', 'loA', 'push', 'pull', 'legs'];
+    case 'ppl_x2':
+      return ['push', 'pull', 'legs', 'pushB', 'pullB', 'legsB'];
+  }
 }
 
+const DEFAULT_DAYS: Record<number, number[]> = { 1: [2], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
+
+/** Диапазон для отображения «цель на крупную группу» */
 export function weeklySetsTarget(p: UserProfile): [number, number] {
-  let base: [number, number] = p.level === 'beginner' ? [8, 12] : p.level === 'intermediate' ? [12, 16] : [14, 20];
-  const k = p.goal === 'cut' ? 0.85 : p.goal === 'maintain' ? 0.7 : 1;
-  base = [Math.round(base[0] * k), Math.round(base[1] * k)];
-  return base;
+  const b = baseWeeklySets(p);
+  return [Math.round(b * 0.85), Math.round(b * 1.15)];
 }
 
+/** Совместимость: проверка оборудования/места (+ старый список исключений) */
 export function isAvailable(ex: Exercise, equipment: Equipment[], location: UserProfile['location'], avoid: string[] = []): boolean {
-  if (avoid.includes(ex.id)) return false;
-  if (!ex.location.includes(location)) return false;
-  const have = new Set<Equipment>([...equipment, 'bodyweight']);
-  return ex.equipment.every((e) => have.has(e));
+  return !avoid.includes(ex.id) && hasEquipment(ex, equipment, location);
 }
 
-export function repRange(ex: Exercise, role: Role, goal: UserProfile['goal']): [number, number] {
+export function repRange(ex: Exercise, role: SlotRole, goal: UserProfile['goal'], style: TrainingPreferences['repStyle'] = 'auto'): [number, number] {
   if (ex.pattern === 'core' || ex.pattern === 'carry') return ex.defaultReps;
   if (ex.bodyweight && ex.mechanic === 'compound' && role === 'main') return [5, 12];
-  if (role === 'main' && ex.mechanic === 'compound') {
-    if (goal === 'cut') return [5, 8];
-    if (goal === 'maintain') return [6, 10];
-    return [6, 10];
-  }
-  if (role === 'secondary') return [8, 12];
-  if (ex.pattern === 'lateral' || ex.pattern === 'rear_delt' || ex.pattern === 'calf') return [12, 20];
-  return [10, 15];
+  const high = ex.pattern === 'lateral' || ex.pattern === 'rear_delt' || ex.pattern === 'calf';
+  const st = style === 'auto' ? (goal === 'cut' ? 'heavy_main' : 'moderate') : style;
+  if (st === 'heavy') return role === 'main' && ex.mechanic === 'compound' ? [4, 6] : ex.mechanic === 'compound' ? [6, 8] : high ? [10, 15] : [8, 12];
+  if (st === 'light') return role === 'main' && ex.mechanic === 'compound' ? [8, 12] : ex.mechanic === 'compound' ? [10, 15] : high ? [15, 20] : [12, 20];
+  if (role === 'main' && ex.mechanic === 'compound') return st === 'heavy_main' ? [5, 8] : [6, 10];
+  if (role === 'secondary' && ex.mechanic === 'compound') return [8, 12];
+  return high ? [12, 20] : [10, 15];
 }
 
-function restFor(ex: Exercise, role: Role): number {
+export function restFor(ex: Exercise, role: SlotRole): number {
   if (role === 'main' && ex.mechanic === 'compound') return ex.tier === 1 ? 180 : 150;
   if (ex.mechanic === 'compound') return 120;
   return 75;
 }
 
-function rirFor(role: Role, level: UserProfile['level']): number {
+export function rirFor(role: SlotRole, level: UserProfile['level']): number {
   if (level === 'beginner') return role === 'accessory' ? 2 : 3;
   return role === 'main' ? 2 : 1;
 }
 
-export function estimateMinutes(exs: PlannedExercise[], customs: Exercise[] = []): number {
-  let sec = 7 * 60; // разминка
-  for (const pe of exs) {
-    const ex = getExercise(pe.exerciseId, customs);
-    const per = ex ? secondsPerSet(ex) : 45;
-    sec += pe.sets * per + Math.max(0, pe.sets - 1) * pe.restSec + 60; // +переход
-    if (ex?.tier === 1) sec += 180; // разминочные подходы
-  }
-  return Math.round(sec / 60);
-}
-
-function buildTemplate(def: TemplateDef, p: UserProfile, used: Set<string>): WorkoutTemplate {
-  const exercises: PlannedExercise[] = [];
-  for (const slot of def.slots) {
-    const avail = slot.candidates
-      .map((id) => EXERCISES.find((e) => e.id === id))
-      .filter((e): e is Exercise => !!e && isAvailable(e, p.equipment, p.location, p.avoidExerciseIds));
-    // Предпочитаем упражнение, которого ещё нет в этой тренировке и (по возможности) в других днях
-    const inThis = new Set(exercises.map((x) => x.exerciseId));
-    const pick = avail.find((e) => !inThis.has(e.id) && !used.has(e.id)) ?? avail.find((e) => !inThis.has(e.id));
-    if (!pick) continue;
-    used.add(pick.id);
-    const [repMin, repMax] = repRange(pick, slot.role, p.goal);
-    exercises.push({ exerciseId: pick.id, sets: slot.sets, repMin, repMax, targetRir: rirFor(slot.role, p.level), restSec: restFor(pick, slot.role) });
-  }
-  return { id: uid('t_'), name: def.name, focus: def.focus, muscles: def.muscles, exercises, estMinutes: estimateMinutes(exercises) };
-}
-
-/** Недельные подходы по группам из шаблонов и расписания (основная = 1, вторичная = 0.5) */
+/** Совместимость: недельные подходы по крупным группам (основная = 1, вторичная = 0.5) */
 export function plannedWeeklySets(templates: WorkoutTemplate[], schedule: (string | null)[], customs: Exercise[] = []): Record<MuscleGroup, number> {
   const out = {} as Record<MuscleGroup, number>;
   for (const tid of schedule) {
@@ -189,124 +138,297 @@ export function plannedWeeklySets(templates: WorkoutTemplate[], schedule: (strin
   return out;
 }
 
-const MAIN_GROUPS: MuscleGroup[] = ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'glutes', 'biceps', 'triceps'];
+export interface GeneratePlanOptions {
+  previous?: WorkoutPlan | null;
+  sessions?: WorkoutSession[];
+  customs?: Exercise[];
+}
 
-export function generatePlan(p: UserProfile): WorkoutPlan {
-  const split = chooseSplit(p);
-  const meta = SPLITS[split];
-  const used = new Set<string>();
-  const defs = meta.rotation.slice(0, Math.min(meta.rotation.length, Math.max(2, p.daysPerWeek))).map((k) => T[k]);
-  const templates = defs.map((d) => buildTemplate(d, p, used));
+interface Meta {
+  t: WorkoutTemplate;
+  pe: PlannedExercise;
+  role: SlotRole;
+  muscle: VolumeMuscle;
+  reasons: string[];
+}
 
+const fmtOcc = (o: number) => (Math.abs(o - Math.round(o)) < 0.05 ? `${Math.round(o)}` : o.toFixed(1).replace('.', ','));
+
+export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): WorkoutPlan {
+  const prefs = getPrefs(p);
+  const sessions = opts.sessions ?? [];
+  const customs = opts.customs ?? [];
+  const previous = opts.previous ?? null;
+
+  if (prefs.preferredSplit === 'custom' && previous) return keepCustom(previous, p, prefs, customs);
+
+  const choice = chooseSplit(p, prefs, sessions);
+  const keys = rotationFor(choice.split, p.daysPerWeek);
   const days = p.preferredDays.length === p.daysPerWeek ? [...p.preferredDays].sort() : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
+  const nTemplates = keys.length;
+  const occPerTemplate = days.length / nTemplates;
+  const notes: string[] = [];
+  const limits = setLimits(prefs.setStyle, p.level);
+  const targets = weeklyTargets(p, prefs);
+
+  const pool = [...EXERCISES, ...customs].filter((e) => checkAllowed(e, p, prefs).ok);
+  const usedThisWeek = new Set<string>();
+  const meta: Meta[] = [];
+  const templates: WorkoutTemplate[] = [];
+
+  const ctxFor = (t: WorkoutTemplate, previousId?: string): SelectionContext => ({
+    profile: p,
+    prefs,
+    sessions,
+    previousId,
+    usedThisWeek,
+    usedToday: t.exercises.map((x) => getExercise(x.exerciseId, customs)).filter((x): x is Exercise => !!x),
+  });
+
+  const addSlot = (t: WorkoutTemplate, key: string, slot: SlotSpec, previousId?: string, silent = false): Meta | undefined => {
+    const ctx = ctxFor(t, previousId);
+    let picked = pickForSlot(pool, slot, ctx) ?? pickForSlot(pool, { ...slot, patterns: [] }, ctx);
+    let muscle = slot.muscle;
+    if (!picked && slot.fallback) {
+      const fb: SlotSpec = { ...slot, muscle: slot.fallback.muscle, patterns: slot.fallback.patterns };
+      picked = pickForSlot(pool, fb, ctx) ?? pickForSlot(pool, { ...fb, patterns: [] }, ctx);
+      muscle = slot.fallback.muscle;
+      if (picked) notes.push(`${t.name}: вместо упражнения на ${VM_ACC[slot.muscle]} — «${picked.ex.name}» (подходящие движения недоступны или ограничены)`);
+    }
+    if (!picked) {
+      if (!silent) notes.push(`${t.name}: нет допустимых упражнений на ${VM_ACC[slot.muscle]} — пропущено (ограничения/оборудование)`);
+      return undefined;
+    }
+    const ex = picked.ex;
+    const [repMin, repMax] = repRange(ex, slot.role, p.goal, prefs.repStyle);
+    const pe: PlannedExercise = { exerciseId: ex.id, sets: limits.start(slot.role), repMin, repMax, targetRir: rirFor(slot.role, p.level), restSec: restFor(ex, slot.role), slot: `${t.key}.${key}` };
+    t.exercises.push(pe);
+    usedThisWeek.add(ex.id);
+    const m: Meta = { t, pe, role: slot.role, muscle, reasons: picked.reasons };
+    meta.push(m);
+    return m;
+  };
+
+  for (const key of keys.slice(0, nTemplates)) {
+    const def = DAYS[key];
+    const prevT = previous?.templates.find((x) => x.key === key) ?? previous?.templates.find((x) => x.name === def.name);
+    const t: WorkoutTemplate = { id: prevT?.id ?? uid('t_'), key, name: def.name, focus: def.focus, muscles: def.muscles, exercises: [], estMinutes: 0 };
+    for (const slot of def.slots) {
+      const prevId = prevT?.exercises.find((x) => x.slot === `${key}.${slot.key}`)?.exerciseId;
+      addSlot(t, slot.key, slot, prevId);
+    }
+    templates.push(t);
+  }
+
+  // ── Распределение подходов от недельной цели ───────────────────────────
+  const occ = (_t: WorkoutTemplate) => occPerTemplate;
+  // Объём группы = все упражнения, где она основная (выпады дают и квадрицепс, и ягодицы)
+  const total = (m: VolumeMuscle) => meta.reduce((a, x) => {
+    const ex = getExercise(x.pe.exerciseId, customs);
+    return ex && fineTargets(ex).primary.includes(m) ? a + x.pe.sets * occ(x.t) : a;
+  }, 0);
+  // Упражнения по 2 подхода короче — их помещается больше; главный ограничитель — время сессии
+  const maxPerSession = Math.max(5, Math.min(prefs.setStyle === 2 ? 10 : 9, Math.floor(p.sessionMinutes / (prefs.setStyle === 2 ? 6.5 : 8))));
+  const extraNotes = new Map<PlannedExercise, { m: VolumeMuscle; name: string }>();
+  const softMainNames = new Set<string>();
+  const shortMuscles: string[] = [];
+  const extraCount: Partial<Record<VolumeMuscle, number>> = {};
+
+  for (const m of VOLUME_MUSCLES) {
+    const target = targets[m];
+    let entries = meta.filter((x) => x.muscle === m);
+    if (!entries.length) continue;
+    // Мелким группам (руки, икры, пресс, дельты) достаточно ~80% цели — остальное даёт косвенная работа
+    const enough = isSmallMuscle(m) ? target * 0.8 : target - 0.6;
+    let guard = 0;
+    while (total(m) < enough && guard++ < 40) {
+      const cand = entries.filter((x) => x.pe.sets < limits.max(x.role)).sort((a, b) => a.pe.sets - b.pe.sets || roleW(a.role) - roleW(b.role))[0];
+      if (cand) {
+        cand.pe.sets++;
+        continue;
+      }
+      // Стиль «2/3 подхода»: сначала +1 подход в основном упражнении, затем — ещё одно упражнение
+      const softMain = entries.filter((x) => x.role === 'main' && x.pe.sets < limits.softMax(x.role))[0];
+      if (softMain) {
+        softMain.pe.sets++;
+        if (prefs.setStyle !== 'auto') softMainNames.add(getExercise(softMain.pe.exerciseId, customs)?.name ?? '');
+        continue;
+      }
+      if ((extraCount[m] ?? 0) < (prefs.setStyle === 2 ? 2 : 1)) {
+        extraCount[m] = (extraCount[m] ?? 0) + 1;
+        const host = entries
+          .map((x) => x.t)
+          .filter((t, i, a) => a.indexOf(t) === i && t.exercises.length < maxPerSession && estimateMinutes(t.exercises, customs) + 5 <= p.sessionMinutes)
+          .sort((a, b) => estimateMinutes(a.exercises, customs) - estimateMinutes(b.exercises, customs))[0];
+        const added = host ? addSlot(host, `x_${m}`, { key: `x_${m}`, muscle: m, role: 'accessory', patterns: [] }, undefined, true) : undefined;
+        if (added) {
+          added.pe.sets = limits.start('accessory');
+          entries = meta.filter((x) => x.muscle === m);
+          extraNotes.set(added.pe, { m, name: getExercise(added.pe.exerciseId, customs)?.name ?? '' });
+          continue;
+        }
+      }
+      const soft = entries.filter((x) => x.pe.sets < limits.softMax(x.role)).sort((a, b) => roleW(a.role) - roleW(b.role))[0];
+      if (soft) {
+        soft.pe.sets++;
+        continue;
+      }
+      if (total(m) < target * 0.75) shortMuscles.push(`${VM_LABEL[m].toLowerCase()} ${Math.round(total(m))}/${target}`);
+      break;
+    }
+    guard = 0;
+    while (total(m) > target + 1.6 && guard++ < 40) {
+      const cand = entries.filter((x) => x.pe.sets > limits.min).sort((a, b) => roleW(b.role) - roleW(a.role) || b.pe.sets - a.pe.sets)[0];
+      if (cand) {
+        cand.pe.sets--;
+        continue;
+      }
+      const acc = entries.filter((x) => x.role === 'accessory');
+      if (acc.length && entries.length > 1) {
+        const drop = acc[acc.length - 1];
+        removeMeta(meta, drop);
+        entries = meta.filter((x) => x.muscle === m);
+        continue;
+      }
+      break;
+    }
+  }
+
+  // ── Подгонка под время тренировки ──────────────────────────────────────
+  for (const t of templates) {
+    let guard = 0;
+    while (estimateMinutes(t.exercises, customs) > p.sessionMinutes + 5 && guard++ < 30) {
+      const tm = meta.filter((x) => x.t === t);
+      const longRest = tm.find((x) => x.role === 'accessory' && x.pe.restSec > 60);
+      if (longRest) {
+        tm.filter((x) => x.role === 'accessory').forEach((x) => (x.pe.restSec = Math.min(x.pe.restSec, 60)));
+        continue;
+      }
+      const over = (x: Meta) => total(x.muscle) - targets[x.muscle] + (prefs.lowPriorityMuscles.includes(x.muscle) ? 5 : 0) - (prefs.priorityMuscles.includes(x.muscle) ? 5 : 0);
+      const reducible = tm.filter((x) => x.pe.sets > limits.min && x.role !== 'main').sort((a, b) => over(b) - over(a) || roleW(b.role) - roleW(a.role))[0];
+      if (reducible) {
+        reducible.pe.sets--;
+        continue;
+      }
+      const removable = tm.filter((x) => x.role === 'accessory').sort((a, b) => over(b) - over(a))[0];
+      if (removable && t.exercises.length > 3) {
+        if (extraNotes.has(removable.pe)) extraNotes.delete(removable.pe);
+        else notes.push(`${t.name}: убрано «${getExercise(removable.pe.exerciseId, customs)?.name}», чтобы уложиться в ${p.sessionMinutes} мин`);
+        removeMeta(meta, removable);
+        continue;
+      }
+      const main = tm.filter((x) => x.pe.sets > 2).sort((a, b) => b.pe.sets - a.pe.sets)[0];
+      if (main) {
+        main.pe.sets--;
+        continue;
+      }
+      break;
+    }
+  }
+
+  if (extraNotes.size) {
+    const list = [...extraNotes.values()].map((x) => `${VM_LABEL[x.m].toLowerCase()} — «${x.name}»`).join(', ');
+    notes.push(prefs.setStyle === 2 ? `Чтобы сохранить недельный объём при 2 подходах, добавлены упражнения: ${list}` : `Для недельной цели добавлены упражнения: ${list}`);
+  }
+  if (softMainNames.size) notes.push(`В основных упражнениях (${[...softMainNames].join(', ')}) на 1 подход больше твоего обычного — так недельный объём добирается без лишних упражнений`);
+  if (shortMuscles.length) notes.push(`Ниже недельной цели: ${shortMuscles.join(', ')} — больше не помещается в ${p.daysPerWeek} дн. × ${p.sessionMinutes} мин без раздувания тренировок. Косвенно эти группы работают в базовых упражнениях`);
+
+  // ── Порядок, объяснения ─────────────────────────────────────────────────
+  for (const t of templates) {
+    t.exercises = orderExercises(t.exercises, prefs.priorityMuscles, customs);
+    t.estMinutes = estimateMinutes(t.exercises, customs);
+  }
+  for (const m of meta) {
+    const same = meta.filter((x) => x.muscle === m.muscle);
+    const tgt = targets[m.muscle];
+    const parts = [`${VM_LABEL[m.muscle]}: цель ${tgt} подх./нед, ${same.length} упр. × ${fmtOcc(occPerTemplate)} р/нед → здесь ${m.pe.sets}`];
+    if (prefs.setStyle !== 'auto') parts.push(`стиль: ${prefs.setStyle} подхода`);
+    if (prefs.priorityMuscles.includes(m.muscle)) parts.push('приоритетная группа');
+    if (m.reasons.length) parts.push(m.reasons.join(', '));
+    m.pe.why = parts.join(' · ');
+  }
+
   const schedule: (string | null)[] = Array(7).fill(null);
   days.forEach((d, i) => (schedule[d] = templates[i % templates.length].id));
 
-  // Балансировка объёма под целевой диапазон
-  const target = weeklySetsTarget(p);
-  for (let iter = 0; iter < 30; iter++) {
-    const vol = plannedWeeklySets(templates, schedule);
-    let changed = false;
-    for (const g of MAIN_GROUPS) {
-      const v = vol[g] ?? 0;
-      const small = g === 'biceps' || g === 'triceps' || g === 'hamstrings' || g === 'glutes';
-      const lo = small ? Math.round(target[0] * 0.6) : target[0];
-      const hi = small ? Math.round(target[1] * 0.8) : target[1];
-      if (v < lo) {
-        const pe = findExerciseFor(templates, g, 'add');
-        if (pe && pe.sets < 5) {
-          pe.sets += 1;
-          changed = true;
-        }
-      } else if (v > hi) {
-        const pe = findExerciseFor(templates, g, 'remove');
-        if (pe) {
-          pe.sets -= 1;
-          changed = true;
-        }
-      }
-    }
-    if (!changed) break;
-  }
+  const occMap = Object.fromEntries(templates.map((t) => [t.id, occPerTemplate]));
+  const planned = plannedFineVolume(templates, occMap, customs);
+  const volume = VOLUME_MUSCLES.filter((m) => targets[m] > 0 || planned[m] > 0).map((m) => ({ muscle: m, target: targets[m], planned: Math.round(planned[m]) }));
 
-  // Ограничение по времени тренировки
-  for (const t of templates) {
-    t.estMinutes = estimateMinutes(t.exercises);
-    let guard = 0;
-    while (t.estMinutes > p.sessionMinutes + 5 && guard++ < 20) {
-      const last = [...t.exercises].reverse().find((e) => e.sets > 2);
-      if (last) last.sets -= 1;
-      else if (t.exercises.length > 3) t.exercises.pop();
-      else break;
-      t.estMinutes = estimateMinutes(t.exercises);
-    }
-  }
+  // Что отфильтровано правилами (для прозрачности)
+  const KEY_LIFTS = ['bench_press', 'back_squat', 'deadlift', 'ohp', 'barbell_row', 'pull_up', 'romanian_deadlift', 'leg_press', 'db_bench_press'];
+  const filtered = KEY_LIFTS.map((id) => getExercise(id)!).filter((ex) => hasEquipment(ex, p.equipment, p.location)).map((ex) => ({ ex, r: checkAllowed(ex, p, prefs) })).filter((x) => !x.r.ok);
+  if (filtered.length) notes.unshift(`Не используются: ${filtered.map((x) => `${x.ex.name} (${x.r.ok ? '' : x.r.reason})`).join('; ')}`);
 
-  // Если тренировка заметно короче желаемого — добавляем подходы в основные упражнения (до 5)
-  for (const t of templates) {
-    let guard = 0;
-    while (t.estMinutes < p.sessionMinutes - 12 && guard++ < 12) {
-      const main = t.exercises.filter((e) => e.sets < (e === t.exercises[0] ? 5 : 4)).sort((a, b) => a.sets - b.sets)[0];
-      if (!main) break;
-      main.sets += 1;
-      t.estMinutes = estimateMinutes(t.exercises);
-      if (t.estMinutes > p.sessionMinutes + 3) {
-        main.sets -= 1;
-        t.estMinutes = estimateMinutes(t.exercises);
-        break;
-      }
-    }
-  }
   const minM = Math.min(...templates.map((t) => t.estMinutes));
   const maxM = Math.max(...templates.map((t) => t.estMinutes));
-  const vol = plannedWeeklySets(templates, schedule);
-
+  const range = weeklySetsTarget(p);
   const rationale: CalcStep[] = [
-    { label: 'Сплит', value: meta.label, note: `${p.daysPerWeek} ${p.daysPerWeek < 5 ? 'дня' : 'дней'} в неделю, уровень: ${LEVEL_LABEL[p.level]}` },
-    { label: 'Объём', value: `${target[0]}–${target[1]} подходов/нед`, note: `на крупную группу${p.goal === 'cut' ? ', снижен на сушке для восстановления' : ''}` },
+    { label: 'Сплит', value: SPLIT_LABEL[choice.split], note: choice.reasons.join('; ') },
+    { label: 'Объём', value: `~${targets.chest} подх./нед на грудь, ~${targets.quads} на квадрицепс`, note: `цели по каждой группе — от уровня (${LEVEL_LABEL[p.level]}) и цели${prefs.priorityMuscles.length ? '; приоритетные группы +30%' : ''}` },
+    { label: 'Подходы', value: prefs.setStyle === 'auto' ? 'FORM решает' : `обычно ${prefs.setStyle}`, note: 'недельная цель группы ÷ число упражнений на неё в неделю' },
     { label: 'Интенсивность', value: p.level === 'beginner' ? 'RIR 2–3' : 'RIR 1–2', note: 'запас повторов до отказа в рабочих подходах' },
     { label: 'Прогрессия', value: 'Двойная', note: 'сначала повторы до верха диапазона, потом +вес' },
-    { label: 'Фактический объём', value: MAIN_GROUPS.map((g) => `${GROUP_LABEL[g]} ${Math.round(vol[g] ?? 0)}`).join(' · ') },
+    { label: 'Объём по группам', value: volume.filter((v) => v.target > 0).map((v) => `${VM_LABEL[v.muscle]} ${v.planned}/${v.target}`).join(' · ') },
   ];
 
   return {
     id: uid('plan_'),
-    split,
-    splitLabel: meta.label,
+    split: choice.split,
+    splitLabel: SPLIT_LABEL[choice.split],
     daysPerWeek: p.daysPerWeek,
     sessionMinutes: [minM, maxM],
-    weeklySetsTarget: target,
+    weeklySetsTarget: range,
     templates,
     schedule,
     rotation: templates.map((t) => t.id),
     rationale,
     createdAt: Date.now(),
+    splitChoice: { preference: prefs.preferredSplit, reasons: choice.reasons },
+    volume,
+    notes: dedupe(notes),
   };
 }
 
-function findExerciseFor(templates: WorkoutTemplate[], g: MuscleGroup, mode: 'add' | 'remove'): PlannedExercise | undefined {
-  const all: { pe: PlannedExercise; ex: Exercise; idx: number }[] = [];
-  for (const t of templates) t.exercises.forEach((pe, idx) => {
-    const ex = getExercise(pe.exerciseId);
-    if (ex?.groups.primary.includes(g)) all.push({ pe, ex, idx });
-  });
-  // Приоритет при снижении: изоляция → вспомогательные базовые → основное упражнение (не ниже 3 подходов)
-  const weight = (x: { ex: Exercise; idx: number }) => (x.ex.mechanic === 'isolation' ? 0 : x.idx === 0 || x.ex.tier === 1 ? 2 : 1);
-  if (mode === 'add') return all.sort((a, b) => a.pe.sets - b.pe.sets || weight(b) - weight(a))[0]?.pe;
-  const cand = all.filter((x) => (weight(x) === 2 ? x.pe.sets > 3 : x.pe.sets > 2)).sort((a, b) => weight(a) - weight(b) || b.pe.sets - a.pe.sets);
-  return cand[0]?.pe;
+const roleW = (r: SlotRole) => (r === 'main' ? 0 : r === 'secondary' ? 1 : 2);
+
+function removeMeta(meta: Meta[], m: Meta) {
+  m.t.exercises = m.t.exercises.filter((x) => x !== m.pe);
+  meta.splice(meta.indexOf(m), 1);
 }
 
-export const LEVEL_LABEL: Record<UserProfile['level'], string> = {
-  beginner: 'новичок',
-  intermediate: 'средний',
-  advanced: 'продвинутый',
-};
-
-export function alternativesFor(exerciseId: string, p: Pick<UserProfile, 'equipment' | 'location' | 'avoidExerciseIds'>, customs: Exercise[] = []): Exercise[] {
-  const ex = getExercise(exerciseId, customs);
-  if (!ex) return [];
-  const pool = [...EXERCISES, ...customs].filter((e) => e.id !== ex.id && isAvailable(e, p.equipment, p.location, p.avoidExerciseIds));
-  const score = (e: Exercise) => (e.pattern === ex.pattern ? 0 : 2) + (e.groups.primary[0] === ex.groups.primary[0] ? 0 : 1) + (e.mechanic === ex.mechanic ? 0 : 0.5);
-  return pool.filter((e) => e.pattern === ex.pattern || e.groups.primary.some((g) => ex.groups.primary.includes(g))).sort((a, b) => score(a) - score(b)).slice(0, 12);
+function dedupe(a: string[]): string[] {
+  return [...new Set(a)];
 }
+
+/** «Свой» сплит: шаблоны не перегенерируются, только недопустимые упражнения заменяются аналогами */
+function keepCustom(previous: WorkoutPlan, p: UserProfile, prefs: TrainingPreferences, customs: Exercise[]): WorkoutPlan {
+  const notes: string[] = [];
+  const templates = previous.templates.map((t) => ({
+    ...t,
+    exercises: t.exercises
+      .map((pe) => {
+        const ex = getExercise(pe.exerciseId, customs);
+        if (!ex || checkAllowed(ex, p, prefs).ok) return pe;
+        const sub = substitutesFor(ex.id, p, prefs, customs, 1)[0];
+        notes.push(sub ? `${t.name}: «${ex.name}» → «${sub.name}» (ограничения)` : `${t.name}: «${ex.name}» убрано (ограничения)`);
+        return sub ? { ...pe, exerciseId: sub.id } : null;
+      })
+      .filter((x): x is PlannedExercise => !!x),
+  }));
+  templates.forEach((t) => (t.estMinutes = estimateMinutes(t.exercises, customs)));
+  return { ...previous, templates, splitChoice: { preference: 'custom', reasons: ['Свой формат: шаблоны изменяются только вручную'] }, notes, createdAt: Date.now() };
+}
+
+/** Аналоги для замены (с учётом ограничений и предпочтений) */
+export function alternativesFor(exerciseId: string, p: UserProfile, customs: Exercise[] = []): Exercise[] {
+  return substitutesFor(exerciseId, p, getPrefs(p), customs, 12);
+}
+
+/** Объём по группам из текущего плана (для экранов и AI) */
+export function planVolume(plan: WorkoutPlan, customs: Exercise[] = []): Record<VolumeMuscle, number> {
+  const occ = plan.schedule.filter(Boolean).length / Math.max(1, plan.templates.length);
+  return plannedFineVolume(plan.templates, Object.fromEntries(plan.templates.map((t) => [t.id, occ])), customs);
+}
+
+export { fineTargets, GROUP_LABEL };

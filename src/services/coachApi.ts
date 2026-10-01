@@ -1,14 +1,30 @@
 import { useProfile } from '@/stores/profile';
 
+import type { CoachActionType, VolumeMuscle } from '@/types';
+
+/** Действие, как его возвращает модель: параметры необязательны (приложение валидирует) */
 export interface CoachApiAction {
-  type: 'set_day_mode' | 'swap_today' | 'adjust_calories';
+  type: CoachActionType;
   label: string;
-  mode: 'reduced' | 'light' | 'recovery' | 'rest' | null;
-  volumeFactor: number | null;
-  rirDelta: number | null;
-  templateId: string | null;
-  deltaKcal: number | null;
   reason: string;
+  mode?: 'normal' | 'reduced' | 'light' | 'recovery' | 'rest' | null;
+  volumeFactor?: number | null;
+  rirDelta?: number | null;
+  templateId?: string | null;
+  deltaKcal?: number | null;
+  exerciseId?: string | null;
+  toExerciseId?: string | null;
+  scope?: 'today' | 'plan' | null;
+  sets?: number | null;
+  repMin?: number | null;
+  repMax?: number | null;
+  weightKg?: number | null;
+  restSec?: number | null;
+  order?: string[] | null;
+  muscle?: VolumeMuscle | string | null;
+  deltaSets?: number | null;
+  split?: 'auto' | 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | null;
+  minutes?: number | null;
 }
 
 export interface CoachApiResponse {

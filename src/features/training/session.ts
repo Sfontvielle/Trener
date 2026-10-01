@@ -16,7 +16,7 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
   const ex = getExercise(pe.exerciseId, ctx.customs);
   if (!ex) return null;
   const history = historyFor(ex.id, ctx.sessions);
-  const rec = recommend({
+  const base = recommend({
     exercise: ex,
     plannedSets: pe.sets,
     repMin: pe.repMin,
@@ -27,6 +27,8 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
     band: ctx.band,
     volumeFactor: ctx.volumeFactor,
   });
+  // Вес, согласованный с тренером, главнее авто-прогрессии (пользователь подтвердил его явно)
+  const rec = pe.targetWeight !== undefined ? { ...base, weight: pe.targetWeight, rationale: `Вес ${pe.targetWeight} кг согласован с тренером. ${base.rationale}` } : base;
   // Предзаполняем подходы рекомендацией; повторы — нижняя цель (пользователь правит только если отличается)
   const last = history[0];
   const sets = Array.from({ length: rec.sets }, (_, i) => {
@@ -45,6 +47,7 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
     sets,
     recommendation: rec,
     note: pe.note,
+    why: pe.why,
   };
 }
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Exercise, WorkoutSession } from '@/types';
 import { colors, radius, space } from '@/theme';
@@ -11,24 +11,33 @@ import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useUi } from '@/stores/ui';
 import { useTodayWorkout } from '@/hooks/useToday';
-import { getExercise, GROUP_LABEL } from '@/data/exercises';
+import { getExercise } from '@/data/exercises';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
-import { sessionVolume, setsByGroup } from '@/features/training/analytics';
-import { plannedWeeklySets } from '@/features/training/planGenerator';
+import { sessionVolume } from '@/features/training/analytics';
+import { planVolume } from '@/features/training/planGenerator';
+import { doneFineVolume } from '@/features/training/engine/volume';
+import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { ExerciseList } from '@/features/exercises/ExerciseList';
 import { WeekStrip } from '@/features/profile/PlanSummary';
-import { checkDeload, isDeloadActive } from '@/features/training/deload';
+import { checkDeload, deloadDates, DELOAD_FACTOR, DELOAD_RIR, isDeloadActive } from '@/features/training/deload';
 import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
-import { addDays, formatDayShort, relativeDay, startOfWeek, today, WEEKDAYS_SHORT } from '@/utils/date';
+import { addDays, formatDayShort, relativeDay, startOfWeek, today, weekdayIndex as weekdayIndexOf, WEEKDAYS_SHORT } from '@/utils/date';
 
 type Seg = 'today' | 'plan' | 'history' | 'library';
 
 export default function Training() {
   const insets = useSafeAreaInsets();
-  const [seg, setSeg] = useState<Seg>('today');
+  const params = useLocalSearchParams<{ seg?: Seg }>();
+  const [seg, setSeg] = useState<Seg>(params.seg ?? 'today');
+  // Переход из «+» → Библиотека: синхронизируем вкладку при новом параметре (без эффекта)
+  const [lastParam, setLastParam] = useState(params.seg);
+  if (params.seg !== lastParam) {
+    setLastParam(params.seg);
+    if (params.seg) setSeg(params.seg);
+  }
   const bottom = insets.bottom + TAB_BAR_HEIGHT + space.lg;
 
   return (
@@ -63,8 +72,10 @@ function TodayTab({ bottom }: { bottom: number }) {
   const plan = usePlan((s) => s.plan);
   const openHub = useUi((s) => s.openHub);
   const d = today();
-  const week = useMemo(() => setsByGroup(sessions, startOfWeek(d), d), [sessions, d]);
-  const planned = useMemo(() => (plan ? plannedWeeklySets(plan.templates, plan.schedule) : {}), [plan]);
+  const customs = useWorkouts((s) => s.customExercises);
+  // Прямые подходы по детальным группам: сделано с понедельника / запланировано на неделю
+  const week = useMemo(() => doneFineVolume(sessions, startOfWeek(d), d, customs), [sessions, d, customs]);
+  const planned = useMemo(() => (plan ? planVolume(plan, customs) : null), [plan, customs]);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(d), i)), [d]);
   const doneDays = new Set(sessions.filter((s) => s.status === 'completed').map((s) => s.date));
   const checkins = useCheckins((s) => s.byDate);
@@ -72,6 +83,7 @@ function TodayTab({ bottom }: { bottom: number }) {
   const adjustments = usePlan((s) => s.adjustments);
   const deload = useMemo(() => checkDeload({ plan, sessions, checkins, adjustments, overrides }), [plan, sessions, checkins, adjustments, overrides]);
   const deloadActive = isDeloadActive(overrides);
+  const [deloadPlanOpen, setDeloadPlanOpen] = useState(false);
 
   return (
     <FlatList
@@ -98,7 +110,24 @@ function TodayTab({ bottom }: { bottom: number }) {
               <T v="small" style={{ fontSize: 12 }}>
                 Неделя с −40% подходов и запасом 3–4 повтора снимает накопленную усталость — после неё веса обычно снова растут.
               </T>
-              <Button title="Начать разгрузочную неделю" icon="battery-charging" size="sm" onPress={() => { const n = applyDeload(); toast(`Разгрузка: облегчено тренировок — ${n}`); }} />
+              {deloadPlanOpen && plan ? (
+                <View style={{ gap: 4, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
+                  {deloadDates(plan).map((dd) => {
+                    const t = plan.templates.find((x) => x.id === plan.schedule[weekdayIndexOf(dd)]);
+                    const sets = t ? t.exercises.reduce((a, e) => a + Math.max(1, Math.round(e.sets * DELOAD_FACTOR)), 0) : 0;
+                    const was = t ? t.exercises.reduce((a, e) => a + e.sets, 0) : 0;
+                    return (
+                      <T key={dd} v="small" color={colors.text}>
+                        {formatDayShort(dd)} · {t?.name ?? '—'}: {was} → {sets} подходов, RIR +{DELOAD_RIR}, веса без повышения
+                      </T>
+                    );
+                  })}
+                </View>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Button title={deloadPlanOpen ? 'Скрыть' : 'Посмотреть план'} size="sm" variant="secondary" onPress={() => setDeloadPlanOpen(!deloadPlanOpen)} style={{ flex: 1 }} />
+                <Button title="Применить" icon="battery-charging" size="sm" onPress={() => { const n = applyDeload(); toast(`Разгрузка: облегчено тренировок — ${n}`); }} style={{ flex: 1 }} />
+              </View>
             </Card>
           ) : null}
           <Card tone="accent">
@@ -178,16 +207,16 @@ function TodayTab({ bottom }: { bottom: number }) {
             })}
           </View>
 
-          <SectionTitle title="Объём за неделю · подходы" />
+          <SectionTitle title="Объём за неделю · сделано / план" />
           <Card style={{ gap: 10 }}>
-            {(['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'glutes', 'biceps', 'triceps'] as const).map((g) => {
-              const done = Math.round((week[g] ?? 0) * 10) / 10;
-              const target = Math.round((planned as Record<string, number>)[g] ?? 0);
+            {VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
+              const done = Math.round(week[g] ?? 0);
+              const target = Math.round(planned?.[g] ?? 0);
               const p = target ? done / target : 0;
               return (
                 <View key={g} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <T v="small" style={{ width: 100 }} numberOfLines={1}>
-                    {GROUP_LABEL[g]}
+                  <T v="small" style={{ width: 118 }} numberOfLines={1}>
+                    {VM_LABEL[g]}
                   </T>
                   <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' }}>
                     <View style={{ width: `${Math.min(100, p * 100)}%`, height: 6, backgroundColor: p >= 0.9 ? colors.accent : 'rgba(200,245,60,0.5)' }} />
