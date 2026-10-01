@@ -36,41 +36,61 @@ export function Sheet({
   const [mounted, setMounted] = useState(visible);
   const anim = useState(() => new Animated.Value(0))[0];
   const drag = useState(() => new Animated.Value(0))[0];
-  // Где прокрутка содержимого: свайп вниз закрывает лист, только если контент у верха
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_e, g) => (SCROLL_TOP.get(drag) ?? true) && g.dy > 10 && g.dy > Math.abs(g.dx) * 1.6,
-        onPanResponderMove: (_e, g) => drag.setValue(Math.max(0, g.dy)),
-        onPanResponderRelease: (_e, g) => {
-          if (g.dy > 110 || g.vy > 0.9) {
-            onClose();
-            Animated.timing(drag, { toValue: 0, duration: 0, delay: 260, useNativeDriver: true }).start();
-          } else Animated.spring(drag, { toValue: 0, friction: 8, useNativeDriver: true }).start();
-        },
-        onPanResponderTerminate: () => Animated.spring(drag, { toValue: 0, friction: 8, useNativeDriver: true }).start(),
+  const [boxH, setBoxH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const canScroll = contentH > boxH + 1;
+
+  // Закрытие свайпом: лист уезжает вниз с той же скоростью, что и палец, потом onClose
+  const pan = useMemo(() => {
+    const release = (_e: unknown, g: { dy: number; vy: number }) => {
+      if (g.dy > 90 || g.vy > 0.7) {
+        Animated.timing(drag, { toValue: height, duration: Math.max(140, Math.min(260, ((height - g.dy) / Math.max(1.2, g.vy)) * 0.6)), easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => onClose());
+      } else Animated.spring(drag, { toValue: 0, damping: 22, stiffness: 260, mass: 0.8, useNativeDriver: true }).start();
+    };
+    const common = {
+      onPanResponderMove: (_e: unknown, g: { dy: number }) => drag.setValue(g.dy > 0 ? g.dy : g.dy / 6),
+      onPanResponderRelease: release,
+      onPanResponderTerminate: release,
+      onPanResponderTerminationRequest: () => false,
+    };
+    return {
+      // Шапка и «ручка» — всегда тянут лист
+      handle: PanResponder.create({ onStartShouldSetPanResponder: () => true, onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 2, ...common }),
+      // Содержимое — только вниз и только когда прокрутка у верха
+      body: PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_e, g) => (SCROLL_TOP.get(drag) ?? true) && g.dy > 8 && g.dy > Math.abs(g.dx) * 1.4,
+        ...common,
       }),
-    [drag, onClose],
-  );
+    };
+  }, [drag, onClose, height]);
 
   // Монтируем сразу при открытии (во время рендера, без лишнего прохода эффекта)
   if (visible && !mounted) setMounted(true);
 
   useEffect(() => {
     if (visible) {
-      Animated.timing(anim, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      drag.setValue(0);
+      SCROLL_TOP.set(drag, true);
+      Animated.spring(anim, { toValue: 1, damping: 26, stiffness: 240, mass: 0.9, useNativeDriver: true }).start();
     } else if (mounted) {
-      Animated.timing(anim, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setMounted(false));
+      Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setMounted(false));
     }
-  }, [visible, anim, mounted]);
+  }, [visible, anim, drag, mounted]);
 
   if (!mounted) return null;
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [height * 0.6, 0] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [height, 0] });
+  // Фон светлеет по мере того, как лист уводят вниз
+  const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, height * 0.6], outputRange: [1, 0], extrapolate: 'clamp' }));
 
   const body = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
-      scrollEventThrottle={32}
+      scrollEventThrottle={16}
+      bounces={false}
+      overScrollMode="never"
+      scrollEnabled={canScroll}
+      onLayout={(e) => setBoxH(e.nativeEvent.layout.height)}
+      onContentSizeChange={(_w, h) => setContentH(h)}
       onScroll={(e) => {
         SCROLL_TOP.set(drag, e.nativeEvent.contentOffset.y <= 2);
       }}
@@ -84,14 +104,16 @@ export function Sheet({
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: anim }]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>
           <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть" />
         </Animated.View>
         <View style={{ flex: 1 }} pointerEvents="box-none" />
-        <Animated.View {...pan.panHandlers} style={[styles.sheet, { maxHeight: height * maxHeightPct, transform: [{ translateY }, { translateY: drag }] }]}>
-          <View style={styles.grabber} />
+        <Animated.View {...pan.body.panHandlers} style={[styles.sheet, { maxHeight: height * maxHeightPct, transform: [{ translateY }, { translateY: drag }] }]}>
+          <View {...pan.handle.panHandlers} style={styles.grabZone}>
+            <View style={styles.grabber} />
+          </View>
           {title ? (
-            <View style={styles.header}>
+            <View {...pan.handle.panHandlers} style={styles.header}>
               <View style={{ flex: 1 }}>
                 <T v="h2" numberOfLines={2}>
                   {title}
@@ -126,6 +148,7 @@ const styles = themed({
     maxWidth: 560,
     alignSelf: 'center',
   },
-  grabber: { alignSelf: 'center', width: 38, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong, marginTop: 8, marginBottom: 8 },
+  grabZone: { paddingTop: 8, paddingBottom: 10, marginHorizontal: -space.lg, alignItems: 'center' },
+  grabber: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginBottom: space.md },
 });

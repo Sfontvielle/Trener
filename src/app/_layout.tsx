@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, Platform, View } from 'react-native';
-import { Stack, router, useSegments } from 'expo-router';
+import { Stack, router, useNavigationContainerRef, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
@@ -13,7 +13,7 @@ import { configureNotifications, syncReminders } from '@/services/notifications'
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useThemeKey } from '@/hooks/useThemeKey';
-import { consumePendingRoute } from '@/features/settings/themeNav';
+import { consumePendingNavState } from '@/features/settings/themeNav';
 import { maybeAutoSync } from '@/features/health/sync';
 
 export { ErrorBoundaryView as ErrorBoundary };
@@ -44,20 +44,23 @@ function Gate() {
     if (profile && inOnboarding) router.replace('/');
   }, [hydrated, profile, segments]);
 
-  // После смены темы навигатор перемонтируется — возвращаем пользователя туда, где он был
+  // После смены темы навигатор перемонтируется — восстанавливаем весь стек экранов как был
+  const nav = useNavigationContainerRef();
   useEffect(() => {
     if (!hydrated) return;
-    const r = consumePendingRoute();
-    // Навигатор только что смонтирован — даём ему время, и не роняем приложение, если переход не удался
-    if (r)
-      setTimeout(() => {
-        try {
-          router.push(r as never);
-        } catch {
-          /* остаёмся на главной */
-        }
-      }, 350);
-  }, [hydrated]);
+    const state = consumePendingNavState();
+    if (!state) return;
+    let tries = 0;
+    const restore = () => {
+      if (!nav.isReady() && tries++ < 20) return void setTimeout(restore, 30);
+      try {
+        nav.resetRoot(state as never);
+      } catch {
+        /* остаёмся на главной */
+      }
+    };
+    restore();
+  }, [hydrated, nav]);
 
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)
   useEffect(() => {

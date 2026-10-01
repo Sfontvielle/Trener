@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Exercise, ExerciseSet, WorkoutDraft, WorkoutExercise, WorkoutSession } from '@/types';
 import { persistOptions } from '@/storage/persist';
+import { localizeWorkoutName } from '@/features/training/names';
 import { uid } from '@/utils/id';
 import { cancelRestEnd, scheduleRestEnd } from '@/services/notifications';
 import { useProfile } from './profile';
@@ -123,7 +124,16 @@ export const useWorkouts = create<WorkoutState>()(
       addCustomExercise: (e) => set((st) => ({ customExercises: [...st.customExercises, e] })),
       reset: () => set({ sessions: [], active: null, draft: null, rest: null, customExercises: [] }),
     }),
-    persistOptions<WorkoutState>('workouts', 1, (s) => ({ sessions: s.sessions, active: s.active, draft: s.draft, rest: s.rest, customExercises: s.customExercises }) as WorkoutState),
+    {
+      ...persistOptions<WorkoutState>('workouts', 1, (s) => ({ sessions: s.sessions, active: s.active, draft: s.draft, rest: s.rest, customExercises: s.customExercises }) as WorkoutState),
+      // История до русификации: «Upper A» → «Верх А»
+      merge: (persisted, current) => {
+        const p = { ...current, ...(persisted as Partial<WorkoutState>) };
+        p.sessions = (p.sessions ?? []).map((x) => ({ ...x, name: localizeWorkoutName(x.name) }));
+        if (p.active) p.active = { ...p.active, name: localizeWorkoutName(p.active.name) };
+        return p;
+      },
+    },
   ),
 );
 

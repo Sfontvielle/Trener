@@ -81,7 +81,7 @@ export function buildJournal(args: {
 
   for (const a of args.adjustments ?? []) {
     if (!sameDay(a.createdAt, date) || a.source === 'user') continue;
-    out.push({ id: `adj-${a.id}`, at: a.createdAt, kind: 'plan', title: a.source === 'coach' ? 'FORM Coach' : 'FORM', sub: a.summary });
+    out.push({ id: `adj-${a.id}`, at: a.createdAt, kind: 'plan', title: a.source === 'coach' ? 'Тренер FORM' : 'FORM', sub: a.summary });
   }
   if (args.healthSyncAt && sameDay(args.healthSyncAt, date)) out.push({ id: `hs-${date}`, at: args.healthSyncAt, kind: 'health', title: 'Apple Health', sub: 'данные синхронизированы' });
   for (const n of args.notes ?? []) if (n.date === date) out.push({ id: `n-${n.id}`, at: n.at, kind: 'note', title: 'Заметка', sub: n.text, refId: n.id });

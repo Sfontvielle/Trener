@@ -163,7 +163,7 @@ export function analyzeWorkout(args: {
   // Баланс жим/тяга в тренировке верха
   const push = (direct.get('chest') ?? 0) + (direct.get('front_delts') ?? 0);
   const pull = (direct.get('lats') ?? 0) + (direct.get('upper_back') ?? 0);
-  if (push >= 6 && pull === 0 && (direct.get('quads') ?? 0) === 0) issues.push({ id: 'balance', level: 'info', text: 'Есть жимы, но нет тяг. Если это не Push-день, добавь тягу для баланса плеч.' });
+  if (push >= 6 && pull === 0 && (direct.get('quads') ?? 0) === 0) issues.push({ id: 'balance', level: 'info', text: 'Есть жимы, но нет тяг. Если это не жимовой день, добавь тягу для баланса плеч.' });
 
   return issues;
 }

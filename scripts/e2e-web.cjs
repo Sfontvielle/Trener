@@ -133,11 +133,26 @@ const check = async (name, fn) => {
     assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'шторка закрыта');
   });
 
+  await check('22. Тренировки: неделя сверху, объём — шторкой', async () => {
+    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const wk = await page.getByText('Эта неделя', { exact: true }).boundingBox();
+    assert.ok(wk && wk.y < 220, `неделя сверху: y=${wk && wk.y}`);
+    await shot('training-today');
+    await page.getByLabel('Объём за неделю').click();
+    await page.waitForTimeout(700);
+    assert.ok(await page.getByText('Прямые рабочие подходы с понедельника · сделано / план').isVisible());
+    await shot('volume-sheet');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(600);
+  });
+
   await check('17. Главная: Coach у иконки профиля, без прокрутки', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const coach = await page.getByLabel('FORM Coach — совет дня и чат').boundingBox();
+    const coach = await page.getByLabel('Тренер FORM — совет дня и чат').boundingBox();
     const prof = await page.getByLabel('Профиль').first().boundingBox();
     assert.ok(coach && prof && Math.abs(coach.y - prof.y) < 20, 'кнопка коуча рядом с профилем');
     assert.equal(await page.getByText('Coach расчёт').count(), 0);
@@ -152,7 +167,7 @@ const check = async (name, fn) => {
     await dismiss();
     if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/theme-start.png` });
     const before = errors.length;
-    for (const t of ['Electric Blue', 'Светлая', 'Orange', 'Тёмная', 'Acid Green · по умолчанию']) {
+    for (const t of ['Синий', 'Светлая', 'Оранжевый', 'Тёмная', 'Салатовый · по умолчанию']) {
       await page.getByText(t, { exact: true }).last().click({ timeout: 4000 }).catch(async (e) => { if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/fail-${t}.png` }); throw e; });
       await page.waitForTimeout(900);
       if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/theme-${t}.png` });
@@ -167,9 +182,13 @@ const check = async (name, fn) => {
     await dismiss();
     await page.getByText('План', { exact: true }).first().click();
     await page.waitForTimeout(600);
-    await page.getByText('Full Body', { exact: true }).first().click();
+    assert.ok(await page.getByText('Твой план', { exact: true }).isVisible(), 'план сверху');
+    await page.getByLabel('Сменить сплит').click();
+    await page.waitForTimeout(400);
+    await shot('split-list');
+    await page.getByText('Всё тело', { exact: true }).first().click();
     await page.waitForTimeout(600);
-    assert.ok((await page.getByText('Выбрать этот сплит').count()) === 1);
+    assert.ok((await page.getByText('Перейти на этот сплит').count()) === 1);
     await shot('split');
     await page.getByText('Библиотека', { exact: true }).first().click();
     await page.waitForTimeout(800);
@@ -186,6 +205,64 @@ const check = async (name, fn) => {
     await page.waitForTimeout(1500);
     assert.match(await page.evaluate(() => document.body.innerText), /врач/i);
     await shot('coach');
+  });
+
+  await check('23. Тренер: «что мне сегодня делать» и программа на мышцу — с кнопками', async () => {
+    await page.goto(`${URL}/coach`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByLabel('Сообщение тренеру').fill('Что мне сегодня делать?');
+    await page.getByLabel('Отправить').click();
+    await page.waitForTimeout(1200);
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.ok(!/Пройди утренний чек-ин/.test(t), 'не требует чек-ин');
+    assert.ok(/Начать тренировку|Тренировка вне плана|уже сделана/.test(t), 'есть действие');
+    await page.getByLabel('Сообщение тренеру').fill('хочу упражнение на верх груди');
+    await page.getByLabel('Отправить').click();
+    await page.waitForTimeout(1200);
+    assert.ok(await page.getByText('Начать эту тренировку').last().isVisible());
+    await shot('coach-target');
+  });
+
+  await check('24. Шторка «+» закрывается свайпом за содержимое; «Тренировать сейчас» на карточке', async () => {
+    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByLabel('Тренировка: начать, сгенерировать или собрать').click();
+    await page.waitForTimeout(800);
+    const card = await page.getByText('Сегодня по плану').boundingBox();
+    assert.ok(card, 'шторка открыта');
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
+    await touch('touchStart', card.y + 10);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', card.y + 10 + i * 25); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByText('Сегодня по плану').count(), 0, 'шторка закрыта свайпом');
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    assert.ok(await page.getByText('Тренировать сейчас').isVisible());
+  });
+
+  await check('21. Оформление: после смены темы «Назад» ведёт в профиль, затем на главную', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByLabel('Профиль').first().click();
+    await page.waitForTimeout(800);
+    await page.getByText('Оформление', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByText('Синий', { exact: true }).last().click();
+    await page.waitForTimeout(1500);
+    assert.ok(await page.getByText('Оформление', { exact: true }).last().isVisible(), 'остались на «Оформлении»');
+    await page.getByLabel('Назад').last().click();
+    await page.waitForTimeout(900);
+    const visible = async (txt) => { for (const el of await page.getByText(txt).all()) if (await el.isVisible()) return true; return false; };
+    assert.ok(!(await visible('Выбор сохраняется на устройстве')), 'один «Назад» уходит с «Оформления»');
+    assert.ok(await visible('Оформление'), 'вернулись в профиль');
+    await page.getByLabel('Назад').last().click();
+    await page.waitForTimeout(900);
+    assert.ok(await page.getByLabel('Тренер FORM — совет дня и чат').isVisible(), 'второй «Назад» — главная');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

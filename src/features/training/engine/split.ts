@@ -5,24 +5,24 @@ import { weeklyTargets } from './volume';
 import type { RecoveryEstimate } from './recovery';
 
 export const SPLIT_LABEL: Record<SplitType, string> = {
-  fullbody: 'Full Body',
+  fullbody: 'Всё тело',
   upper_lower: 'Верх / Низ',
   upper_lower_full: 'Верх / Низ / Всё тело',
   torso_limbs: 'Торс / Конечности',
-  ppl: 'Push / Pull / Legs',
-  ul_ppl: 'Верх / Низ + PPL',
-  ppl_x2: 'PPL × 2',
+  ppl: 'Жим / Тяга / Ноги',
+  ul_ppl: 'Верх / Низ + Жим / Тяга / Ноги',
+  ppl_x2: 'Жим / Тяга / Ноги × 2',
   bro: 'Сплит по группам',
 };
 
 export const SPLIT_PREF_LABEL: Record<SplitPreference, string> = {
   auto: 'Пусть FORM выбирает',
-  fullbody: 'Full Body',
-  upper_lower: 'Upper / Lower',
+  fullbody: 'Всё тело',
+  upper_lower: 'Верх / Низ',
   torso_limbs: 'Торс / Конечности',
-  ppl: 'Push / Pull / Legs',
-  ul_ppl: 'Upper / Lower + PPL',
-  bro: 'По группам (bro split)',
+  ppl: 'Жим / Тяга / Ноги',
+  ul_ppl: 'Верх / Низ + Жим / Тяга / Ноги',
+  bro: 'По группам мышц',
   custom: 'Свой (правлю шаблоны сам)',
 };
 

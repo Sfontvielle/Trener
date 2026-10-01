@@ -41,6 +41,8 @@ export function actionKey(a: Pick<CoachAction, 'type' | 'params'>): string {
       return `volume:${p.muscle}:${Math.sign(p.deltaSets ?? 0)}`;
     case 'adjust_calories':
       return `kcal:${Math.sign(p.deltaKcal ?? 0)}`;
+    case 'add_to_plan':
+      return `add:${p.templateId}:${p.exerciseId}`;
     default:
       return a.type;
   }
@@ -146,7 +148,32 @@ export function validateAction(action: CoachAction, ctx: ActionContext): Validat
       if (!inRange(Math.abs(p.deltaKcal ?? 0), 50, 400)) return fail('изменение калорий должно быть 50–400 ккал');
       break;
     case 'suggest_meal':
+    case 'start_today':
       break;
+    case 'start_custom_workout': {
+      const ids = p.exerciseIds ?? [];
+      if (!ids.length || ids.length > 10) return fail('нужно 1–10 упражнений');
+      for (const id of ids) {
+        const bad = getExercise(id, customs) ? (getExercise(id, customs)!.custom ? null : allowedTarget(id)) : 'неизвестное упражнение';
+        if (bad) return fail(bad);
+      }
+      if (p.sets !== undefined && !inRange(p.sets, 1, 6)) return fail('подходов должно быть 1–6');
+      break;
+    }
+    case 'add_to_plan': {
+      if (!p.templateId || !ctx.plan?.templates.some((x) => x.id === p.templateId)) return fail('такой тренировки нет в плане');
+      if (ctx.plan.templates.find((x) => x.id === p.templateId)!.exercises.some((x) => x.exerciseId === p.exerciseId)) return fail('упражнение уже есть в этой тренировке');
+      const bad = allowedTarget(p.exerciseId);
+      if (bad) return fail(bad);
+      if (!inRange(p.sets ?? 3, 1, 6)) return fail('подходов должно быть 1–6');
+      break;
+    }
+    case 'create_exercise': {
+      const e = p.exercise;
+      if (!e || !e.name || e.name.length < 3 || e.name.length > 60) return fail('некорректное название упражнения');
+      if (customs.some((c) => c.name.toLowerCase() === e.name.toLowerCase())) return fail('такое упражнение уже есть в «Моих»');
+      break;
+    }
     default:
       return fail('неизвестное действие');
   }

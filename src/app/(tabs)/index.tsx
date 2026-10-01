@@ -172,7 +172,7 @@ export default function Home() {
               {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
             </T>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="FORM Coach — совет дня и чат" onPress={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')} style={styles.coachBtn} hitSlop={4}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Тренер FORM — совет дня и чат" onPress={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')} style={styles.coachBtn} hitSlop={4}>
             <Icon name="sparkles" size={20} color={colors.accent} />
             {insight && insight.date === d ? <View style={styles.coachDot} /> : null}
           </Pressable>
@@ -504,7 +504,7 @@ function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () =
     onClose();
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title="Заметка" subtitle="Видна тебе и FORM Coach в сегодняшнем контексте">
+    <Sheet visible={visible} onClose={onClose} title="Заметка" subtitle="Видна тебе и тренеру FORM">
       <View style={{ gap: space.md }}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {NOTE_CHIPS.map((c) => (

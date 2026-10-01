@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import type { CoachAction, CoachMessage, PlannedExercise, VolumeMuscle } from '@/types';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
@@ -16,13 +17,15 @@ import { excludeExercise, getPrefs, toggleFavorite, withPrefs } from '@/features
 import { estimateMinutes } from '@/features/training/engine/time';
 import { makeWorkoutExercise } from '@/features/training/session';
 import { applyDeload } from '@/features/training/deloadActions';
-import { openGenerated } from '@/features/training/actions';
+import { openGenerated, startExercises, startTodayPlanned } from '@/features/training/actions';
+import { getExercise } from '@/data/exercises';
 import { actionKey, applyToExercises, validateAction, validateActions, type ActionContext } from './actions';
 import { askCoach, coachBaseUrl, CoachApiError, coachErrorText, summarizeConversation, type CoachApiAction } from '@/services/coachApi';
 import { buildCoachContext } from './context';
 import { detectSafety, safetyReply } from './safety';
 import { localInsights } from './insights';
 import { localCoach } from './local/engine';
+import { extractFacts } from './local/memory';
 import { today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { LOCAL_FOODS } from '@/data/foods';
@@ -273,6 +276,27 @@ export function applyCoachAction(messageId: string, action: CoachAction): { ok: 
     case 'suggest_meal':
       message = 'Ок';
       break;
+    case 'start_today':
+      startTodayPlanned();
+      message = 'Тренировка начата';
+      break;
+    case 'start_custom_workout':
+      startExercises(p.exerciseIds!, { name: p.name, sets: p.sets, repMin: p.repMin, repMax: p.repMax });
+      message = 'Тренировка начата';
+      break;
+    case 'add_to_plan': {
+      const t = ps.plan!.templates.find((x) => x.id === p.templateId)!;
+      const ex = getExercise(p.exerciseId!, useWorkouts.getState().customExercises)!;
+      ps.updateTemplate({ ...t, exercises: [...t.exercises, { exerciseId: ex.id, sets: p.sets ?? 3, repMin: p.repMin ?? ex.defaultReps[0], repMax: p.repMax ?? ex.defaultReps[1], targetRir: 1, restSec: ex.mechanic === 'compound' ? 120 : 75, why: p.reason ? `Добавлено тренером: ${p.reason}` : 'Добавлено тренером' }] });
+      ps.addAdjustment({ kind: 'plan_rebuild', summary: `«${ex.name}» добавлено в ${t.name}`, source: 'coach' });
+      message = `Добавлено в ${t.name}`;
+      break;
+    }
+    case 'create_exercise':
+      useWorkouts.getState().addCustomExercise({ ...p.exercise!, custom: true });
+      router.push({ pathname: '/exercise/[id]', params: { id: p.exercise!.id } });
+      message = `«${p.exercise!.name}» в библиотеке → «Мои»`;
+      break;
   }
   markAction(messageId, action.id, { applied: true });
   return { ok: true, message };
@@ -297,7 +321,10 @@ async function maybeSummarize() {
 export async function sendCoachMessage(text: string): Promise<CoachMessage> {
   const coach = useCoach.getState();
   const history = coach.messages.filter((m) => !m.error && !m.safety).slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, text: m.text }));
+  const previousQuestion = [...coach.messages].reverse().find((m) => m.role === 'user')?.text;
   coach.addMessage({ role: 'user', text });
+  // Тренер помнит, что человек рассказал о себе (здоровье, травмы, питание, цели, рекорды)
+  for (const f of extractFacts(text, today())) useCoach.getState().addMemory(f.text, f.category, 'user');
 
   // 1) Безопасность — локально и мгновенно
   const level = detectSafety(text);
@@ -310,7 +337,7 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
 
   // Без внешнего AI-сервера тренер работает на устройстве — сразу, без «подключите сервер»
   if (!coachBaseUrl()) {
-    const r = localReply(text);
+    const r = localReply(text, previousQuestion);
     return useCoach.getState().addMessage({ role: 'assistant', text: r.text, actions: validateActions(r.actions, actionContext()), safety: r.safety });
   }
   const context = currentContext();
@@ -322,14 +349,14 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     return msg;
   } catch (e) {
     // Сервер недоступен — отвечает тренер на устройстве
-    const r = localReply(text);
+    const r = localReply(text, previousQuestion);
     const rateLimited = e instanceof CoachApiError && e.kind === 'rate_limited';
     return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? coachErrorText(e) : r.text, actions: validateActions(r.actions, actionContext()), offline: true });
   }
 }
 
 /** Ответ тренера на устройстве по всем данным пользователя */
-export function localReply(question: string) {
+export function localReply(question: string, previousQuestion?: string) {
   const s = snapshot();
   const recentProducts = s.nut.recent.map((id) => s.nut.products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is NonNullable<typeof p> => !!p);
   return localCoach({
@@ -348,6 +375,8 @@ export function localReply(question: string) {
     checkins: s.checkins,
     health: healthContext(useHealth.getState().days, today()),
     customs: s.ws.customExercises,
+    memory: useCoach.getState().memory,
+    previousQuestion,
   });
 }
 
