@@ -45,6 +45,7 @@ export default function Nutrition() {
   const adjustments = usePlan((s) => s.adjustments);
   const weights = useBody((s) => s.weights);
   const [edit, setEdit] = useState<FoodEntry | null>(null);
+  const [moreMeals, setMoreMeals] = useState(false);
   const isToday = offset === 0;
   const nowMeal = mealForHour(new Date().getHours());
   const repeat = useMemo(() => (isToday ? sameMealYesterday(allEntries, date, nowMeal) : []), [isToday, allEntries, date, nowMeal]);
@@ -119,57 +120,10 @@ export default function Nutrition() {
         </View>
       </Card>
 
-      {review && review.status === 'adjust' && isToday ? (
-        <Card tone="warning" style={{ marginTop: space.md, gap: 8 }}>
-          <T v="h3">{review.headline}</T>
-          <T v="small">{review.detail}</T>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.headline, 'adaptive'); toast('Калорийность обновлена'); }} style={{ flex: 1 }} />
-            <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Стоит ли менять калорийность по тренду веса?' } })} />
-          </View>
-        </Card>
-      ) : null}
-
-      {isToday && suggestions ? (
-        <>
-          <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
-          <View style={{ gap: 10 }}>
-            {suggestions.notes.map((n) => (
-              <Banner key={n} tone={n.includes('превыш') ? 'warning' : 'info'} text={n} />
-            ))}
-            {suggestions.options.map((o) => (
-              <Card key={o.id} style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <T v="caption">{o.title}</T>
-                  <T v="small" style={{ fontSize: 12 }}>
-                    {o.why}
-                  </T>
-                </View>
-                {o.items.map((it) => (
-                  <View key={it.product.id} style={{ flexDirection: 'row' }}>
-                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={1}>
-                      {it.product.name}
-                    </T>
-                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
-                      {it.grams} г
-                    </T>
-                  </View>
-                ))}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <T v="small" style={{ flex: 1 }}>
-                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · Ж {Math.round(o.total.fat)} · У {Math.round(o.total.carbs)}
-                  </T>
-                  <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
-                </View>
-              </Card>
-            ))}
-          </View>
-        </>
-      ) : null}
-
+      <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.md, marginBottom: space.sm }} onPress={() => router.push({ pathname: '/food/add', params: { date } })} />
       {isToday && (repeat.length || frequent.length) ? (
         <>
-          <SectionTitle title="Быстро добавить" />
+          
           {repeat.length ? (
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
               <Icon name="repeat" size={20} color={colors.accent} />
@@ -264,7 +218,57 @@ export default function Nutrition() {
           })}
         </View>
       )}
-      <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.lg }} onPress={() => router.push({ pathname: '/food/add', params: { date } })} />
+
+      {review && review.status === 'adjust' && isToday ? (
+        <Card tone="warning" style={{ marginTop: space.md, gap: 8 }}>
+          <T v="h3">{review.headline}</T>
+          <T v="small">{review.detail}</T>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.headline, 'adaptive'); toast('Калорийность обновлена'); }} style={{ flex: 1 }} />
+            <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Стоит ли менять калорийность по тренду веса?' } })} />
+          </View>
+        </Card>
+      ) : null}
+
+      {isToday && suggestions ? (
+        <>
+          <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
+          <View style={{ gap: 10 }}>
+            {suggestions.notes.map((n) => (
+              <Banner key={n} tone={n.includes('превыш') ? 'warning' : 'info'} text={n} />
+            ))}
+            {suggestions.options.slice(0, moreMeals ? 3 : 1).map((o) => (
+              <Card key={o.id} style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <T v="caption">{o.title}</T>
+                  <T v="small" style={{ fontSize: 12 }}>
+                    {o.why}
+                  </T>
+                </View>
+                {o.items.map((it) => (
+                  <View key={it.product.id} style={{ flexDirection: 'row' }}>
+                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={1}>
+                      {it.product.name}
+                    </T>
+                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
+                      {it.grams} г
+                    </T>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <T v="small" style={{ flex: 1 }}>
+                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · Ж {Math.round(o.total.fat)} · У {Math.round(o.total.carbs)}
+                  </T>
+                  <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
+                </View>
+              </Card>
+            ))}
+            {suggestions.options.length > 1 ? (
+              <Button title={moreMeals ? 'Скрыть варианты' : `Ещё варианты (${suggestions.options.length - 1})`} size="sm" variant="ghost" onPress={() => setMoreMeals(!moreMeals)} />
+            ) : null}
+          </View>
+        </>
+      ) : null}
 
       <EditEntrySheet key={edit?.id ?? 'none'} entry={edit} onClose={() => setEdit(null)} />
     </Screen>

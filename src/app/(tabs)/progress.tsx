@@ -31,6 +31,7 @@ type Range = '7' | '30' | '90' | 'all';
 
 export default function Progress() {
   const [range, setRange] = useState<Range>('30');
+  const [allPrs, setAllPrs] = useState(false);
   const weights = useBody((s) => s.weights);
   const sessions = useWorkouts((s) => s.sessions);
   const plan = usePlan((s) => s.plan);
@@ -230,7 +231,7 @@ export default function Progress() {
       <SectionTitle title="Рабочие веса и рекорды" />
       {prs.length ? (
         <View style={{ gap: 8 }}>
-          {prs.map((r) => (
+          {prs.slice(0, allPrs ? prs.length : 4).map((r) => (
             <Card key={r.exerciseId} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: r.exerciseId } })} style={{ paddingVertical: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ flex: 1 }}>
@@ -248,6 +249,7 @@ export default function Progress() {
               </View>
             </Card>
           ))}
+          {prs.length > 4 ? <Button title={allPrs ? 'Свернуть' : `Показать все (${prs.length})`} size="sm" variant="ghost" onPress={() => setAllPrs(!allPrs)} /> : null}
         </View>
       ) : (
         <Card>

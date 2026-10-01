@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,6 +45,14 @@ export default function ActiveWorkout() {
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; weId: string } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [painFor, setPainFor] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const pendingScroll = useRef<string | null>(null);
+  const onBlockLayout = (id: string, y: number) => {
+    if (pendingScroll.current !== id) return;
+    pendingScroll.current = null;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+  };
   const [finishOpen, setFinishOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -69,6 +77,18 @@ export default function ActiveWorkout() {
     );
   }
 
+  // Режим фокуса: развёрнуто одно упражнение — выбранное вручную или первое незавершённое
+  const current = active.exercises.find((e) => e.sets.some((x) => !x.done));
+  const picked = openId && active.exercises.some((e) => e.id === openId) ? openId : null;
+  const focusId = openId === '__none__' ? null : picked ?? current?.id ?? null;
+  const focusIdx = active.exercises.findIndex((e) => e.id === focusId);
+  const onExerciseFinished = (weId: string) => {
+    // Упражнение закончено → фокус уходит на следующее незавершённое, экран прокручивается к нему
+    const list = useWorkouts.getState().active?.exercises ?? [];
+    const next = list.find((e) => e.id !== weId && e.sets.some((x) => !x.done));
+    setOpenId(null);
+    if (next) pendingScroll.current = next.id;
+  };
   const total = active.exercises.reduce((a, e) => a + e.sets.length, 0);
   const done = active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
   const menuWe = active.exercises.find((e) => e.id === menuFor);
@@ -111,14 +131,15 @@ export default function ActiveWorkout() {
             {active.name}
           </T>
           <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
-            {formatDuration((now - active.startedAt) / 1000)} · {done}/{total} подходов
+            {formatDuration((now - active.startedAt) / 1000)} · {focusIdx >= 0 ? `упр. ${focusIdx + 1}/${active.exercises.length} · ` : ''}
+            {done}/{total} подх.
           </T>
         </View>
         <Button title="Готово" size="sm" onPress={() => setFinishOpen(true)} />
       </View>
       <Bar progress={total ? done / total : 0} height={3} style={{ borderRadius: 0 }} />
 
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 120, gap: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 120, gap: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {active.volumeFactor < 1 ? (
           <View style={styles.note}>
             <Icon name="battery-half" size={16} color={colors.warning} />
@@ -128,7 +149,17 @@ export default function ActiveWorkout() {
           </View>
         ) : null}
         {active.exercises.map((we, idx) => (
-          <ExerciseBlock key={we.id} we={we} index={idx} unit={unit} onMenu={() => setMenuFor(we.id)} />
+          <View key={we.id} onLayout={(e) => onBlockLayout(we.id, e.nativeEvent.layout.y)}>
+            <ExerciseBlock
+              we={we}
+              index={idx}
+              unit={unit}
+              expanded={we.id === focusId}
+              onToggle={() => setOpenId(we.id === focusId ? '__none__' : we.id)}
+              onFinished={onExerciseFinished}
+              onMenu={() => setMenuFor(we.id)}
+            />
+          </View>
         ))}
         {active.exercises.length === 0 ? <EmptyState icon="add-circle-outline" title="Пока пусто" text="Добавь первое упражнение." /> : null}
         <Button title="Добавить упражнение" icon="add" variant="secondary" onPress={() => setPicker({ mode: 'add' })} />
@@ -242,7 +273,23 @@ function MenuRow({ icon, label, onPress, danger }: { icon: React.ComponentProps<
   );
 }
 
-const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: { we: WorkoutExercise; index: number; unit: 'kg' | 'lb'; onMenu: () => void }) {
+const ExerciseBlock = memo(function ExerciseBlock({
+  we,
+  index,
+  unit,
+  onMenu,
+  expanded,
+  onToggle,
+  onFinished,
+}: {
+  we: WorkoutExercise;
+  index: number;
+  unit: 'kg' | 'lb';
+  onMenu: () => void;
+  expanded: boolean;
+  onToggle: () => void;
+  onFinished: (weId: string) => void;
+}) {
   const customs = useWorkouts((s) => s.customExercises);
   const sessions = useWorkouts((s) => s.sessions);
   const ex = getExercise(we.exerciseId, customs);
@@ -277,14 +324,37 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
     }
     const s = useProfile.getState().settings;
     const isLast = we.sets.filter((x) => !x.done).length <= 1;
+    if (isLast) onFinished(we.id);
     if (s.restTimerAuto) {
       st.startRest(we.restSec || s.defaultRestSec, isLast ? 'следующее упражнение' : ex.name);
       haptic.timerStart();
     }
   };
 
+  const doneCount = we.sets.filter((x) => x.done).length;
+  if (!expanded) {
+    const top = we.sets.filter((x) => x.done).reduce((m, x) => Math.max(m, x.weight), 0) || we.sets[0]?.weight || 0;
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel={`${ex.name}, развернуть`} onPress={onToggle} style={[styles.collapsed, allDone && { borderColor: colors.accentLine, opacity: 0.75 }]}>
+        <View style={[styles.num, { marginTop: 0 }, allDone && { backgroundColor: colors.accent }]}>
+          {allDone ? <Icon name="checkmark" size={16} color={colors.onAccent} /> : <T v="small" style={{ fontWeight: '800' }}>{index + 1}</T>}
+        </View>
+        <View style={{ flex: 1 }}>
+          <T v="body" style={{ fontWeight: '700' }} numberOfLines={1}>
+            {ex.name}
+          </T>
+          <T v="small" numberOfLines={1}>
+            {doneCount ? `${doneCount}/${we.sets.length} подх.` : `${we.sets.length} × ${we.repMin}–${we.repMax}`}
+            {top ? ` · ${fmtWeight(top, unit)} ${unitLabel(unit)}` : ''}
+          </T>
+        </View>
+        <Icon name="chevron-down" size={18} color={colors.muted} />
+      </Pressable>
+    );
+  }
+
   return (
-    <View style={[styles.block, allDone && { borderColor: colors.accentLine }]}>
+    <View style={[styles.block, { borderColor: colors.accentLine }]}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
         <View style={[styles.num, allDone && { backgroundColor: colors.accent }]}>
           {allDone ? <Icon name="checkmark" size={16} color={colors.onAccent} /> : <T v="small" style={{ fontWeight: '800' }}>{index + 1}</T>}
@@ -297,6 +367,7 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
             {we.plannedSets} × {we.repMin}–{we.repMax} · RIR {we.targetRir} · отдых {Math.round(we.restSec / 60 * 10) / 10} мин
           </T>
         </Pressable>
+        <IconButton name="chevron-up" label="Свернуть упражнение" onPress={onToggle} size={18} style={{ width: 38, height: 38 }} />
         <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 38, height: 38 }} />
       </View>
 
@@ -341,7 +412,7 @@ const ExerciseBlock = memo(function ExerciseBlock({ we, index, unit, onMenu }: {
         <View style={{ width: 48 }} />
       </View>
       {we.sets.map((s, i) => (
-        <SetRow key={s.id} weId={we.id} set={s} idx={i} unit={unit} onComplete={completeSet} />
+        <SetRow key={s.id} weId={we.id} set={s} idx={i} unit={unit} onComplete={completeSet} askFeel={s.done && !we.sets[i + 1]?.done && !s.feel} />
       ))}
       <SetTip we={we} step={ex.increment || 2.5} unit={unit} />
       <QuickAdjust we={we} step={ex.increment || 2.5} unit={unit} bodyweight={isBw} />
@@ -461,7 +532,7 @@ function WarmupHint({ ex, we, unit }: { ex: Exercise; we: WorkoutExercise; unit:
   );
 }
 
-const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete }: { weId: string; set: ExerciseSet; idx: number; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void }) {
+const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, askFeel }: { weId: string; set: ExerciseSet; idx: number; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; askFeel: boolean }) {
   const [w, setW] = useState(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
   const [r, setR] = useState(set.reps ? String(set.reps) : '');
   // Синхронизация только при внешнем изменении (перенос веса из прошлого подхода, смена единиц).
@@ -483,9 +554,16 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete }: { weId
   return (
     <View>
       <View style={[styles.setRow, set.done && { backgroundColor: 'rgba(200,245,60,0.07)' }]}>
-        <T v="body" style={{ width: 28, fontWeight: '800' }} color={set.done ? colors.accent : colors.textDim}>
-          {idx + 1}
-        </T>
+        <Pressable style={{ width: 28 }} disabled={!set.done} onPress={() => { const n: SetFeel = set.feel === 'easy' ? 'ok' : set.feel === 'ok' ? 'hard' : 'easy'; haptic.tap(); upd({ feel: n, rir: FEEL_RIR[n] }); }} accessibilityLabel="Изменить ощущение подхода">
+          <T v="body" style={{ fontWeight: '800' }} color={set.done ? colors.accent : colors.textDim}>
+            {idx + 1}
+          </T>
+          {set.done && set.feel ? (
+            <T v="small" style={{ fontSize: 9, fontWeight: '800' }} color={set.feel === 'hard' ? colors.warning : colors.textDim}>
+              {set.feel === 'easy' ? 'RIR3' : set.feel === 'ok' ? 'RIR2' : 'RIR0'}
+            </T>
+          ) : null}
+        </Pressable>
         <TextInput
           value={w}
           onChangeText={(t) => {
@@ -524,7 +602,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete }: { weId
           <Icon name="checkmark" size={22} color={set.done ? colors.onAccent : colors.muted} />
         </Pressable>
       </View>
-      {set.done ? (
+      {askFeel ? (
         <View style={styles.feelRow}>
           <T v="small" style={{ fontSize: 12 }}>
             Как пошло?
@@ -611,6 +689,7 @@ const styles = StyleSheet.create({
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
   warm: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
   tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  collapsed: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   quick: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2 },
   qBtn: { minWidth: 44, height: 40, paddingHorizontal: 8, borderRadius: radius.sm, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
