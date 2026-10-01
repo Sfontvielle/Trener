@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import type { FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Chip, Icon, Skeleton, T } from '@/components/ui';
+import { Banner, Button, Chip, Icon, Segmented, Skeleton, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -13,10 +13,25 @@ import { usePlan } from '@/stores/plan';
 import { searchLocalFoods, LOCAL_FOODS } from '@/data/foods';
 import { foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
 import { macrosFor, remaining, sumMacros } from '@/features/nutrition/status';
+import { frequentProducts } from '@/features/nutrition/quick';
 import { today } from '@/utils/date';
 import { parseDecimal } from '@/utils/format';
 import { uid } from '@/utils/id';
 import { haptic } from '@/services/haptics';
+
+type FoodTab = 'frequent' | 'recent' | 'mine' | 'base';
+const TABS: { key: FoodTab; label: string }[] = [
+  { key: 'frequent', label: 'Частые' },
+  { key: 'recent', label: 'Недавние' },
+  { key: 'mine', label: 'Мои' },
+  { key: 'base', label: 'Базовые' },
+];
+const TAB_HINT: Record<FoodTab, string> = {
+  frequent: 'Ешь регулярно — порция как в прошлый раз',
+  recent: 'Недавние',
+  mine: 'Мои продукты и блюда',
+  base: 'Базовые продукты',
+};
 
 export default function AddFood() {
   const params = useLocalSearchParams<{ date?: string; productId?: string }>();
@@ -39,6 +54,13 @@ export default function AddFood() {
     return Object.values(products).filter((p) => p.source !== 'local' && `${p.name} ${p.brand ?? ''}`.toLowerCase().includes(t)).slice(0, 10);
   }, [q, products]);
   const local = useMemo(() => searchLocalFoods(q, 12), [q]);
+  const entries = useNutrition((s) => s.entries);
+  const lastGrams = useNutrition((s) => s.lastGrams);
+  // Частые продукты определяются автоматически по дневнику (2+ раза за 3 недели)
+  const frequent = useMemo(() => frequentProducts(entries, products, lastGrams, date, 30).map((f) => f.product), [entries, products, lastGrams, date]);
+  const mine = useMemo(() => Object.values(products).filter((p) => p.source === 'custom'), [products]);
+  const [tabPick, setTab] = useState<FoodTab | null>(null);
+  const tab: FoodTab = tabPick ?? (frequent.length ? 'frequent' : recent.length ? 'recent' : 'base');
 
   const query = q.trim();
   const online = query.length >= 3;
@@ -63,8 +85,8 @@ export default function AddFood() {
 
   const sections: { key: string; title: string; data: FoodProduct[] }[] = [];
   if (q.trim().length < 2) {
-    if (recent.length) sections.push({ key: 'recent', title: 'Недавние', data: recent.slice(0, 20) });
-    sections.push({ key: 'base', title: 'Базовые продукты', data: LOCAL_FOODS.slice(0, 30) });
+    const data = tab === 'frequent' ? frequent : tab === 'recent' ? recent.slice(0, 30) : tab === 'mine' ? mine : LOCAL_FOODS.slice(0, 40);
+    sections.push({ key: tab, title: TAB_HINT[tab], data });
   } else {
     const seen = new Set<string>();
     const dedupe = (arr: FoodProduct[]) => arr.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
@@ -95,6 +117,7 @@ export default function AddFood() {
         <Button title="Штрихкод" icon="barcode-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => (Platform.OS === 'web' ? setBarcodeOpen(true) : router.push({ pathname: '/food/scan', params: { date } }))} />
         <Button title="Свой продукт" icon="create-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => setCustomOpen(true)} />
       </View>
+      {q.trim().length < 2 ? <Segmented items={TABS} value={tab} onChange={setTab} style={{ marginTop: 10 }} /> : null}
       {error ? (
         <View style={{ marginTop: 10 }}>
           <Banner tone="warning" icon="cloud-offline-outline" text={error} />
@@ -118,7 +141,14 @@ export default function AddFood() {
           )
         }
         ListFooterComponent={
-          loading ? (
+          q.trim().length < 2 && !sections[0]?.data.length ? (
+            <View style={{ alignItems: 'center', gap: 8, marginTop: 20 }}>
+              <T v="small" style={{ textAlign: 'center' }}>
+                {tab === 'frequent' ? 'Здесь появятся продукты, которые ты ешь чаще всего — FORM запомнит их сам.' : tab === 'mine' ? 'Добавь свой продукт или блюдо с КБЖУ на 100 г — оно будет здесь.' : 'Пока пусто.'}
+              </T>
+              {tab === 'mine' ? <Button title="Свой продукт" size="sm" variant="secondary" onPress={() => setCustomOpen(true)} /> : null}
+            </View>
+          ) : loading ? (
             <View style={{ gap: 8, marginTop: 12 }}>
               <T v="caption">Ищу в базе продуктов…</T>
               {[0, 1, 2].map((i) => (

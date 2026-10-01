@@ -57,6 +57,8 @@ export function resolveToday(args: {
   } else {
     template = plannedTemplateFor(date, plan, sessions);
   }
+  // Тренер/пользователь изменил состав тренировки только на сегодня
+  if (template && override?.exercises?.length) template = { ...template, exercises: override.exercises, estMinutes: estimateMinutes(override.exercises) };
   if (!template || override?.mode === 'rest') {
     return { ...base, kind: 'rest', override, reason: override?.reason, nextWorkout: next };
   }

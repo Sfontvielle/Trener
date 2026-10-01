@@ -27,6 +27,9 @@ import { haptic } from '@/services/haptics';
 import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday } from '@/features/nutrition/quick';
 
+/** Остаток макроса: «45 г» или «+12» при переборе */
+const remainTxt = (v: number) => (v >= 0 ? `${Math.round(v)} г` : `+${Math.round(-v)}`);
+
 export default function Nutrition() {
   // Дата считается от «сегодня», которое само переключается после полуночи
   const dayKey = useDayKey();
@@ -95,11 +98,13 @@ export default function Nutrition() {
             </T>
           </Ring>
           <View style={{ flex: 1, gap: 4 }}>
-            <T v="caption">Цель · {GOAL_SHORT[profile.goal]}</T>
-            <T v="h2" color={left < 0 ? stateColor(kState) : colors.text}>
-              {left >= 0 ? `Осталось ${fmtNum(left)}` : `Перебор ${fmtNum(-left)}`}
+            <T v="caption">{isToday ? 'Осталось сегодня' : 'Осталось'} · {GOAL_SHORT[profile.goal]}</T>
+            <T v="h1" color={left < 0 ? stateColor(kState) : colors.text}>
+              {left >= 0 ? `${fmtNum(left)} ккал` : `+${fmtNum(-left)} ккал`}
             </T>
-            <T v="small">ккал</T>
+            <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+              {left < 0 ? 'сверх цели · ' : ''}Б {remainTxt(target.protein - nut.eaten.protein)} · Ж {remainTxt(target.fat - nut.eaten.fat)} · У {remainTxt(target.carbs - nut.eaten.carbs)}
+            </T>
           </View>
         </View>
         <View style={{ gap: 12, marginTop: space.lg }}>

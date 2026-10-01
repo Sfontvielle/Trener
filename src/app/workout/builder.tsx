@@ -12,6 +12,10 @@ import { usePlan } from '@/stores/plan';
 import { getExercise, GROUP_LABEL } from '@/data/exercises';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { estimateMinutes } from '@/features/training/planGenerator';
+import { useProfile } from '@/stores/profile';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { analyzeWorkout, suggestOrder } from '@/features/training/engine/order';
+import { weeklyTargets } from '@/features/training/engine/volume';
 import { startDraft } from '@/features/training/actions';
 
 /**
@@ -29,6 +33,11 @@ export default function Builder() {
   const [tplExercises, setTplExercises] = useState<PlannedExercise[]>(() => template?.exercises.map((e) => ({ ...e })) ?? []);
   const [picker, setPicker] = useState<{ swapIdx?: number } | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [keptOrder, setKeptOrder] = useState<string | null>(null);
+  const [whyOrder, setWhyOrder] = useState(false);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const profile = useProfile((s) => s.profile);
+  const sessions = useWorkouts((s) => s.sessions);
 
   const isTemplate = !!template;
   const draftExercises = draft?.exercises;
@@ -46,6 +55,16 @@ export default function Builder() {
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [exercises, customs]);
+
+  const prefs = useMemo(() => (profile ? getPrefs(profile) : null), [profile]);
+  // Оптимизатор порядка: предлагает, но не переставляет без согласия
+  const orderSig = exercises.map((e) => e.exerciseId).join('|');
+  const order = useMemo(() => (prefs && exercises.length >= 2 ? suggestOrder(exercises, prefs.priorityMuscles, customs) : null), [exercises, prefs, customs]);
+  const issues = useMemo(
+    () => (profile && prefs ? analyzeWorkout({ list: exercises, profile, prefs, sessions, weeklyTargets: weeklyTargets(profile, prefs), customs }) : []),
+    [exercises, profile, prefs, sessions, customs],
+  );
+  const visibleIssues = issues.filter((i) => !hidden.includes(i.id));
 
   if (!isTemplate && !draft) {
     return (
@@ -115,6 +134,54 @@ export default function Builder() {
         </T>
       ) : null}
 
+      {order?.changed && keptOrder !== orderSig ? (
+        <View style={styles.suggest}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="swap-vertical" size={18} color={colors.accent} />
+            <T v="body" style={{ fontWeight: '800', flex: 1 }}>
+              Оптимизировать порядок?
+            </T>
+            <Pressable hitSlop={8} onPress={() => setWhyOrder(!whyOrder)} accessibilityRole="button">
+              <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
+                Почему?
+              </T>
+            </Pressable>
+          </View>
+          <T v="small" numberOfLines={3}>
+            {order.order.map((pe) => getExercise(pe.exerciseId, customs)?.name ?? pe.exerciseId).join(' → ')}
+          </T>
+          {whyOrder ? <T v="small" color={colors.text}>{order.why}</T> : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title="Применить" size="sm" onPress={() => { setExercises(order.order); toast('Порядок обновлён'); }} style={{ flex: 1 }} />
+            <Button title="Оставить мой порядок" size="sm" variant="secondary" onPress={() => setKeptOrder(orderSig)} style={{ flex: 1.4 }} />
+          </View>
+        </View>
+      ) : null}
+      {visibleIssues.map((it) => (
+        <View key={it.id} style={[styles.issue, it.level === 'danger' && { borderColor: colors.danger }, it.level === 'warning' && { borderColor: 'rgba(247,178,59,0.45)' }]}>
+          <Icon name={it.level === 'danger' ? 'alert-circle' : it.level === 'warning' ? 'warning-outline' : 'information-circle-outline'} size={18} color={it.level === 'danger' ? colors.danger : it.level === 'warning' ? colors.warning : colors.textDim} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <T v="small" color={colors.text}>
+              {it.text}
+            </T>
+            <View style={{ flexDirection: 'row', gap: 14 }}>
+              {it.fix ? (
+                <Pressable hitSlop={6} onPress={() => { setExercises(it.fix!(exercises)); toast('Исправлено'); }} accessibilityRole="button">
+                  <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+                    {it.fixLabel ?? 'Исправить'}
+                  </T>
+                </Pressable>
+              ) : null}
+              <Pressable hitSlop={6} onPress={() => setHidden([...hidden, it.id])} accessibilityRole="button">
+                <T v="small" style={{ fontWeight: '700' }}>
+                  Оставить
+                </T>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ))}
+
       <View style={{ gap: 10 }}>
         {exercises.map((pe, i) => {
           const ex = getExercise(pe.exerciseId, customs);
@@ -139,6 +206,11 @@ export default function Builder() {
               </Pressable>
               {open ? (
                 <View style={{ gap: 10, marginTop: 10 }}>
+                  {pe.why ? (
+                    <T v="small" style={{ fontSize: 12 }}>
+                      Почему: {pe.why}
+                    </T>
+                  ) : null}
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <NumberStepper compact label="Подходы" value={pe.sets} onChange={(v) => patch(i, { sets: Math.round(v) })} min={1} max={10} style={{ flex: 1 }} />
                     <NumberStepper compact label="RIR" value={pe.targetRir} onChange={(v) => patch(i, { targetRir: Math.round(v) })} min={0} max={5} style={{ flex: 1 }} />
@@ -177,5 +249,7 @@ export default function Builder() {
 const styles = StyleSheet.create({
   item: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 12 },
   itemHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
+  suggest: { gap: 8, padding: space.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, marginBottom: space.md },
+  issue: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: 8 },
   idx: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
 });

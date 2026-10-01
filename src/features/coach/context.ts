@@ -21,9 +21,15 @@ import { resolveToday, MODE_LABEL } from '@/features/training/today';
 import { EQUIPMENT_LABEL, GROUP_LABEL, getExercise } from '@/data/exercises';
 import { LOCAL_FOODS } from '@/data/foods';
 import { addDays, formatHours, today, WEEKDAYS_SHORT, toISODate } from '@/utils/date';
-import { LEVEL_LABEL } from '@/features/training/planGenerator';
-import { workingSets } from '@/features/training/progression';
+import { LEVEL_LABEL, planVolume } from '@/features/training/planGenerator';
+import { historyFor, workingSets } from '@/features/training/progression';
 import { checkDeload, isDeloadActive } from '@/features/training/deload';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
+import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
+import { doneFineVolume, weeklyTargets } from '@/features/training/engine/volume';
+import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
+import { substitutesFor } from '@/features/training/engine/substitute';
 
 /**
  * Структурированный контекст для AI Coach.
@@ -46,6 +52,10 @@ export interface CoachInputs {
   checkins: Record<string, DailyCheckIn>;
   readiness?: ReadinessResult;
   memory: CoachMemoryItem[];
+  /** Ключи предложений, от которых пользователь отказался навсегда */
+  rejected?: string[];
+  /** Идущая сейчас тренировка */
+  active?: WorkoutSession | null;
   now?: Date;
 }
 
@@ -80,15 +90,53 @@ export function buildCoachContext(i: CoachInputs): string {
     L.push(`Расписание: ${i.plan.schedule.map((t, idx) => `${WEEKDAYS_SHORT[idx]}=${t ? i.plan!.templates.find((x) => x.id === t)?.name : 'отдых'}`).join(', ')}`);
     L.push('templates:');
     for (const t of i.plan.templates) {
-      L.push(`- id=${t.id} «${t.name}» (${t.focus}), ~${t.estMinutes} мин: ${t.exercises.map((e) => `${getExercise(e.exerciseId)?.name ?? e.exerciseId} ${e.sets}×${e.repMin}-${e.repMax}`).join('; ')}`);
+      L.push(`- id=${t.id} «${t.name}» (${t.focus}), ~${t.estMinutes} мин: ${t.exercises.map((e) => `${getExercise(e.exerciseId)?.name ?? e.exerciseId} [${e.exerciseId}] ${e.sets}×${e.repMin}-${e.repMax}`).join('; ')}`);
     }
   }
+  // Предпочтения и ограничения — модель обязана их соблюдать (приложение всё равно проверит действие)
+  const prefs = getPrefs(p);
+  sec('TRAINING PREFERENCES & LIMITATIONS');
+  L.push(`Сплит: ${SPLIT_PREF_LABEL[prefs.preferredSplit]}${i.plan?.splitChoice?.reasons.length ? ` (FORM: ${i.plan.splitChoice.reasons.slice(0, 3).join('; ')})` : ''}`);
+  L.push(`Подходы: ${prefs.setStyle === 'auto' ? 'решает FORM' : `${prefs.setStyle} в упражнении`}; повторы: ${prefs.repStyle}`);
+  if (prefs.priorityMuscles.length) L.push(`Приоритетные группы: ${prefs.priorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
+  if (prefs.lowPriorityMuscles.length) L.push(`Низкий приоритет: ${prefs.lowPriorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
+  const nameId = (id: string) => `${getExercise(id)?.name ?? id} [${id}]`;
+  L.push(`Исключено (НИКОГДА не предлагать): ${prefs.excluded.map((e) => `${nameId(e.exerciseId)}${e.reason === 'discomfort' ? ` — дискомфорт${e.area ? ` (${AREA_LABEL[e.area]})` : ''}` : e.reason === 'doctor' ? ' — запрет специалиста' : ''}`).join('; ') || '—'}`);
+  if (prefs.excludedMovements.length) L.push(`Исключённые движения: ${prefs.excludedMovements.map((m) => RESTRICTION_LABEL[m]).join(', ')}`);
+  L.push(`Не нравится: ${prefs.dislikedExercises.map(nameId).join('; ') || '—'}`);
+  L.push(`Избранное: ${prefs.preferredExercises.map(nameId).join('; ') || '—'}`);
+  for (const l of prefs.limitations) {
+    L.push(`Ограничение: ${AREA_LABEL[l.area]}, ${l.severity === 'severe' ? 'сильный дискомфорт' : l.severity === 'moderate' ? 'умеренный' : 'лёгкий'}${l.source === 'doctor' ? ', рекомендация специалиста' : ''}; движения: ${l.movements.map((m) => RESTRICTION_LABEL[m].toLowerCase()).join(', ') || '—'}${l.note ? `; «${l.note}»` : ''}`);
+  }
+  if (i.rejected?.length) L.push(`Пользователь отказался (не предлагать снова): ${i.rejected.join(', ')}`);
+
+  sec('WEEKLY VOLUME by muscle (прямые подходы: сделано за 7 дн / план / цель)');
+  const tg = weeklyTargets(p, prefs);
+  const done7 = doneFineVolume(i.sessions, addDays(d, -6), d);
+  const planned = i.plan ? planVolume(i.plan) : null;
+  L.push(VOLUME_MUSCLES.filter((m) => tg[m] > 0).map((m) => `${VM_LABEL[m]} ${Math.round(done7[m])}/${planned ? Math.round(planned[m]) : '—'}/${tg[m]}`).join(', '));
+  if (i.plan?.notes?.length) L.push(`Заметки плана: ${i.plan.notes.slice(0, 4).join(' | ')}`);
+
   const todayW = resolveToday({ date: d, plan: i.plan, sessions: i.sessions, override: i.overrides[d], readiness: i.readiness });
   sec('TODAY');
   if (todayW.kind === 'workout') L.push(`По плану: ${todayW.template!.name} (${todayW.template!.focus}), режим: ${MODE_LABEL[todayW.mode]}, ~${todayW.estMinutes} мин, ${todayW.totalSets} подходов${todayW.reason ? `; причина: ${todayW.reason}` : ''}`);
   else if (todayW.kind === 'done') L.push(`Тренировка сегодня уже выполнена: ${todayW.completedSession?.name}`);
   else if (todayW.kind === 'rest') L.push(`День отдыха${todayW.reason ? ` (${todayW.reason})` : ''}. Следующая: ${todayW.nextWorkout ? `${todayW.nextWorkout.template.name} ${todayW.nextWorkout.date}` : '—'}`);
   if (i.overrides[d]) L.push(`Изменение на сегодня: ${i.overrides[d].reason} (источник: ${i.overrides[d].source})`);
+  // Упражнения сегодня: id, план, прошлый результат и допустимые замены (уже отфильтрованы ограничениями)
+  const todayList = i.active
+    ? i.active.exercises.map((we) => ({ id: we.exerciseId, plan: `${we.plannedSets}×${we.repMin}-${we.repMax}, отдых ${we.restSec}с`, done: workingSets(we.sets).map((x) => `${x.weight}×${x.reps}${x.rir !== undefined ? ` RIR${x.rir}` : ''}`).join(', ') }))
+    : todayW.kind === 'workout'
+      ? todayW.template!.exercises.map((e) => ({ id: e.exerciseId, plan: `${e.sets}×${e.repMin}-${e.repMax}, отдых ${e.restSec}с`, done: '' }))
+      : [];
+  if (todayList.length) {
+    L.push(i.active ? `Идёт тренировка «${i.active.name}»:` : 'Упражнения сегодня:');
+    for (const x of todayList) {
+      const last = historyFor(x.id, i.sessions, 1)[0];
+      const subs = substitutesFor(x.id, p, prefs, [], 3).map((e) => `${e.name} [${e.id}]`).join(', ');
+      L.push(`- ${nameId(x.id)}: ${x.plan}${x.done ? `; сделано: ${x.done}` : ''}${last ? `; прошлый раз ${last.date}: ${workingSets(last.sets).map((st) => `${st.weight}×${st.reps}`).join(', ')}` : ''}${subs ? `; допустимые замены: ${subs}` : ''}`);
+    }
+  }
 
   sec('READINESS / SLEEP');
   const c = i.checkins[d];

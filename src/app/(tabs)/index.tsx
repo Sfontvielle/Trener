@@ -23,7 +23,7 @@ import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { refreshDailyInsight } from '@/features/coach/service';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
-import { formatDayShort, greeting } from '@/utils/date';
+import { formatDayShort, greeting, startOfWeek } from '@/utils/date';
 import { fmtNum, fmtWeight } from '@/utils/format';
 import { useUi } from '@/stores/ui';
 
@@ -74,6 +74,9 @@ export default function Home() {
   const firstName = profile.name.split(' ')[0] || 'атлет';
   const gap = tight ? 8 : compact ? 10 : 12;
   const previewLines = 6;
+  const insightText = insight && insight.date === d ? insight.text : 'Собираю данные дня…';
+  const weekStart = startOfWeek(d);
+  const weekDone = sessions.filter((x) => x.status === 'completed' && x.date >= weekStart).length;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + (compact ? 4 : 8), paddingBottom: insets.bottom + TAB_BAR_HEIGHT + gap, gap }]}>
@@ -105,20 +108,14 @@ export default function Home() {
             {tight ? `Цель · ${GOAL_SHORT[profile.goal]}` : GOAL_LABEL[profile.goal]}
           </T>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Вес" onPress={() => router.push('/weight')} style={styles.weight}>
-          <Icon name="scale-outline" size={15} color={colors.textDim} />
-          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-            {trend ? `${fmtWeight(Math.round(trend.w * 10) / 10)} кг` : 'Вес'}
-          </T>
-          {trend?.rate !== undefined ? (
-            <T v="small" style={{ fontSize: 12 }}>
-              {trend.rate >= 0 ? '+' : ''}
-              {trend.rate.toFixed(2)}/нед
+        {plan ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Почему такой план" onPress={() => router.push('/plan')} style={styles.weight}>
+            <Icon name="git-branch-outline" size={15} color={colors.textDim} />
+            <T v="small" color={colors.text} style={{ fontWeight: '700' }} numberOfLines={1}>
+              {plan.splitLabel}
             </T>
-          ) : (
-            <Icon name="add" size={15} color={colors.accent} />
-          )}
-        </Pressable>
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Готовность */}
@@ -214,39 +211,36 @@ export default function Home() {
         )}
       </View>
 
-      {/* План + питание */}
-      <View style={{ flexDirection: 'row', gap }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Текущий план" onPress={() => router.push('/plan')} style={[styles.card, styles.small]}>
-          <T v="caption">План</T>
-          <PlanLine label="Тренировки" value={`${plan?.daysPerWeek ?? profile.daysPerWeek} / нед`} />
-          <PlanLine label="Длительность" value={plan ? `${plan.sessionMinutes[0]}–${plan.sessionMinutes[1]} мин` : '—'} />
-          {!tight ? <PlanLine label="Объём" value={plan ? `${plan.weeklySetsTarget[0]}–${plan.weeklySetsTarget[1]} подх.` : '—'} /> : null}
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Питание сегодня" onPress={() => router.push('/nutrition')} style={[styles.card, styles.small]}>
-          <View style={styles.rowBetween}>
-            <T v="caption">Ккал</T>
-            <T v="small" style={{ fontSize: 11 }}>
-              {target ? `цель ${fmtNum(target.kcal)}` : ''}
-            </T>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-            <T v="num" style={{ fontSize: compact ? 20 : 23, color: stateColor(kcalState, colors.text) }}>
-              {fmtNum(nut.eaten.kcal)}
-            </T>
-            <T v="small">/ {target ? fmtNum(target.kcal) : '—'}</T>
-          </View>
-          {target ? (
-            <View style={{ gap: 5, marginTop: 2 }}>
-              <MacroMini label="Б" v={nut.eaten.protein} t={target.protein} state={macroState('protein', nut.eaten.protein, target.protein, dp)} base={colors.protein} />
-              <MacroMini label="Ж" v={nut.eaten.fat} t={target.fat} state={macroState('fat', nut.eaten.fat, target.fat, dp)} base={colors.fat} />
-              <MacroMini label="У" v={nut.eaten.carbs} t={target.carbs} state={macroState('carbs', nut.eaten.carbs, target.carbs, dp)} base={colors.carbs} />
-            </View>
-          ) : null}
-        </Pressable>
+      {/* Компактные метрики: калории, белок, тренировки за неделю, вес */}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Metric
+          label="Калории"
+          value={target ? fmtNum(Math.max(0, target.kcal - nut.eaten.kcal)) : '—'}
+          sub={target ? (nut.eaten.kcal > target.kcal ? `+${fmtNum(nut.eaten.kcal - target.kcal)} сверх` : 'осталось') : ''}
+          color={stateColor(kcalState, colors.text)}
+          progress={target ? nut.eaten.kcal / target.kcal : 0}
+          onPress={() => router.push('/nutrition')}
+        />
+        <Metric
+          label="Белок"
+          value={`${Math.round(nut.eaten.protein)}`}
+          sub={target ? `из ${target.protein} г` : 'г'}
+          color={colors.protein}
+          progress={target ? nut.eaten.protein / target.protein : 0}
+          onPress={() => router.push('/nutrition')}
+        />
+        <Metric label="Тренировки" value={`${weekDone}/${plan?.daysPerWeek ?? profile.daysPerWeek}`} sub="за неделю" color={colors.text} progress={weekDone / Math.max(1, plan?.daysPerWeek ?? profile.daysPerWeek)} onPress={() => router.push('/progress')} />
+        <Metric
+          label="Вес"
+          value={trend ? fmtWeight(Math.round(trend.w * 10) / 10) : '+'}
+          sub={trend?.rate !== undefined ? `${trend.rate >= 0 ? '+' : ''}${trend.rate.toFixed(2).replace('.', ',')}/нед` : trend ? 'кг' : 'взвеситься'}
+          color={colors.text}
+          onPress={() => router.push('/weight')}
+        />
       </View>
 
       {/* AI insight */}
-      <Pressable accessibilityRole="button" accessibilityLabel="Совет тренера. Открыть чат" onPress={() => router.push('/coach')} style={[styles.card, styles.insight]}>
+      <View style={[styles.card, styles.insight]}>
         <View style={styles.insightIcon}>
           <Icon name="sparkles" size={17} color={colors.onAccent} />
         </View>
@@ -255,11 +249,24 @@ export default function Home() {
             FORM Coach{insight?.source === 'local' ? ' · расчёт' : ''}
           </T>
           <T v="small" color={colors.text} numberOfLines={compact ? 2 : 3} style={{ marginTop: 2, lineHeight: 18 }}>
-            {insight && insight.date === d ? insight.text : 'Собираю данные дня…'}
+            {insightText}
           </T>
+          {insight && insight.date === d ? (
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push({ pathname: '/coach', params: { q: `Почему ты так советуешь: «${insight.text}»? Объясни по моим данным.` } })}>
+                <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+                  Почему?
+                </T>
+              </Pressable>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/coach')}>
+                <T v="small" style={{ fontWeight: '700' }}>
+                  Подробнее
+                </T>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
-        <Icon name="chevron-forward" size={18} color={colors.muted} />
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -327,31 +334,20 @@ function WorkoutBody({
   );
 }
 
-function PlanLine({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, sub, color, progress, onPress }: { label: string; value: string; sub: string; color: string; progress?: number; onPress: () => void }) {
   return (
-    <View style={{ marginTop: 3 }}>
-      <T v="small" style={{ fontSize: 11.5 }} numberOfLines={1}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${value} ${sub}`} onPress={onPress} style={[styles.card, styles.metric]}>
+      <T v="caption" numberOfLines={1} style={{ fontSize: 10 }}>
         {label}
       </T>
-      <T v="body" style={{ fontWeight: '800', fontSize: 15 }} numberOfLines={1}>
+      <T v="num" numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: 20, color }}>
         {value}
       </T>
-    </View>
-  );
-}
-
-function MacroMini({ label, v, t, state, base }: { label: string; v: number; t: number; state: ReturnType<typeof macroState>; base: string }) {
-  const c = state === 'progress' ? base : stateColor(state);
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <T v="small" style={{ width: 12, fontSize: 11, fontWeight: '800' }}>
-        {label}
+      <T v="small" numberOfLines={1} style={{ fontSize: 10.5 }}>
+        {sub}
       </T>
-      <Bar progress={t ? v / t : 0} color={c} height={5} style={{ flex: 1 }} />
-      <T v="small" style={{ fontSize: 11, minWidth: 52, textAlign: 'right', fontVariant: ['tabular-nums'] }} color={state === 'off' || state === 'attention' ? c : colors.textDim}>
-        {Math.round(v)}/{Math.round(t)}
-      </T>
-    </View>
+      {progress !== undefined ? <Bar progress={Math.min(1, progress)} color={color === colors.text ? colors.accent : color} height={3} style={{ marginTop: 4 }} /> : null}
+    </Pressable>
   );
 }
 
@@ -369,7 +365,7 @@ const styles = StyleSheet.create({
   workout: { borderColor: colors.accentLine, gap: 4 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  small: { flex: 1, paddingVertical: 12, gap: 2 },
+  metric: { flex: 1, paddingVertical: 10, paddingHorizontal: 10, gap: 1 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2 },
   insight: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   insightIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },

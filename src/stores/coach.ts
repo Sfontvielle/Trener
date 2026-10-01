@@ -18,6 +18,10 @@ interface CoachState {
   summarizedUntil: number;
   memory: CoachMemoryItem[];
   insight: DailyInsight | null;
+  /** «Больше не предлагать»: ключи отклонённых предложений AI */
+  rejected: string[];
+  addRejected: (key: string) => void;
+  updateMemory: (id: string, text: string) => void;
   addMessage: (m: Omit<CoachMessage, 'id' | 'createdAt'> & { id?: string }) => CoachMessage;
   patchMessage: (id: string, patch: Partial<CoachMessage>) => void;
   setSummary: (summary: string, until: number) => void;
@@ -36,6 +40,9 @@ export const useCoach = create<CoachState>()(
       summarizedUntil: 0,
       memory: [],
       insight: null,
+      rejected: [],
+      addRejected: (key) => set((s) => ({ rejected: s.rejected.includes(key) ? s.rejected : [...s.rejected, key].slice(-200) })),
+      updateMemory: (id, text) => set((s) => ({ memory: s.memory.map((m) => (m.id === id ? { ...m, text: text.trim(), source: 'user' } : m)) })),
       addMessage: (m) => {
         const msg: CoachMessage = { ...m, id: m.id ?? uid('msg_'), createdAt: Date.now() };
         set((s) => ({ messages: [...s.messages, msg].slice(-300) }));
@@ -51,8 +58,8 @@ export const useCoach = create<CoachState>()(
       removeMemory: (id) => set((s) => ({ memory: s.memory.filter((m) => m.id !== id) })),
       setInsight: (i) => set({ insight: i }),
       clearChat: () => set({ messages: [], summary: '', summarizedUntil: 0 }),
-      reset: () => set({ messages: [], summary: '', summarizedUntil: 0, memory: [], insight: null }),
+      reset: () => set({ messages: [], summary: '', summarizedUntil: 0, memory: [], insight: null, rejected: [] }),
     }),
-    persistOptions<CoachState>('coach', 1, (s) => ({ messages: s.messages, summary: s.summary, summarizedUntil: s.summarizedUntil, memory: s.memory, insight: s.insight }) as CoachState),
+    persistOptions<CoachState>('coach', 1, (s) => ({ messages: s.messages, summary: s.summary, summarizedUntil: s.summarizedUntil, memory: s.memory, insight: s.insight, rejected: s.rejected }) as CoachState),
   ),
 );

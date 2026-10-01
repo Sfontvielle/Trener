@@ -1,4 +1,8 @@
-import type { CoachAction, FoodEntry, FoodProduct, NutritionTarget, ReadinessResult, UserProfile } from '@/types';
+import type { BodyArea, CoachAction, FoodEntry, FoodProduct, NutritionTarget, ReadinessResult, UserProfile } from '@/types';
+import { getExercise } from '@/data/exercises';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { AREA_LABEL, loadsArea } from '@/features/training/engine/restrictions';
+import { substitutesFor } from '@/features/training/engine/substitute';
 import type { TodayWorkout } from '@/features/training/today';
 import { MODE_LABEL } from '@/features/training/today';
 import { remaining, sumMacros } from '@/features/nutrition/status';
@@ -34,6 +38,25 @@ export function offlineAnswer(args: {
     lines.push(...s.notes);
     const o = s.options[0];
     if (o) lines.push(`Вариант: ${o.items.map((i) => `${i.product.name.toLowerCase()} ${i.grams} г`).join(' + ')} ≈ ${Math.round(o.total.kcal)} ккал, Б ${Math.round(o.total.protein)} Ж ${Math.round(o.total.fat)} У ${Math.round(o.total.carbs)}.`);
+    return { text: lines.join(' '), actions };
+  }
+
+  // Дискомфорт / «чем заменить»: замены из движка (с учётом ограничений), без диагнозов
+  const area: BodyArea | undefined = /плеч/.test(q) ? 'shoulder' : /колен/.test(q) ? 'knee' : /(поясн|спин)/.test(q) ? 'lower_back' : /локт/.test(q) ? 'elbow' : /запяст/.test(q) ? 'wrist' : undefined;
+  if (/(замен|боли|боль|дискомфорт|не нрав)/.test(q) && args.todayW.kind === 'workout' && args.todayW.template) {
+    const prefs = getPrefs(args.profile);
+    const list = args.todayW.template.exercises
+      .map((pe) => getExercise(pe.exerciseId))
+      .filter((ex): ex is NonNullable<typeof ex> => !!ex && (!area || loadsArea(ex, area)));
+    const lines = ['Диагнозов не ставлю. Острая или нарастающая боль — прекрати упражнение и обратись к врачу.'];
+    if (!list.length) lines.push(area ? `Сегодняшние упражнения почти не нагружают эту зону (${AREA_LABEL[area].toLowerCase()}).` : 'Назови упражнение или зону — подберу замену.');
+    for (const ex of list.slice(0, 2)) {
+      const sub = substitutesFor(ex.id, args.profile, prefs, [], 6).find((e) => !area || !loadsArea(e, area));
+      if (!sub) continue;
+      lines.push(`«${ex.name}» → «${sub.name}».`);
+      actions.push({ id: uid('act_'), type: 'replace_exercise', label: `Заменить на ${sub.name}`.slice(0, 40), params: { exerciseId: ex.id, toExerciseId: sub.id, scope: 'today', reason: area ? `Меньше нагрузки на ${AREA_LABEL[area].toLowerCase()}` : 'Та же мышца и движение' } });
+    }
+    if (area) lines.push('Если дискомфорт повторяется — отметь его в тренировке (••• → Дискомфорт), и FORM перестанет ставить это упражнение.');
     return { text: lines.join(' '), actions };
   }
 

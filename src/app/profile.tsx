@@ -21,6 +21,17 @@ import { coachBaseUrl } from '@/services/coachApi';
 import { ensurePermission } from '@/services/notifications';
 import { backupStats, exportBackup, pickBackup, restoreBackup } from '@/services/backup';
 import { relativeDay, toISODate } from '@/utils/date';
+import { getPrefs } from '@/features/training/engine/prefs';
+import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
+
+function prefsSummary(p: UserProfile): string {
+  const t = getPrefs(p);
+  const parts = [t.preferredSplit === 'auto' ? 'Сплит: авто' : SPLIT_PREF_LABEL[t.preferredSplit]];
+  if (t.excluded.length) parts.push(`исключено ${t.excluded.length}`);
+  if (t.limitations.length) parts.push(`ограничений ${t.limitations.length}`);
+  if (t.setStyle !== 'auto') parts.push(`${t.setStyle} подхода`);
+  return parts.join(' · ');
+}
 
 const MORNING_TIMES = [[6, 30], [7, 0], [7, 30], [8, 0], [9, 0]] as const;
 const TRAINING_TIMES = [[7, 0], [12, 0], [17, 0], [18, 0], [19, 0]] as const;
@@ -39,6 +50,7 @@ export default function Profile() {
   const [url, setUrl] = useState(settings.coachApiUrl);
   const [ping, setPing] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
   const [fact, setFact] = useState('');
+  const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
 
@@ -134,6 +146,8 @@ export default function Profile() {
         <Divider />
         <Row label="Тренировки" value={`${profile.daysPerWeek}×/нед · ${profile.sessionMinutes} мин · ${profile.location === 'gym' ? 'зал' : 'дом'}`} onPress={() => open('training')} />
         <Divider />
+        <Row label="Предпочтения и ограничения" value={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
+        <Divider />
         <Row label="Активность" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа`} onPress={() => open('life')} />
         <Divider />
         <Row label="Питание" value={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
@@ -187,20 +201,32 @@ export default function Profile() {
         {ping === 'fail' ? <Banner tone="warning" icon="alert-circle" text="Сервер не отвечает. Проверь адрес, что сервер запущен и телефон в той же сети." /> : null}
       </Card>
 
-      <SectionTitle title={`Память тренера · ${memory.length}`} />
+      <SectionTitle title={`Что FORM знает обо мне · ${memory.length}`} />
       <Card style={{ gap: 8 }}>
         {memory.length === 0 ? <T v="small">Тренер запоминает устойчивые факты: что ты не любишь, как реагируют суставы, когда удобно тренироваться.</T> : null}
-        {memory.map((m) => (
-          <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
-            <T v="body" style={{ flex: 1, fontSize: 14 }}>
-              {m.text}
-            </T>
-            <Pressable hitSlop={10} accessibilityLabel="Удалить факт" onPress={() => useCoach.getState().removeMemory(m.id)}>
-              <Icon name="close" size={16} color={colors.muted} />
-            </Pressable>
-          </View>
-        ))}
+        {memory.map((m) =>
+          editMem?.id === m.id ? (
+            <View key={m.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
+              <Field style={{ flex: 1 }} value={editMem.text} onChangeText={(t) => setEditMem({ id: m.id, text: t })} autoFocus />
+              <Button title="OK" size="sm" disabled={!editMem.text.trim()} onPress={() => { useCoach.getState().updateMemory(m.id, editMem.text); setEditMem(null); }} style={{ height: 50 }} />
+            </View>
+          ) : (
+            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
+              <Pressable style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`Изменить: ${m.text}`} onPress={() => setEditMem({ id: m.id, text: m.text })}>
+                <T v="body" style={{ fontSize: 14 }}>
+                  {m.text}
+                </T>
+                <T v="small" style={{ fontSize: 11 }}>
+                  {m.source === 'coach' ? 'запомнил тренер' : 'добавлено тобой'} · тап — изменить
+                </T>
+              </Pressable>
+              <Pressable hitSlop={10} accessibilityLabel="Удалить факт" onPress={() => useCoach.getState().removeMemory(m.id)}>
+                <Icon name="close" size={16} color={colors.muted} />
+              </Pressable>
+            </View>
+          ),
+        )}
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
           <Field style={{ flex: 1 }} placeholder="Добавить факт: «Не ем рыбу»" value={fact} onChangeText={setFact} onSubmitEditing={() => { if (fact.trim()) { useCoach.getState().addMemory(fact, 'preference', 'user'); setFact(''); } }} />
           <Button title="Добавить" size="sm" disabled={!fact.trim()} onPress={() => { useCoach.getState().addMemory(fact, 'preference', 'user'); setFact(''); }} style={{ height: 50 }} />
