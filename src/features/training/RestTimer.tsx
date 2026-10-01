@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, View } from 'react-native';
 import { useWorkouts } from '@/stores/workouts';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from '@/components/ui';
 import { formatDuration } from '@/utils/date';
 import { haptic } from '@/services/haptics';
@@ -58,7 +58,7 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   bar: {
     position: 'absolute',
     left: space.lg,

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Platform, Pressable, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { FoodProduct, MealSlot } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Chip, Icon, Segmented, Skeleton, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
@@ -334,7 +334,7 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName }: { visi
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
   input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 6, borderWidth: 1, borderColor: colors.border, minHeight: 56 },

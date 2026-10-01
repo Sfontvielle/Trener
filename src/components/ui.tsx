@@ -12,7 +12,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, space, type, TOUCH } from '@/theme';
+import { colors, radius, space, type, TOUCH, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -48,9 +48,9 @@ export const Card = memo(function Card({
     tone === 'accent'
       ? { borderColor: colors.accentLine, backgroundColor: colors.surface }
       : tone === 'warning'
-        ? { borderColor: 'rgba(247,178,59,0.4)', backgroundColor: colors.surface }
+        ? { borderColor: colors.warningLine, backgroundColor: colors.surface }
         : tone === 'danger'
-          ? { borderColor: 'rgba(255,93,82,0.45)', backgroundColor: colors.surface }
+          ? { borderColor: colors.dangerLine, backgroundColor: colors.surface }
           : tone === 'flat'
             ? { borderColor: 'transparent', backgroundColor: colors.surface2 }
             : null;
@@ -314,7 +314,7 @@ export function Stat({ label, value, unit, sub, color, style }: { label: string;
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

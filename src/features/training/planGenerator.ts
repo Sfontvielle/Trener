@@ -17,6 +17,7 @@ import { uid } from '@/utils/id';
 import { getPrefs } from './engine/prefs';
 import { checkAllowed, hasEquipment, pickForSlot, type SelectionContext, type SlotRole, type SlotSpec } from './engine/scoring';
 import { chooseSplit, SPLIT_LABEL } from './engine/split';
+import { estimateRecovery, type RecoveryEstimate } from './engine/recovery';
 import { baseWeeklySets, plannedFineVolume, setLimits, weeklyTargets } from './engine/volume';
 import { fineTargets, isSmallMuscle, VM_ACC, VM_LABEL, VOLUME_MUSCLES } from './engine/muscles';
 import { orderExercises } from './engine/order';
@@ -65,6 +66,15 @@ export const DAYS: Record<string, DayDef> = {
   legsB: { name: 'Legs B', focus: 'Задняя поверхность · ягодицы · квадрицепс', muscles: ['hamstrings', 'glutes', 'quads', 'calves'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('lunge', 'quads', 'secondary', ['lunge', 'squat']), s('glute', 'glutes', 'secondary', ['glute']), s('ext', 'quads', 'accessory', ['leg_ext']), s('calf', 'calves', 'accessory', ['calf']), s('abs', 'abs', 'accessory', ['core'])] },
   fbA: { name: 'Full Body A', focus: 'Ноги · грудь · спина', muscles: ['quads', 'chest', 'back', 'shoulders', 'abs'], slots: [s('squat', 'quads', 'main', ['squat']), s('press', 'chest', 'main', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull']), s('lat', 'side_delts', 'accessory', ['lateral']), s('bi', 'biceps', 'accessory', ['curl']), s('abs', 'abs', 'accessory', ['core'])] },
   fbB: { name: 'Full Body B', focus: 'Тяга · спина · плечи', muscles: ['hamstrings', 'glutes', 'back', 'shoulders', 'triceps'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('vpull', 'lats', 'main', ['v_pull']), s('ohp', 'front_delts', 'secondary', ['v_push'], OHP_FALLBACK), s('lunge', 'quads', 'accessory', ['lunge', 'leg_ext']), s('tri', 'triceps', 'accessory', ['tri_ext']), s('calf', 'calves', 'accessory', ['calf'])] },
+  torsoA: { name: 'Torso A', focus: 'Грудь · спина · плечи', muscles: ['chest', 'back', 'shoulders'], slots: [s('press', 'chest', 'main', ['h_push']), s('row', 'upper_back', 'main', ['h_pull']), s('vpull', 'lats', 'secondary', ['v_pull']), s('ohp', 'front_delts', 'secondary', ['v_push'], OHP_FALLBACK), s('fly', 'chest', 'accessory', ['fly']), s('lat', 'side_delts', 'accessory', ['lateral']), s('rear', 'rear_delts', 'accessory', ['rear_delt'])] },
+  limbsA: { name: 'Limbs A', focus: 'Ноги · руки', muscles: ['quads', 'hamstrings', 'glutes', 'biceps', 'triceps'], slots: [s('squat', 'quads', 'main', ['squat']), s('hinge', 'hamstrings', 'secondary', ['hinge']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('calf', 'calves', 'accessory', ['calf']), s('bi', 'biceps', 'accessory', ['curl']), s('tri', 'triceps', 'accessory', ['tri_ext']), s('abs', 'abs', 'accessory', ['core'])] },
+  torsoB: { name: 'Torso B', focus: 'Спина · плечи · грудь', muscles: ['back', 'shoulders', 'chest'], slots: [s('vpull', 'lats', 'main', ['v_pull']), s('press', 'chest', 'main', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull']), s('press2', 'chest', 'secondary', ['h_push', 'fly']), s('lat', 'side_delts', 'accessory', ['lateral']), s('rear', 'rear_delts', 'accessory', ['rear_delt'])] },
+  limbsB: { name: 'Limbs B', focus: 'Ноги · руки', muscles: ['hamstrings', 'glutes', 'quads', 'biceps', 'triceps'], slots: [s('hinge', 'hamstrings', 'main', ['hinge']), s('squat', 'quads', 'secondary', ['squat', 'lunge']), s('glute', 'glutes', 'accessory', ['glute']), s('ext', 'quads', 'accessory', ['leg_ext']), s('calf', 'calves', 'accessory', ['calf']), s('bi', 'biceps', 'accessory', ['curl']), s('tri', 'triceps', 'accessory', ['tri_ext'])] },
+  broChest: { name: 'Грудь', focus: 'Грудь · трицепс', muscles: ['chest', 'triceps'], slots: [s('press', 'chest', 'main', ['h_push']), s('press2', 'chest', 'secondary', ['h_push']), s('press3', 'chest', 'secondary', ['h_push', 'fly']), s('fly', 'chest', 'accessory', ['fly']), s('tri', 'triceps', 'accessory', ['tri_ext'])] },
+  broBack: { name: 'Спина', focus: 'Широчайшие · верх спины', muscles: ['back'], slots: [s('vpull', 'lats', 'main', ['v_pull']), s('row', 'upper_back', 'main', ['h_pull']), s('vpull2', 'lats', 'secondary', ['v_pull', 'h_pull']), s('row2', 'upper_back', 'secondary', ['h_pull']), s('rear', 'rear_delts', 'accessory', ['rear_delt'])] },
+  broLegs: { name: 'Ноги', focus: 'Квадрицепс · бицепс бедра · ягодицы', muscles: ['quads', 'hamstrings', 'glutes', 'calves'], slots: [s('squat', 'quads', 'main', ['squat']), s('hinge', 'hamstrings', 'secondary', ['hinge']), s('lunge', 'quads', 'secondary', ['lunge', 'squat']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('ext', 'quads', 'accessory', ['leg_ext']), s('calf', 'calves', 'accessory', ['calf'])] },
+  broShoulders: { name: 'Плечи', focus: 'Дельты · пресс', muscles: ['shoulders', 'abs'], slots: [s('ohp', 'front_delts', 'main', ['v_push'], OHP_FALLBACK), s('lat', 'side_delts', 'accessory', ['lateral']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('lat2', 'side_delts', 'accessory', ['lateral']), s('abs', 'abs', 'accessory', ['core'])] },
+  broArms: { name: 'Руки', focus: 'Бицепс · трицепс', muscles: ['biceps', 'triceps'], slots: [s('bi', 'biceps', 'accessory', ['curl']), s('tri', 'triceps', 'accessory', ['tri_ext']), s('bi2', 'biceps', 'accessory', ['curl']), s('tri2', 'triceps', 'accessory', ['tri_ext']), s('calf', 'calves', 'accessory', ['calf'])] },
   fbC: { name: 'Full Body C', focus: 'Ноги · грудь · руки', muscles: ['quads', 'chest', 'back', 'biceps', 'triceps'], slots: [s('squat', 'quads', 'secondary', ['squat']), s('press', 'chest', 'secondary', ['h_push']), s('row', 'upper_back', 'secondary', ['h_pull', 'v_pull']), s('curl', 'hamstrings', 'accessory', ['leg_curl']), s('rear', 'rear_delts', 'accessory', ['rear_delt']), s('glute', 'glutes', 'accessory', ['glute'])] },
 };
 
@@ -82,6 +92,10 @@ export function rotationFor(split: SplitType, days: number): string[] {
       return ['upA', 'loA', 'push', 'pull', 'legs'];
     case 'ppl_x2':
       return ['push', 'pull', 'legs', 'pushB', 'pullB', 'legsB'];
+    case 'torso_limbs':
+      return days <= 2 ? ['torsoA', 'limbsA'] : ['torsoA', 'limbsA', 'torsoB', 'limbsB'];
+    case 'bro':
+      return ['broChest', 'broBack', 'broLegs', 'broShoulders', 'broArms'];
   }
 }
 
@@ -142,6 +156,8 @@ export interface GeneratePlanOptions {
   previous?: WorkoutPlan | null;
   sessions?: WorkoutSession[];
   customs?: Exercise[];
+  /** Оценка восстановления (чек-ины, Apple Health, прогресс, профиль). Без неё — только по истории тренировок */
+  recovery?: RecoveryEstimate;
 }
 
 interface Meta {
@@ -162,16 +178,18 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
 
   if (prefs.preferredSplit === 'custom' && previous) return keepCustom(previous, p, prefs, customs);
 
-  const choice = chooseSplit(p, prefs, sessions);
+  const recovery = opts.recovery ?? estimateRecovery({ profile: prefs.recoveryProfile, sessions });
+  const pool = [...EXERCISES, ...customs].filter((e) => checkAllowed(e, p, prefs).ok);
+  const legsRestricted = pool.filter((e) => e.mechanic === 'compound' && (e.pattern === 'squat' || e.pattern === 'hinge' || e.pattern === 'lunge')).length < 4;
+  const choice = chooseSplit(p, prefs, sessions, recovery, { legsRestricted });
   const keys = rotationFor(choice.split, p.daysPerWeek);
   const days = p.preferredDays.length === p.daysPerWeek ? [...p.preferredDays].sort() : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
   const nTemplates = keys.length;
   const occPerTemplate = days.length / nTemplates;
   const notes: string[] = [];
   const limits = setLimits(prefs.setStyle, p.level);
-  const targets = weeklyTargets(p, prefs);
+  const targets = weeklyTargets(p, prefs, recovery.factor);
 
-  const pool = [...EXERCISES, ...customs].filter((e) => checkAllowed(e, p, prefs).ok);
   const usedThisWeek = new Set<string>();
   const meta: Meta[] = [];
   const templates: WorkoutTemplate[] = [];
@@ -366,6 +384,7 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
   const rationale: CalcStep[] = [
     { label: 'Сплит', value: SPLIT_LABEL[choice.split], note: choice.reasons.join('; ') },
     { label: 'Объём', value: `~${targets.chest} подх./нед на грудь, ~${targets.quads} на квадрицепс`, note: `цели по каждой группе — от уровня (${LEVEL_LABEL[p.level]}) и цели${prefs.priorityMuscles.length ? '; приоритетные группы +30%' : ''}` },
+    { label: 'Восстановление', value: recovery.factor === 1 ? 'стандартный объём' : `объём ×${String(recovery.factor).replace('.', ',')}`, note: recovery.reasons.join('; ') || 'по фактическим данным' },
     { label: 'Подходы', value: prefs.setStyle === 'auto' ? 'FORM решает' : `обычно ${prefs.setStyle}`, note: 'недельная цель группы ÷ число упражнений на неё в неделю' },
     { label: 'Интенсивность', value: p.level === 'beginner' ? 'RIR 2–3' : 'RIR 1–2', note: 'запас повторов до отказа в рабочих подходах' },
     { label: 'Прогрессия', value: 'Двойная', note: 'сначала повторы до верха диапазона, потом +вес' },
@@ -384,7 +403,8 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
     rotation: templates.map((t) => t.id),
     rationale,
     createdAt: Date.now(),
-    splitChoice: { preference: prefs.preferredSplit, reasons: choice.reasons },
+    splitChoice: { preference: prefs.preferredSplit, reasons: choice.reasons, candidates: choice.candidates },
+    recovery: { factor: recovery.factor, level: recovery.level, reasons: recovery.reasons },
     volume,
     notes: dedupe(notes),
   };

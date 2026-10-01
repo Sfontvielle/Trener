@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, IconButton, SectionTitle, T } from '@/components/ui';
 import { Bar, Ring } from '@/components/charts';
@@ -332,7 +332,7 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.md },
   legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
   quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },

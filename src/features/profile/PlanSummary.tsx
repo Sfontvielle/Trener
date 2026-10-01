@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { CalcStep, NutritionTarget, WorkoutPlan } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Card, Icon, T } from '@/components/ui';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { VM_LABEL } from '@/features/training/engine/muscles';
+import { SplitCompareButton } from '@/features/training/SplitCompare';
 
 export function MacroTiles({ target }: { target: NutritionTarget }) {
   const items = [
@@ -121,7 +122,7 @@ export function PlanOverview({ plan, target }: { plan: WorkoutPlan; target: Nutr
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   tile: { flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 8, gap: 2 },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', minHeight: 32 },
   step: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
@@ -185,6 +186,7 @@ export function PlanWhy({ plan, onChange }: { plan: WorkoutPlan; onChange: () =>
           ) : null}
         </View>
       ) : null}
+      <SplitCompareButton plan={plan} style={{ marginTop: 4 }} />
       {notes.length ? (
         <View style={{ gap: 4, marginTop: 4 }}>
           <T v="caption">Что учтено</T>

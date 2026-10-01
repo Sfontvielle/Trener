@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, TextInput, View } from 'react-native';
 import type { Equipment, Exercise, ExerciseCategory } from '@/types';
-import { colors, radius } from '@/theme';
+import { colors, radius, themed } from '@/theme';
 import { Chip, EmptyState, Icon, T } from '@/components/ui';
 import { CATEGORY_LABEL, EQUIPMENT_LABEL, EXERCISES, MUSCLE_LABEL } from '@/data/exercises';
 import { useProfile } from '@/stores/profile';
@@ -139,7 +139,7 @@ const Row = memo(function Row({ ex, selected, onPress }: { ex: Exercise; selecte
   );
 });
 
-const styles = StyleSheet.create({
+const styles = themed({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
   searchInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, minHeight: 60 },

@@ -1,9 +1,9 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Bar } from '@/components/charts';
 import { Sheet } from '@/components/Sheet';
@@ -12,6 +12,7 @@ import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts, hasProgress } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
 import { useCheckins } from '@/stores/checkins';
+import { useHealth } from '@/stores/health';
 import { getExercise } from '@/data/exercises';
 import { historyFor, isPersonalRecord } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
@@ -95,7 +96,7 @@ export default function ActiveWorkout() {
   const swapWe = picker?.mode === 'swap' ? active.exercises.find((e) => e.id === picker.weId) : undefined;
 
   const ctx = () => {
-    const r = readinessFor(today(), useCheckins.getState().byDate, sessions);
+    const r = readinessFor(today(), useCheckins.getState().byDate, sessions, useHealth.getState().days);
     return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0 };
   };
 
@@ -377,7 +378,7 @@ const ExerciseBlock = memo(function ExerciseBlock({
         </T>
       ) : null}
       {rec ? (
-        <View style={[styles.rec, rec.action === 'increase' && { borderColor: colors.accentLine, backgroundColor: colors.accentDim }, rec.action === 'decrease' && { borderColor: 'rgba(247,178,59,0.4)' }]}>
+        <View style={[styles.rec, rec.action === 'increase' && { borderColor: colors.accentLine, backgroundColor: colors.accentDim }, rec.action === 'decrease' && { borderColor: colors.warningLine }]}>
           <Icon name={rec.action === 'increase' ? 'trending-up' : rec.action === 'decrease' ? 'trending-down' : rec.action === 'new' ? 'sparkles-outline' : 'remove'} size={16} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim} />
           <View style={{ flex: 1 }}>
             <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
@@ -553,7 +554,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, askFeel 
   };
   return (
     <View>
-      <View style={[styles.setRow, set.done && { backgroundColor: 'rgba(200,245,60,0.07)' }]}>
+      <View style={[styles.setRow, set.done && { backgroundColor: colors.doneRow }]}>
         <Pressable style={{ width: 28 }} disabled={!set.done} onPress={() => { const n: SetFeel = set.feel === 'easy' ? 'ok' : set.feel === 'ok' ? 'hard' : 'easy'; haptic.tap(); upd({ feel: n, rir: FEEL_RIR[n] }); }} accessibilityLabel="Изменить ощущение подхода">
           <T v="body" style={{ fontWeight: '800' }} color={set.done ? colors.accent : colors.textDim}>
             {idx + 1}
@@ -674,7 +675,7 @@ function FinishSheet({ visible, onClose }: { visible: boolean; onClose: () => vo
 }
 
 
-const styles = StyleSheet.create({
+const styles = themed({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, paddingBottom: 8, backgroundColor: colors.bg },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
   block: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md },

@@ -4,6 +4,7 @@ import { useWorkouts } from '@/stores/workouts';
 import { usePlan } from '@/stores/plan';
 import { useCheckins } from '@/stores/checkins';
 import { useProfile } from '@/stores/profile';
+import { useHealth } from '@/stores/health';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from './today';
 import { buildSession } from './session';
@@ -22,7 +23,7 @@ function askRestPermission() {
 function ctxBase() {
   const ws = useWorkouts.getState();
   const d = today();
-  const readiness = readinessFor(d, useCheckins.getState().byDate, ws.sessions);
+  const readiness = readinessFor(d, useCheckins.getState().byDate, ws.sessions, useHealth.getState().days);
   return { ws, readiness, d };
 }
 

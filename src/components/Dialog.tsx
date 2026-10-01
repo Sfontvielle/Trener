@@ -2,7 +2,7 @@ import React, { useEffect, useState} from 'react';
 import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { create } from 'zustand';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T, type IconName } from './ui';
 
 /**
@@ -109,7 +109,7 @@ function ToastView() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   backdrop: { flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: space.xl },
   box: { width: '100%', maxWidth: 340, backgroundColor: colors.surface2, borderRadius: radius.lg, padding: space.xl, borderWidth: 1, borderColor: colors.border },
   toast: {

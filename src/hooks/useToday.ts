@@ -3,6 +3,7 @@ import { useCheckins } from '@/stores/checkins';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useNutrition } from '@/stores/nutrition';
+import { useHealth } from '@/stores/health';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from '@/features/training/today';
 import { remaining, sumMacros } from '@/features/nutrition/status';
@@ -14,7 +15,8 @@ export function useReadiness(date?: string) {
   const d = date ?? dayKey;
   const checkins = useCheckins((s) => s.byDate);
   const sessions = useWorkouts((s) => s.sessions);
-  return useMemo(() => readinessFor(d, checkins, sessions), [d, checkins, sessions]);
+  const health = useHealth((s) => s.days);
+  return useMemo(() => readinessFor(d, checkins, sessions, health), [d, checkins, sessions, health]);
 }
 
 export function useTodayWorkout() {

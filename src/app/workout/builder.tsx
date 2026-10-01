@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { Exercise, PlannedExercise } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
@@ -59,10 +59,11 @@ export default function Builder() {
   const prefs = useMemo(() => (profile ? getPrefs(profile) : null), [profile]);
   // Оптимизатор порядка: предлагает, но не переставляет без согласия
   const orderSig = exercises.map((e) => e.exerciseId).join('|');
+  const recFactor = plan?.recovery?.factor ?? 1;
   const order = useMemo(() => (prefs && exercises.length >= 2 ? suggestOrder(exercises, prefs.priorityMuscles, customs) : null), [exercises, prefs, customs]);
   const issues = useMemo(
-    () => (profile && prefs ? analyzeWorkout({ list: exercises, profile, prefs, sessions, weeklyTargets: weeklyTargets(profile, prefs), customs }) : []),
-    [exercises, profile, prefs, sessions, customs],
+    () => (profile && prefs ? analyzeWorkout({ list: exercises, profile, prefs, sessions, weeklyTargets: weeklyTargets(profile, prefs, recFactor), customs }) : []),
+    [exercises, profile, prefs, sessions, customs, recFactor],
   );
   const visibleIssues = issues.filter((i) => !hidden.includes(i.id));
 
@@ -158,7 +159,7 @@ export default function Builder() {
         </View>
       ) : null}
       {visibleIssues.map((it) => (
-        <View key={it.id} style={[styles.issue, it.level === 'danger' && { borderColor: colors.danger }, it.level === 'warning' && { borderColor: 'rgba(247,178,59,0.45)' }]}>
+        <View key={it.id} style={[styles.issue, it.level === 'danger' && { borderColor: colors.danger }, it.level === 'warning' && { borderColor: colors.warningLine }]}>
           <Icon name={it.level === 'danger' ? 'alert-circle' : it.level === 'warning' ? 'warning-outline' : 'information-circle-outline'} size={18} color={it.level === 'danger' ? colors.danger : it.level === 'warning' ? colors.warning : colors.textDim} />
           <View style={{ flex: 1, gap: 6 }}>
             <T v="small" color={colors.text}>
@@ -246,7 +247,7 @@ export default function Builder() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   item: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 12 },
   itemHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
   suggest: { gap: 8, padding: space.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, marginBottom: space.md },

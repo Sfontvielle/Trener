@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T } from '@/components/ui';
 import { Bar, Ring } from '@/components/charts';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
@@ -351,7 +351,7 @@ function Metric({ label, value, sub, color, progress, onPress }: { label: string
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

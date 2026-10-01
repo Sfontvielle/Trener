@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Exercise, WorkoutSession } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, SectionTitle, T } from '@/components/ui';
 import { MiniBars } from '@/components/charts';
@@ -219,7 +219,7 @@ function TodayTab({ bottom }: { bottom: number }) {
                     {VM_LABEL[g]}
                   </T>
                   <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' }}>
-                    <View style={{ width: `${Math.min(100, p * 100)}%`, height: 6, backgroundColor: p >= 0.9 ? colors.accent : 'rgba(200,245,60,0.5)' }} />
+                    <View style={{ width: `${Math.min(100, p * 100)}%`, height: 6, backgroundColor: p >= 0.9 ? colors.accent : colors.barSoft }} />
                   </View>
                   <T v="small" style={{ width: 54, textAlign: 'right', fontVariant: ['tabular-nums'] }}>
                     {done}/{target}
@@ -352,7 +352,7 @@ const HistoryRow = React.memo(function HistoryRow({ s }: { s: WorkoutSession }) 
   );
 });
 
-const styles = StyleSheet.create({
+const styles = themed({
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
   exRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2, minHeight: 40 },
   day: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

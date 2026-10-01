@@ -4,6 +4,7 @@ import type { FoodEntry, FoodProduct, ISODate, MealSlot } from '@/types';
 import { persistOptions } from '@/storage/persist';
 import { uid } from '@/utils/id';
 import { macrosFor } from '@/features/nutrition/status';
+import { LOCAL_FOODS } from '@/data/foods';
 
 interface NutritionState {
   entries: FoodEntry[];
@@ -17,7 +18,22 @@ interface NutritionState {
   updateEntry: (id: string, grams: number) => void;
   removeEntry: (id: string) => void;
   cacheProduct: (p: FoodProduct) => void;
+  /** Мои блюда: сохранённые комбинации продуктов */
+  meals: SavedMeal[];
+  saveMeal: (name: string, items: SavedMeal['items']) => SavedMeal;
+  removeMeal: (id: string) => void;
+  /** Добавить блюдо целиком; возвращает id созданных записей (для «Отменить») */
+  addSavedMeal: (mealId: string, slot: MealSlot, date: ISODate) => string[];
+  removeEntries: (ids: string[]) => void;
   reset: () => void;
+}
+
+export interface SavedMeal {
+  id: string;
+  name: string;
+  items: { productId: string; name: string; grams: number }[];
+  createdAt: number;
+  uses: number;
 }
 
 export const MEAL_LABEL: Record<MealSlot, string> = { breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекусы' };
@@ -60,8 +76,27 @@ export const useNutrition = create<NutritionState>()(
         })),
       removeEntry: (id) => set((s) => ({ entries: s.entries.filter((e) => e.id !== id) })),
       cacheProduct: (p) => set((s) => ({ products: { ...s.products, [p.id]: p } })),
-      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {} }),
+      meals: [],
+      saveMeal: (name, items) => {
+        const m: SavedMeal = { id: uid('meal_'), name: name.trim() || 'Моё блюдо', items, createdAt: Date.now(), uses: 0 };
+        set((s) => ({ meals: [m, ...s.meals] }));
+        return m;
+      },
+      removeMeal: (id) => set((s) => ({ meals: s.meals.filter((m) => m.id !== id) })),
+      addSavedMeal: (mealId, slot, date) => {
+        const m = get().meals.find((x) => x.id === mealId);
+        if (!m) return [];
+        const ids: string[] = [];
+        for (const it of m.items) {
+          const p = get().products[it.productId] ?? LOCAL_FOODS.find((f) => f.id === it.productId);
+          if (p) ids.push(get().addEntry(p, it.grams, slot, date).id);
+        }
+        set((s) => ({ meals: s.meals.map((x) => (x.id === mealId ? { ...x, uses: x.uses + 1 } : x)) }));
+        return ids;
+      },
+      removeEntries: (ids) => set((s) => ({ entries: s.entries.filter((e) => !ids.includes(e.id)) })),
+      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {}, meals: [] }),
     }),
-    persistOptions<NutritionState>('nutrition', 1, (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams }) as NutritionState),
+    persistOptions<NutritionState>('nutrition', 1, (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams, meals: s.meals }) as NutritionState),
   ),
 );

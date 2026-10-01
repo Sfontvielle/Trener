@@ -4,14 +4,30 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "default"
+      },
+      "env": {
+        "EXPO_PUBLIC_COACH_API_URL": ""
+      }
+    },
     "preview": {
       "distribution": "internal",
-      "ios": { "resourceClass": "default" },
-      "env": { "EXPO_PUBLIC_COACH_API_URL": "" }
+      "ios": {
+        "resourceClass": "default"
+      },
+      "env": {
+        "EXPO_PUBLIC_COACH_API_URL": ""
+      }
     },
     "production": {
       "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_COACH_API_URL": "" }
+      "env": {
+        "EXPO_PUBLIC_COACH_API_URL": ""
+      }
     }
   },
   "submit": {

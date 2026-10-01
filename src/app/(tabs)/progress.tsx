@@ -11,6 +11,7 @@ import { usePlan } from '@/stores/plan';
 import { useProfile } from '@/stores/profile';
 import { useNutrition } from '@/stores/nutrition';
 import { useCheckins } from '@/stores/checkins';
+import { useHealth } from '@/stores/health';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
 import { adherence, progressRows, workoutsInRange } from '@/features/training/analytics';
 import { reviewCalories } from '@/features/nutrition/adaptive';
@@ -59,14 +60,15 @@ export default function Progress() {
   const adh = useMemo(() => adherence(sessions, plan, 28), [sessions, plan]);
   const weekly = useMemo(() => Array.from({ length: 8 }, (_, i) => workoutsInRange(sessions, addDays(d, -7 * (8 - i) + 1), addDays(d, -7 * (7 - i)))), [sessions, d]);
 
+  const recFactor = plan?.recovery?.factor ?? 1;
   // Объём по детальным группам: прямые подходы за 7 дней против недельной цели
   const volume = useMemo(() => {
     if (!profile) return [];
-    const tg = weeklyTargets(profile, getPrefs(profile));
+    const tg = weeklyTargets(profile, getPrefs(profile), recFactor);
     const cur = doneFineVolume(sessions, addDays(d, -6), d, customs);
     const prev = doneFineVolume(sessions, addDays(d, -13), addDays(d, -7), customs);
     return VOLUME_MUSCLES.filter((m) => tg[m] > 0).map((m) => ({ m, cur: cur[m], prev: prev[m], target: tg[m] }));
-  }, [sessions, d, profile, customs]);
+  }, [sessions, d, profile, customs, recFactor]);
   const proposals = useMemo(() => (profile ? weeklyProposals({ profile, plan, sessions, customs }) : []), [profile, plan, sessions, customs]);
   const [doneProposals, setDoneProposals] = useState<string[]>([]);
   const prs = useMemo(() => progressRows(sessions).filter((r) => r.sessions >= 1).slice(0, 8), [sessions]);
@@ -79,7 +81,7 @@ export default function Progress() {
   const readiness7 = useMemo(() => {
     const vals: number[] = [];
     for (let i = 6; i >= 0; i--) {
-      const r = readinessFor(addDays(d, -i), checkins, sessions);
+      const r = readinessFor(addDays(d, -i), checkins, sessions, useHealth.getState().days);
       vals.push(r?.score ?? 0);
     }
     return vals;

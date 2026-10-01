@@ -97,6 +97,7 @@ export function buildCoachContext(i: CoachInputs): string {
   const prefs = getPrefs(p);
   sec('TRAINING PREFERENCES & LIMITATIONS');
   L.push(`Сплит: ${SPLIT_PREF_LABEL[prefs.preferredSplit]}${i.plan?.splitChoice?.reasons.length ? ` (FORM: ${i.plan.splitChoice.reasons.slice(0, 3).join('; ')})` : ''}`);
+  L.push(`Восстановление (тренировочный контекст): ${prefs.recoveryProfile === 'enhanced' ? 'пользователь указал повышенное' : prefs.recoveryProfile === 'standard' ? 'стандартное' : 'определяется по данным'}${i.plan?.recovery ? `; оценка FORM: ${i.plan.recovery.level}, объём ×${i.plan.recovery.factor}` : ''}`);
   L.push(`Подходы: ${prefs.setStyle === 'auto' ? 'решает FORM' : `${prefs.setStyle} в упражнении`}; повторы: ${prefs.repStyle}`);
   if (prefs.priorityMuscles.length) L.push(`Приоритетные группы: ${prefs.priorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
   if (prefs.lowPriorityMuscles.length) L.push(`Низкий приоритет: ${prefs.lowPriorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
@@ -111,7 +112,7 @@ export function buildCoachContext(i: CoachInputs): string {
   if (i.rejected?.length) L.push(`Пользователь отказался (не предлагать снова): ${i.rejected.join(', ')}`);
 
   sec('WEEKLY VOLUME by muscle (прямые подходы: сделано за 7 дн / план / цель)');
-  const tg = weeklyTargets(p, prefs);
+  const tg = weeklyTargets(p, prefs, i.plan?.recovery?.factor ?? 1);
   const done7 = doneFineVolume(i.sessions, addDays(d, -6), d);
   const planned = i.plan ? planVolume(i.plan) : null;
   L.push(VOLUME_MUSCLES.filter((m) => tg[m] > 0).map((m) => `${VM_LABEL[m]} ${Math.round(done7[m])}/${planned ? Math.round(planned[m]) : '—'}/${tg[m]}`).join(', '));

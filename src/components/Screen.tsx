@@ -1,8 +1,8 @@
 import React from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleProp, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { colors, space } from '@/theme';
+import { colors, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
 
 export const TAB_BAR_HEIGHT = 64;
@@ -81,7 +81,7 @@ export function Header({ title, subtitle, right, onBack, large }: { title: strin
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   root: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: space.md, minHeight: 48 },
 });
