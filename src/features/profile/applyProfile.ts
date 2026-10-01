@@ -4,6 +4,10 @@ import { usePlan } from '@/stores/plan';
 import { useBody } from '@/stores/body';
 import { useCoach } from '@/stores/coach';
 import { useWorkouts } from '@/stores/workouts';
+import { useCheckins } from '@/stores/checkins';
+import { useHealth } from '@/stores/health';
+import { estimateRecovery } from '@/features/training/engine/recovery';
+import { getPrefs } from '@/features/training/engine/prefs';
 import { generatePlan } from '@/features/training/planGenerator';
 import { computeNutritionTarget, GOAL_LABEL } from '@/features/nutrition/targets';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
@@ -37,7 +41,8 @@ export function applyProfile(next: UserProfile, opts: { force?: boolean } = {}):
 
   if (needPlan) {
     const ws = useWorkouts.getState();
-    const plan = generatePlan(next, { previous: planState.plan, sessions: ws.sessions, customs: ws.customExercises });
+    const recovery = estimateRecovery({ profile: getPrefs(next).recoveryProfile, sessions: ws.sessions, checkins: useCheckins.getState().byDate, health: useHealth.getState().days });
+    const plan = generatePlan(next, { previous: planState.plan, sessions: ws.sessions, customs: ws.customExercises, recovery });
     const summary = !prev ? 'Стартовый план создан' : goalChanged ? `Цель изменена: ${GOAL_LABEL[next.goal]} — план и питание пересчитаны` : 'Параметры тренировок изменены — план перестроен';
     planState.setPlan(plan, target, summary, goalChanged ? 'goal_change' : 'user');
     if (prev && needTarget) {

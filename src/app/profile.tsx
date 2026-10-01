@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { UserProfile } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
@@ -10,6 +10,7 @@ import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
 import { useProfile } from '@/stores/profile';
 import { useCoach } from '@/stores/coach';
+import { useHealth } from '@/stores/health';
 import { resetAllStores } from '@/stores/hydration';
 import { clearAllData } from '@/storage/persist';
 import { applyProfile } from '@/features/profile/applyProfile';
@@ -45,6 +46,9 @@ export default function Profile() {
   const settings = useProfile((s) => s.settings);
   const updateSettings = useProfile((s) => s.updateSettings);
   const memory = useCoach((s) => s.memory);
+  const healthOn = useHealth((s) => s.enabled);
+  const healthSync = useHealth((s) => s.lastSyncAt);
+  const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
   const [section, setSection] = useState<Section>(null);
   const [draft, setDraft] = useState<UserProfile | null>(null);
   const [url, setUrl] = useState(settings.coachApiUrl);
@@ -155,6 +159,11 @@ export default function Profile() {
       <Button title="Мой план и расчёты" icon="document-text-outline" variant="secondary" style={{ marginTop: space.md }} onPress={() => router.push('/plan')} />
 
       <SectionTitle title="Настройки" />
+      <Card style={{ paddingVertical: 4, marginBottom: space.md }}>
+        <Row label="Оформление" value={`${settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Системная' : 'Тёмная'} тема`} onPress={() => router.push('/appearance')} />
+        <Divider />
+        <Row label="Apple Health" value={healthSummary} onPress={() => router.push('/health')} />
+      </Card>
       <Card style={{ gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52 }}>
           <T v="body" style={{ flex: 1 }}>
@@ -298,7 +307,7 @@ function Row({ label, value, onPress }: { label: string; value: string; onPress:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 8, borderRadius: radius.sm },

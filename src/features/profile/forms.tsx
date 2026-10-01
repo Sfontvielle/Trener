@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 import type { Equipment, GoalType, UserProfile } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Chip, Icon, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
@@ -290,7 +290,7 @@ export function TagInput({ label, values, onChange, suggestions = [], placeholde
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },

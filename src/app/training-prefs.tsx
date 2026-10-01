@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import type { BodyArea, LimitationSeverity, MovementRestriction, RepStyle, SetStyle, SplitPreference, TrainingLimitation, UserProfile, VolumeMuscle } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { Pressable, View } from 'react-native';
+import type { BodyArea, LimitationSeverity, RecoveryProfile, MovementRestriction, RepStyle, SetStyle, SplitPreference, TrainingLimitation, UserProfile, VolumeMuscle } from '@/types';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Icon, SectionTitle, Segmented, T } from '@/components/ui';
 import { Field, Toggle } from '@/components/inputs';
@@ -9,6 +9,8 @@ import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
 import { useProfile } from '@/stores/profile';
 import { useWorkouts } from '@/stores/workouts';
+import { usePlan } from '@/stores/plan';
+import { SplitCompareButton } from '@/features/training/SplitCompare';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { getExercise } from '@/data/exercises';
@@ -18,7 +20,12 @@ import { AREA_LABEL, AREA_MOVEMENTS, RESTRICTION_LABEL } from '@/features/traini
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { uid } from '@/utils/id';
 
-const SPLITS: SplitPreference[] = ['auto', 'fullbody', 'upper_lower', 'ppl', 'ul_ppl', 'custom'];
+const SPLITS: SplitPreference[] = ['auto', 'fullbody', 'upper_lower', 'torso_limbs', 'ppl', 'ul_ppl', 'bro', 'custom'];
+const RECOVERY: { key: RecoveryProfile; label: string; sub: string }[] = [
+  { key: 'auto', label: 'Определять FORM', sub: 'по сну, готовности, крепатуре и прогрессу' },
+  { key: 'standard', label: 'Стандартное', sub: 'обычный объём, корректируется по данным' },
+  { key: 'enhanced', label: 'Повышенное', sub: 'учитывается как один из факторов, не как разрешение на объём' },
+];
 const SET_ITEMS: { key: string; label: string }[] = [
   { key: 'auto', label: 'FORM решает' },
   { key: '2', label: '2 подхода' },
@@ -50,6 +57,7 @@ const AREAS = Object.keys(AREA_LABEL) as BodyArea[];
 export default function TrainingPrefs() {
   const profile = useProfile((s) => s.profile);
   const sessions = useWorkouts((s) => s.sessions);
+  const plan = usePlan((s) => s.plan);
   const [picker, setPicker] = useState<null | 'excluded' | 'disliked' | 'preferred'>(null);
   const [editing, setEditing] = useState<TrainingLimitation | null>(null);
   const [showMovements, setShowMovements] = useState(false);
@@ -101,6 +109,36 @@ export default function TrainingPrefs() {
             ))}
           </View>
         )}
+        {plan && prefs.preferredSplit !== 'custom' ? <SplitCompareButton plan={plan} /> : null}
+      </Card>
+
+      <SectionTitle title="Восстановление" />
+      <Card style={{ gap: 4, paddingVertical: 6 }}>
+        {RECOVERY.map((r) => {
+          const active = (prefs.recoveryProfile ?? 'auto') === r.key;
+          return (
+            <Pressable key={r.key} accessibilityRole="radio" accessibilityState={{ selected: active }} onPress={() => commit(withPrefs(profile, { recoveryProfile: r.key }))} style={styles.radioRow}>
+              <View style={[styles.radio, active && { borderColor: colors.accent }]}>{active ? <View style={styles.radioDot} /> : null}</View>
+              <View style={{ flex: 1 }}>
+                <T v="body" style={{ fontWeight: '700' }}>
+                  {r.label}
+                </T>
+                <T v="small" style={{ fontSize: 12 }}>
+                  {r.sub}
+                </T>
+              </View>
+            </Pressable>
+          );
+        })}
+        {plan?.recovery ? (
+          <T v="small" style={{ fontSize: 12, marginTop: 4 }}>
+            Сейчас: {plan.recovery.level === 'high' ? 'хорошее' : plan.recovery.level === 'low' ? 'сниженное' : 'обычное'} восстановление
+            {plan.recovery.factor !== 1 ? `, объём ×${String(plan.recovery.factor).replace('.', ',')}` : ''}. {plan.recovery.reasons.slice(0, 2).join('; ')}
+          </T>
+        ) : null}
+        <T v="small" style={{ fontSize: 11, marginTop: 4 }} color={colors.muted}>
+          Это только тренировочный контекст. FORM не даёт советов по препаратам и дозировкам и не оценивает их безопасность. Главное для объёма — фактический сон, готовность и прогресс.
+        </T>
       </Card>
 
       <SectionTitle title="Подходы и повторы" />
@@ -307,9 +345,12 @@ function LimitationSheet({ value, onClose, onSave, onDelete, exists }: { value: 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   why: { backgroundColor: colors.surface2, borderRadius: radius.md, padding: space.md, gap: 2 },
   lim: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2 },
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   remove: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface3 },
 });

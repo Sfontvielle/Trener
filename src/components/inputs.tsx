@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
-import { colors, radius, space } from '@/theme';
+import { Pressable, StyleProp, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from './ui';
 import { haptic } from '@/services/haptics';
 import { parseDecimal } from '@/utils/format';
@@ -170,7 +170,7 @@ export function Toggle({ value, onChange, label, sub }: { value: boolean; onChan
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   input: {
     height: 50,
     borderRadius: radius.md,

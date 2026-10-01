@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, View } from 'react-native';
 import type { Exercise } from '@/types';
-import { colors, radius } from '@/theme';
+import { colors, radius, themed } from '@/theme';
 import { Icon, T } from '@/components/ui';
 import { exerciseImages } from '@/data/exercises';
 import { EXERCISE_MEDIA } from '@/data/exerciseMedia';
@@ -109,7 +109,7 @@ export function prefetchExerciseMedia(ex: Exercise) {
   for (const u of exerciseImages(ex)) Image.prefetch(u).catch(() => undefined);
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   box: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   frame: { flex: 1 },
   img: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: '100%', height: '100%' },

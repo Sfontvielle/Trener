@@ -12,6 +12,7 @@ export const DEFAULT_PREFS: TrainingPreferences = {
   priorityMuscles: [],
   lowPriorityMuscles: [],
   volumeAdjust: {},
+  recoveryProfile: 'auto',
 };
 
 /**

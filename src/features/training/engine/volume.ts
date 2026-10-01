@@ -11,8 +11,9 @@ export function baseWeeklySets(p: Pick<UserProfile, 'level' | 'goal'>): number {
 }
 
 /** Недельная цель прямых подходов по каждой группе (с приоритетами и ручными поправками) */
-export function weeklyTargets(p: Pick<UserProfile, 'level' | 'goal'>, prefs: TrainingPreferences): Record<VolumeMuscle, number> {
-  const base = baseWeeklySets(p);
+/** factor — множитель восстановления (0.85…1.15, см. engine/recovery) */
+export function weeklyTargets(p: Pick<UserProfile, 'level' | 'goal'>, prefs: TrainingPreferences, factor = 1): Record<VolumeMuscle, number> {
+  const base = baseWeeklySets(p) * factor;
   const out = {} as Record<VolumeMuscle, number>;
   for (const m of VOLUME_MUSCLES) {
     let share = MUSCLE_SHARE[m];

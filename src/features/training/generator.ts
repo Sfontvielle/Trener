@@ -65,7 +65,7 @@ export function generateWorkout(args: {
   const customs = args.customs ?? [];
   const prefs = getPrefs(profile);
   const d = today();
-  const targets = weeklyTargets(profile, prefs);
+  const targets = weeklyTargets(profile, prefs, args.plan?.recovery?.factor ?? 1);
   const week = doneFineVolume(sessions, addDays(d, -6), d, customs);
   const recent = recentLoad(sessions, customs);
   const limits = setLimits(prefs.setStyle, profile.level);

@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   morningTime: { hour: 8, minute: 0 },
   trainingReminder: false,
   trainingTime: { hour: 18, minute: 0 },
+  theme: 'dark',
+  accent: 'lime',
 };
 
 export const useProfile = create<ProfileState>()(

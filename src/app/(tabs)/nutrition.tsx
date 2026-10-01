@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, IconButton, SectionTitle, T } from '@/components/ui';
 import { Bar, Ring } from '@/components/charts';
 import { Sheet } from '@/components/Sheet';
-import { NumberStepper } from '@/components/inputs';
+import { Field, NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
 import { useDayNutrition } from '@/hooks/useToday';
 import { useNutrition, mealForHour, MEAL_LABEL } from '@/stores/nutrition';
@@ -24,11 +24,9 @@ import { LOCAL_FOODS } from '@/data/foods';
 import { addDays, daysBetween, relativeDay, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
+import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
 import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday } from '@/features/nutrition/quick';
-
-/** Остаток макроса: «45 г» или «+12» при переборе */
-const remainTxt = (v: number) => (v >= 0 ? `${Math.round(v)} г` : `+${Math.round(-v)}`);
 
 export default function Nutrition() {
   // Дата считается от «сегодня», которое само переключается после полуночи
@@ -45,6 +43,11 @@ export default function Nutrition() {
   const adjustments = usePlan((s) => s.adjustments);
   const weights = useBody((s) => s.weights);
   const [edit, setEdit] = useState<FoodEntry | null>(null);
+  const [moreMeals, setMoreMeals] = useState(false);
+  const [addFor, setAddFor] = useState<MealSlot | null>(null);
+  const [saveMeal, setSaveMeal] = useState<{ slot: MealSlot; entries: FoodEntry[] } | null>(null);
+  const saveAsMeal = (slot: MealSlot, list: FoodEntry[]) => setSaveMeal({ slot, entries: list });
+  const nowMealFor = (today_: boolean): MealSlot => (today_ ? mealForHour(new Date().getHours()) : 'snack');
   const isToday = offset === 0;
   const nowMeal = mealForHour(new Date().getHours());
   const repeat = useMemo(() => (isToday ? sameMealYesterday(allEntries, date, nowMeal) : []), [isToday, allEntries, date, nowMeal]);
@@ -87,89 +90,35 @@ export default function Nutrition() {
         <IconButton name="chevron-forward" label="Следующий день" onPress={() => setDate(addDays(date, 1))} disabled={isToday} />
       </View>
 
-      <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
-          <Ring size={112} stroke={10} progress={nut.eaten.kcal / target.kcal} color={stateColor(kState)}>
-            <T v="num" style={{ fontSize: 24 }}>
-              {fmtNum(nut.eaten.kcal)}
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <View style={{ flex: 1 }}>
+            <T v="caption">{isToday ? 'Осталось сегодня' : `Осталось · ${relativeDay(date).toLowerCase()}`}</T>
+            <T v="display" style={{ fontSize: 36 }} color={left < 0 ? stateColor(kState) : colors.text}>
+              {left >= 0 ? fmtNum(left) : `+${fmtNum(-left)}`}
+              <T v="h3" color={colors.textDim}> ккал{left < 0 ? ' сверх' : ''}</T>
             </T>
-            <T v="small" style={{ fontSize: 12 }}>
-              из {fmtNum(target.kcal)}
-            </T>
-          </Ring>
-          <View style={{ flex: 1, gap: 4 }}>
-            <T v="caption">{isToday ? 'Осталось сегодня' : 'Осталось'} · {GOAL_SHORT[profile.goal]}</T>
-            <T v="h1" color={left < 0 ? stateColor(kState) : colors.text}>
-              {left >= 0 ? `${fmtNum(left)} ккал` : `+${fmtNum(-left)} ккал`}
-            </T>
-            <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-              {left < 0 ? 'сверх цели · ' : ''}Б {remainTxt(target.protein - nut.eaten.protein)} · Ж {remainTxt(target.fat - nut.eaten.fat)} · У {remainTxt(target.carbs - nut.eaten.carbs)}
+            <T v="small">
+              Съедено {fmtNum(nut.eaten.kcal)} из {fmtNum(target.kcal)} · {GOAL_SHORT[profile.goal]}
             </T>
           </View>
+          <Ring size={72} stroke={8} progress={nut.eaten.kcal / target.kcal} color={stateColor(kState)}>
+            <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
+              {Math.round((nut.eaten.kcal / target.kcal) * 100)}%
+            </T>
+          </Ring>
         </View>
-        <View style={{ gap: 12, marginTop: space.lg }}>
-          <MacroRow label="Белки" eaten={nut.eaten.protein} target={target.protein} state={macroState('protein', nut.eaten.protein, target.protein, dp)} base={colors.protein} />
-          <MacroRow label="Жиры" eaten={nut.eaten.fat} target={target.fat} state={macroState('fat', nut.eaten.fat, target.fat, dp)} base={colors.fat} />
-          <MacroRow label="Углеводы" eaten={nut.eaten.carbs} target={target.carbs} state={macroState('carbs', nut.eaten.carbs, target.carbs, dp)} base={colors.carbs} />
-        </View>
-        <View style={styles.legend}>
-          <Legend c={colors.accent} t="в цели" />
-          <Legend c={colors.warning} t="внимание" />
-          <Legend c={colors.danger} t="сильно мимо" />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <MacroLeft label="Белок" eaten={nut.eaten.protein} target={target.protein} state={macroState('protein', nut.eaten.protein, target.protein, dp)} base={colors.protein} />
+          <MacroLeft label="Жиры" eaten={nut.eaten.fat} target={target.fat} state={macroState('fat', nut.eaten.fat, target.fat, dp)} base={colors.fat} />
+          <MacroLeft label="Углеводы" eaten={nut.eaten.carbs} target={target.carbs} state={macroState('carbs', nut.eaten.carbs, target.carbs, dp)} base={colors.carbs} />
         </View>
       </Card>
 
-      {review && review.status === 'adjust' && isToday ? (
-        <Card tone="warning" style={{ marginTop: space.md, gap: 8 }}>
-          <T v="h3">{review.headline}</T>
-          <T v="small">{review.detail}</T>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.headline, 'adaptive'); toast('Калорийность обновлена'); }} style={{ flex: 1 }} />
-            <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Стоит ли менять калорийность по тренду веса?' } })} />
-          </View>
-        </Card>
-      ) : null}
-
-      {isToday && suggestions ? (
-        <>
-          <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
-          <View style={{ gap: 10 }}>
-            {suggestions.notes.map((n) => (
-              <Banner key={n} tone={n.includes('превыш') ? 'warning' : 'info'} text={n} />
-            ))}
-            {suggestions.options.map((o) => (
-              <Card key={o.id} style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <T v="caption">{o.title}</T>
-                  <T v="small" style={{ fontSize: 12 }}>
-                    {o.why}
-                  </T>
-                </View>
-                {o.items.map((it) => (
-                  <View key={it.product.id} style={{ flexDirection: 'row' }}>
-                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={1}>
-                      {it.product.name}
-                    </T>
-                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
-                      {it.grams} г
-                    </T>
-                  </View>
-                ))}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <T v="small" style={{ flex: 1 }}>
-                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · Ж {Math.round(o.total.fat)} · У {Math.round(o.total.carbs)}
-                  </T>
-                  <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
-                </View>
-              </Card>
-            ))}
-          </View>
-        </>
-      ) : null}
-
+      <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.md, marginBottom: space.sm }} onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
       {isToday && (repeat.length || frequent.length) ? (
         <>
-          <SectionTitle title="Быстро добавить" />
+          
           {repeat.length ? (
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
               <Icon name="repeat" size={20} color={colors.accent} />
@@ -225,77 +174,167 @@ export default function Nutrition() {
       ) : null}
 
       <SectionTitle title="Приёмы пищи" />
-      {nut.entries.length === 0 ? (
-        <Card style={{ alignItems: 'center', gap: 6 }}>
-          <T v="body">{isToday ? 'Сегодня ещё ничего не записано' : 'За этот день нет записей'}</T>
-          <T v="small" style={{ textAlign: 'center' }}>
-            Ищи по названию или сканируй штрихкод — КБЖУ из базы продуктов.
-          </T>
-        </Card>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {meals.map((m) => {
-            const list = nut.entries.filter((e) => e.meal === m);
-            if (!list.length) return null;
-            const kcal = list.reduce((a, e) => a + e.macros.kcal, 0);
-            return (
-              <Card key={m} style={{ paddingVertical: 10 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <T v="caption">{MEAL_LABEL[m]}</T>
-                  <T v="small">{fmtNum(kcal)} ккал</T>
-                </View>
-                {list.map((e) => (
-                  <Pressable key={e.id} onPress={() => setEdit(e)} style={styles.entry} accessibilityRole="button" accessibilityLabel={`${e.name}, изменить`}>
-                    <View style={{ flex: 1 }}>
-                      <T v="body" numberOfLines={2} style={{ fontSize: 15 }}>
-                        {e.name}
-                      </T>
-                      <T v="small" style={{ fontSize: 12 }}>
-                        {e.grams} г · Б {Math.round(e.macros.protein)} Ж {Math.round(e.macros.fat)} У {Math.round(e.macros.carbs)}
-                      </T>
-                    </View>
-                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
-                      {fmtNum(e.macros.kcal)}
+      <View style={{ gap: 10 }}>
+        {meals.map((m) => {
+          const list = nut.entries.filter((e) => e.meal === m);
+          const kcal = list.reduce((a, e) => a + e.macros.kcal, 0);
+          return (
+            <Card key={m} style={{ paddingVertical: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <T v="caption" style={{ flex: 1 }}>
+                  {MEAL_LABEL[m]}
+                </T>
+                {list.length ? <T v="small">{fmtNum(kcal)} ккал</T> : null}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Добавить в «${MEAL_LABEL[m]}»`} hitSlop={8} onPress={() => setAddFor(m)} style={styles.mealAdd}>
+                  <Icon name="add" size={18} color={colors.accent} />
+                </Pressable>
+              </View>
+              {list.length === 0 ? (
+                <T v="small" style={{ fontSize: 12, marginTop: 2 }}>
+                  Пусто
+                </T>
+              ) : null}
+              {list.map((e) => (
+                <Pressable key={e.id} onPress={() => setEdit(e)} style={styles.entry} accessibilityRole="button" accessibilityLabel={`${e.name}, изменить`}>
+                  <View style={{ flex: 1 }}>
+                    <T v="body" numberOfLines={2} style={{ fontSize: 15 }}>
+                      {e.name}
                     </T>
-                  </Pressable>
-                ))}
-              </Card>
-            );
-          })}
-        </View>
-      )}
-      <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.lg }} onPress={() => router.push({ pathname: '/food/add', params: { date } })} />
+                    <T v="small" style={{ fontSize: 12 }}>
+                      {e.grams} г · Б {Math.round(e.macros.protein)} Ж {Math.round(e.macros.fat)} У {Math.round(e.macros.carbs)}
+                    </T>
+                  </View>
+                  <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
+                    {fmtNum(e.macros.kcal)}
+                  </T>
+                </Pressable>
+              ))}
+              {list.length >= 2 ? (
+                <Pressable accessibilityRole="button" hitSlop={6} onPress={() => saveAsMeal(m, list)} style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Icon name="bookmark-outline" size={14} color={colors.accent} />
+                  <T v="small" color={colors.accent} style={{ fontWeight: '700', fontSize: 12 }}>
+                    Сохранить как блюдо
+                  </T>
+                </Pressable>
+              ) : null}
+            </Card>
+          );
+        })}
+      </View>
 
+      {review && review.status === 'adjust' && isToday ? (
+        <Card tone="warning" style={{ marginTop: space.md, gap: 8 }}>
+          <T v="h3">{review.headline}</T>
+          <T v="small">{review.detail}</T>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.headline, 'adaptive'); toast('Калорийность обновлена'); }} style={{ flex: 1 }} />
+            <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Стоит ли менять калорийность по тренду веса?' } })} />
+          </View>
+        </Card>
+      ) : null}
+
+      {isToday && suggestions ? (
+        <>
+          <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
+          <View style={{ gap: 10 }}>
+            {suggestions.notes.map((n) => (
+              <Banner key={n} tone={n.includes('превыш') ? 'warning' : 'info'} text={n} />
+            ))}
+            {suggestions.options.slice(0, moreMeals ? 3 : 1).map((o) => (
+              <Card key={o.id} style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <T v="caption">{o.title}</T>
+                  <T v="small" style={{ fontSize: 12 }}>
+                    {o.why}
+                  </T>
+                </View>
+                {o.items.map((it) => (
+                  <View key={it.product.id} style={{ flexDirection: 'row' }}>
+                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={1}>
+                      {it.product.name}
+                    </T>
+                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
+                      {it.grams} г
+                    </T>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <T v="small" style={{ flex: 1 }}>
+                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · Ж {Math.round(o.total.fat)} · У {Math.round(o.total.carbs)}
+                  </T>
+                  <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
+                </View>
+              </Card>
+            ))}
+            {suggestions.options.length > 1 ? (
+              <Button title={moreMeals ? 'Скрыть варианты' : `Ещё варианты (${suggestions.options.length - 1})`} size="sm" variant="ghost" onPress={() => setMoreMeals(!moreMeals)} />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      <AddFoodSheet visible={!!addFor} onClose={() => setAddFor(null)} date={date} meal={addFor ?? 'snack'} />
+      <SaveMealSheet value={saveMeal} onClose={() => setSaveMeal(null)} />
       <EditEntrySheet key={edit?.id ?? 'none'} entry={edit} onClose={() => setEdit(null)} />
     </Screen>
   );
 }
 
-function Legend({ c, t }: { c: string; t: string }) {
+/** Остаток макроса: крупно «+49 г» (сколько ещё), полоса — сколько уже съедено */
+function MacroLeft({ label, eaten, target, state, base }: { label: string; eaten: number; target: number; state: MacroState; base: string }) {
+  const c = state === 'progress' ? base : stateColor(state);
+  const rem = target - eaten;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />
-      <T v="small" style={{ fontSize: 11 }}>
-        {t}
+    <View style={styles.macroLeft}>
+      <T v="caption" style={{ fontSize: 10 }}>
+        {label}
+      </T>
+      <T v="num" style={{ fontSize: 20 }} color={rem < 0 ? c : colors.text}>
+        {rem >= 0 ? `+${Math.round(rem)}` : `−${Math.round(-rem)}`}
+        <T v="small"> г</T>
+      </T>
+      <Bar progress={target ? eaten / target : 0} color={c} height={4} />
+      <T v="small" style={{ fontSize: 10.5 }}>
+        {Math.round(eaten)} / {Math.round(target)}
       </T>
     </View>
   );
 }
 
-function MacroRow({ label, eaten, target, state, base }: { label: string; eaten: number; target: number; state: MacroState; base: string }) {
-  const c = state === 'progress' ? base : stateColor(state);
+function SaveMealSheet({ value, onClose }: { value: { slot: MealSlot; entries: FoodEntry[] } | null; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    if (value) setName(`Мой ${MEAL_LABEL[value.slot].toLowerCase()}`);
+  }
   return (
-    <View style={{ gap: 5 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <T v="body" style={{ fontSize: 14, fontWeight: '700' }}>
-          {label}
-        </T>
-        <T v="body" style={{ fontSize: 14, fontVariant: ['tabular-nums'] }} color={state === 'attention' || state === 'off' ? c : colors.text}>
-          {Math.round(eaten)} / {Math.round(target)} г
-        </T>
-      </View>
-      <Bar progress={target ? eaten / target : 0} color={c} height={7} />
-    </View>
+    <Sheet visible={!!value} onClose={onClose} title="Сохранить как блюдо" subtitle="Потом — добавить всё одной кнопкой: «Добавить еду» → «Мои блюда»">
+      {value ? (
+        <View style={{ gap: space.md }}>
+          <Field label="Название" value={name} onChangeText={setName} maxLength={40} />
+          <View style={{ gap: 4 }}>
+            {value.entries.map((e) => (
+              <T key={e.id} v="small" color={colors.text}>
+                • {e.name} — {e.grams} г
+              </T>
+            ))}
+          </View>
+          <Button
+            title="Сохранить"
+            icon="bookmark"
+            size="lg"
+            disabled={!name.trim()}
+            onPress={() => {
+              useNutrition.getState().saveMeal(name, value.entries.map((e) => ({ productId: e.productId, name: e.name, grams: e.grams })));
+              haptic.success();
+              toast(`«${name.trim()}» в «Моих блюдах»`, 'bookmark');
+              onClose();
+            }}
+          />
+        </View>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -328,9 +367,11 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.md },
   legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
   quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  macroLeft: { flex: 1, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 3 },
+  mealAdd: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, minHeight: 48, borderRadius: radius.sm },
 });

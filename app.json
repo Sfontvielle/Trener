@@ -6,14 +6,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#0A0B0D",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "net.fontvielle.form",
       "infoPlist": {
         "NSCameraUsageDescription": "FORM использует камеру, чтобы сканировать штрихкоды продуктов.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "FORM читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве."
       }
     },
     "android": {
@@ -50,7 +51,15 @@
           "backgroundColor": "#0A0B0D"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "FORM читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

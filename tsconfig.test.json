@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "react-native": ["./scripts/stubs/react-native.ts"]
+    }
+  }
+}

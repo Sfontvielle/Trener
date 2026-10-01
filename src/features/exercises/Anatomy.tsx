@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 import type { BodyPart } from 'react-native-body-highlighter';
 import { bodyFront } from 'react-native-body-highlighter/dist/assets/bodyFront';
@@ -7,7 +7,7 @@ import { bodyBack } from 'react-native-body-highlighter/dist/assets/bodyBack';
 import { bodyFemaleFront } from 'react-native-body-highlighter/dist/assets/bodyFemaleFront';
 import { bodyFemaleBack } from 'react-native-body-highlighter/dist/assets/bodyFemaleBack';
 import type { MuscleSlug, Sex } from '@/types';
-import { colors, radius } from '@/theme';
+import { colors, radius, themed } from '@/theme';
 import { T } from '@/components/ui';
 import { MUSCLE_LABEL } from '@/data/exercises';
 
@@ -66,7 +66,7 @@ const Figure = memo(function Figure({ side, sex, scale, fillOf }: { side: 'front
     <Svg viewBox={VIEWBOX[sex][side]} width={200 * scale} height={400 * scale}>
       <G stroke={colors.bg} strokeWidth={2.5}>
         {parts.flatMap((part) => {
-          const fill = fillOf.get(part.slug ?? '') ?? (NEUTRAL.has(part.slug ?? '') ? '#3A3F46' : colors.muscleIdle);
+          const fill = fillOf.get(part.slug ?? '') ?? (NEUTRAL.has(part.slug ?? '') ? colors.muscleNeutral : colors.muscleIdle);
           const paths = [...(part.path?.common ?? []), ...(part.path?.left ?? []), ...(part.path?.right ?? [])];
           return paths.map((d, i) => <Path key={`${part.slug}-${i}`} d={d} fill={fill} />);
         })}
@@ -89,7 +89,7 @@ function LegendRow({ color, title, items }: { color: string; title: string; item
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   row: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.surface2, borderRadius: radius.lg, paddingVertical: 12 },
   side: { alignItems: 'center' },
   label: { marginTop: 4, color: colors.textDim },

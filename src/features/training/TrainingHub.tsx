@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Sheet } from '@/components/Sheet';
 import { Button, Chip, Icon, T, type IconName } from '@/components/ui';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { useUi } from '@/stores/ui';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout } from '@/hooks/useToday';
@@ -143,7 +143,7 @@ export function TrainingHub() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, minHeight: 64 },
   rowIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
   today: { padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },

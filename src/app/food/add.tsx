@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Platform, Pressable, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { FoodProduct, MealSlot } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Chip, Icon, Segmented, Skeleton, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
@@ -34,7 +34,7 @@ const TAB_HINT: Record<FoodTab, string> = {
 };
 
 export default function AddFood() {
-  const params = useLocalSearchParams<{ date?: string; productId?: string }>();
+  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot; manual?: string; barcode?: string }>();
   const date = params.date || today();
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
@@ -44,7 +44,7 @@ export default function AddFood() {
   // Возврат со сканера: продукт уже в кэше
   const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? null : null));
   const [barcodeOpen, setBarcodeOpen] = useState(false);
-  const [customOpen, setCustomOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(params.manual === '1');
   const reqId = useRef(0);
 
   const recent = useMemo(() => recentIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [recentIds, products]);
@@ -165,9 +165,9 @@ export default function AddFood() {
           ) : null
         }
       />
-      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
+      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
       <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); setTimeout(() => setSelected(p), 250); }} />
-      <CustomProductSheet visible={customOpen} initialName={q} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); setTimeout(() => setSelected(p), 250); }} />
+      <CustomProductSheet visible={customOpen} initialName={q} barcode={params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); setTimeout(() => setSelected(p), 250); }} />
     </Screen>
   );
 }
@@ -195,12 +195,12 @@ const ProductRow = React.memo(function ProductRow({ p, onPress }: { p: FoodProdu
   );
 });
 
-function PortionSheet({ product, date, onClose, onAdded }: { product: FoodProduct | null; date: string; onClose: () => void; onAdded: () => void }) {
+function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { product: FoodProduct | null; date: string; onClose: () => void; onAdded: () => void; initialMeal?: MealSlot }) {
   const lastGrams = useNutrition((s) => s.lastGrams);
   const entries = useNutrition((s) => s.entries);
   const target = usePlan((s) => s.target);
   const [g, setG] = useState(() => (product ? lastGrams[product.id] ?? product.serving?.grams ?? 100 : 100));
-  const [meal, setMeal] = useState<MealSlot>(() => mealForHour(new Date().getHours()));
+  const [meal, setMeal] = useState<MealSlot>(() => initialMeal ?? mealForHour(new Date().getHours()));
   if (!product) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
   const m = macrosFor(product.per100, g);
   const rem = target ? remaining(target, sumMacros(entries.filter((e) => e.date === date))) : null;
@@ -290,7 +290,7 @@ function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose
   );
 }
 
-function CustomProductSheet({ visible, onClose, onCreated, initialName }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string }) {
+function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string; barcode?: string }) {
   const [name, setName] = useState('');
   const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '' });
   // При открытии листа подставляем то, что искали
@@ -323,7 +323,7 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName }: { visi
           icon="checkmark"
           disabled={!valid}
           onPress={() => {
-            const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: { kcal, protein: p, fat: f, carbs: c }, source: 'custom' };
+            const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: { kcal, protein: p, fat: f, carbs: c }, source: 'custom', barcode: barcode || undefined };
             useNutrition.getState().cacheProduct(prod);
             setV({ kcal: '', protein: '', fat: '', carbs: '' });
             onCreated(prod);
@@ -334,7 +334,7 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName }: { visi
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
   input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 6, borderWidth: 1, borderColor: colors.border, minHeight: 56 },

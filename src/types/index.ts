@@ -78,6 +78,9 @@ export interface AppSettings {
   trainingReminder: boolean;
   trainingTime: { hour: number; minute: number };
   lastBackupAt?: number;
+  /** Оформление: системная / тёмная / светлая и цвет акцента */
+  theme: 'system' | 'dark' | 'light';
+  accent: 'lime' | 'blue' | 'orange';
 }
 
 // ─── Nutrition target & plan ────────────────────────────────────────────────
@@ -103,10 +106,17 @@ export interface NutritionTarget {
   computedAt: number;
 }
 
-export type SplitType = 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'ppl_x2' | 'upper_lower_full';
+export type SplitType = 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'ppl_x2' | 'upper_lower_full' | 'torso_limbs' | 'bro';
 
 /** Выбор пользователя: auto — FORM решает; custom — шаблоны правятся вручную и не перегенерируются */
-export type SplitPreference = 'auto' | 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'custom';
+export type SplitPreference = 'auto' | 'fullbody' | 'upper_lower' | 'ppl' | 'ul_ppl' | 'torso_limbs' | 'bro' | 'custom';
+
+/**
+ * Восстановление как тренировочный контекст (НЕ медицинская настройка):
+ * standard — стандартное, enhanced — повышенное (в т.ч. фармакологическая поддержка — FORM не даёт по ней советов),
+ * auto — FORM определяет только по фактическим данным.
+ */
+export type RecoveryProfile = 'auto' | 'standard' | 'enhanced';
 
 /** Детальные мышечные группы для расчёта объёма (движок) */
 export type VolumeMuscle =
@@ -187,6 +197,8 @@ export interface TrainingPreferences {
   lowPriorityMuscles: VolumeMuscle[];
   /** Ручная поправка недельного объёма, подходов (расширенная настройка / AI) */
   volumeAdjust: Partial<Record<VolumeMuscle, number>>;
+  /** Восстановление (контекст для объёма/частоты; по умолчанию — по фактическим данным) */
+  recoveryProfile?: RecoveryProfile;
 }
 
 export type MuscleGroup =
@@ -247,7 +259,14 @@ export interface WorkoutPlan {
   rationale: CalcStep[];
   createdAt: number;
   /** Как выбран сплит: auto/выбор пользователя + причины */
-  splitChoice?: { preference: SplitPreference; reasons: string[] };
+  splitChoice?: {
+    preference: SplitPreference;
+    reasons: string[];
+    /** Сравнение вариантов (оценка — внутренняя, пользователю показываются плюсы/минусы) */
+    candidates?: { split: SplitType; score: number; pros: string[]; cons: string[]; estMinutes: number; freq: number }[];
+  };
+  /** Оценка восстановления на момент генерации */
+  recovery?: { factor: number; level: 'low' | 'normal' | 'high'; reasons: string[] };
   /** Недельный объём по детальным группам: цель и запланировано */
   volume?: { muscle: VolumeMuscle; target: number; planned: number }[];
   /** Решения генератора, которые стоит показать пользователю */
@@ -322,6 +341,8 @@ export interface ReadinessResult {
   volumeFactor: number;
   rirDelta: number;
   factors: { label: string; impact: number; detail: string }[];
+  /** health — без чек-ина, по данным Apple Health */
+  source?: 'checkin' | 'health';
 }
 
 // ─── Exercises ──────────────────────────────────────────────────────────────
@@ -466,6 +487,8 @@ export interface WorkoutSession {
   sessionRpe?: number; // общая тяжесть 1–10
   notes?: string;
   status: 'active' | 'completed' | 'discarded';
+  /** Активная тренировка: какое упражнение открыто (сохраняется — восстанавливается после перезапуска) */
+  currentIndex?: number;
 }
 
 /** Сгенерированная/собранная, но ещё не начатая тренировка */

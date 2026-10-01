@@ -33,6 +33,8 @@ interface WorkoutState {
   removeExercise: (weId: string) => void;
   replaceExercise: (weId: string, we: WorkoutExercise) => void;
   moveExercise: (weId: string, dir: -1 | 1) => void;
+  /** Открыть упражнение по индексу (focus mode) */
+  setCurrent: (index: number) => void;
   finish: (patch: Partial<WorkoutSession>) => WorkoutSession | null;
   discard: () => void;
   deleteSession: (id: string) => void;
@@ -72,7 +74,11 @@ export const useWorkouts = create<WorkoutState>()(
         ),
       removeSet: (weId, setId) => get().patchActive((s) => mapEx(s, weId, (we) => ({ ...we, sets: we.sets.filter((x) => x.id !== setId) }))),
       addExercise: (we) => get().patchActive((s) => ({ ...s, exercises: [...s.exercises, we] })),
-      removeExercise: (weId) => get().patchActive((s) => ({ ...s, exercises: s.exercises.filter((x) => x.id !== weId) })),
+      removeExercise: (weId) =>
+        get().patchActive((s) => {
+          const exercises = s.exercises.filter((x) => x.id !== weId);
+          return { ...s, exercises, currentIndex: clampIndex(s.currentIndex ?? 0, exercises.length) };
+        }),
       replaceExercise: (weId, we) => get().patchActive((s) => ({ ...s, exercises: s.exercises.map((x) => (x.id === weId ? we : x)) })),
       moveExercise: (weId, dir) =>
         get().patchActive((s) => {
@@ -83,6 +89,7 @@ export const useWorkouts = create<WorkoutState>()(
           [arr[i], arr[j]] = [arr[j], arr[i]];
           return { ...s, exercises: arr };
         }),
+      setCurrent: (index) => get().patchActive((s) => ({ ...s, currentIndex: clampIndex(index, s.exercises.length) })),
       finish: (patch) => {
         const a = get().active;
         if (!a) return null;
@@ -119,6 +126,11 @@ export const useWorkouts = create<WorkoutState>()(
     persistOptions<WorkoutState>('workouts', 1, (s) => ({ sessions: s.sessions, active: s.active, draft: s.draft, rest: s.rest, customExercises: s.customExercises }) as WorkoutState),
   ),
 );
+
+/** Индекс в пределах списка (пустой список → 0) */
+export function clampIndex(i: number, len: number): number {
+  return Math.max(0, Math.min(len - 1, Math.round(i)));
+}
 
 export function hasProgress(s: WorkoutSession | null): boolean {
   return !!s && s.exercises.some((we) => we.sets.some((x) => x.done));

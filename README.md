@@ -35,7 +35,7 @@ npm test                  # автотесты доменной логики (К
 - **Еда в один тап**: «как вчера» для текущего приёма пищи и частые продукты с привычной порцией.
 - **Резервная копия**: Профиль → «Сохранить копию» (JSON в «Файлы»/iCloud) и «Восстановить».
 
-Все модули проекта входят в Expo Go (camera, haptics, svg, async-storage) — dev-build для ежедневной разработки не нужен.
+Почти всё работает в Expo Go (camera, haptics, svg, async-storage). Исключение — **Apple Health**: модуль HealthKit (`@kingstinct/react-native-healthkit`) есть только в development/production-сборке. В Expo Go и в вебе FORM показывает «нужна сборка FORM» и работает на ручном чек-ине.
 
 ## AI Coach (сервер)
 
@@ -68,7 +68,16 @@ npx eas-cli@latest build --platform ios --profile preview     # internal distrib
 npx eas-cli@latest build --platform ios --profile production  # TestFlight / App Store
 ```
 
-Mac не нужен — сборка идёт в облаке EAS. Для HealthKit в будущем понадобится dev-build (`eas build --profile development`).
+Mac не нужен — сборка идёт в облаке EAS.
+
+### Apple Health (development build)
+
+```bash
+npx eas-cli@latest build --profile development --platform ios   # dev-клиент с HealthKit
+npx expo start --dev-client                                      # подключиться к нему
+```
+
+Плагин `@kingstinct/react-native-healthkit` (app.json) добавляет entitlement `com.apple.developer.healthkit` и `NSHealthShareUsageDescription`; FORM только читает данные. Профиль `development` уже есть в `eas.json` (нужен `expo-dev-client`, установлен).
 
 ## Структура
 
@@ -87,7 +96,7 @@ src/
     profile/           формы, применение профиля (пересчёт плана), демо-данные
   stores/              zustand-сторы, каждый — отдельный ключ AsyncStorage
   storage/             слой хранения (заменяется на SQLite без изменения экранов)
-  services/            Open Food Facts, AI API, haptics, HealthKit-провайдер
+  services/            Open Food Facts, AI API, haptics, Apple Health (services/health)
   data/                114 упражнений (RU), встроенные кадры техники, базовые продукты
   types/               доменная модель
 server/                AI Coach backend (Node + @anthropic-ai/sdk)
@@ -101,3 +110,10 @@ scripts/logic-test.ts  автотесты логики
 - Продукты: [Open Food Facts](https://world.openfoodfacts.org) (ODbL) — поиск и штрихкоды; найденные продукты кэшируются локально.
 
 FORM — фитнес-помощник и не ставит медицинских диагнозов.
+
+## Тесты
+
+```bash
+npm test                     # логика: план, сплиты, восстановление, сканер, Health, темы, дневник, AI-валидация
+npx expo start --web --port 8081 & node scripts/e2e-web.cjs   # UI в Expo Web (нужен Playwright)
+```

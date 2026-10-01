@@ -26,7 +26,7 @@ export const BAND_META: Record<ReadinessBand, { headline: string; volumeFactor: 
 
 export function computeReadiness(
   c: DailyCheckIn,
-  ctx: { sessions: WorkoutSession[]; hrvBaseline?: number; rhrBaseline?: number },
+  ctx: { sessions: WorkoutSession[]; hrvBaseline?: number; rhrBaseline?: number; objectiveOnly?: boolean },
 ): ReadinessResult {
   const factors: ReadinessResult['factors'] = [];
 
@@ -54,6 +54,8 @@ export function computeReadiness(
   let score = 0;
   for (const p of parts) {
     score += p.w * p.v * 100;
+    // Без чек-ина субъективные пункты нейтральны — не показываем их как «факторы»
+    if (ctx.objectiveOnly && p.label !== 'Сон') continue;
     factors.push({ label: p.label, impact: Math.round((p.v - 0.75) * p.w * 100), detail: p.detail });
   }
 
@@ -79,16 +81,16 @@ export function computeReadiness(
     if (r < 0.85) {
       const pen = r < 0.75 ? 10 : 6;
       score -= pen;
-      factors.push({ label: 'HRV ниже нормы', impact: -pen, detail: `${Math.round(c.hrvMs)} мс (норма ~${Math.round(ctx.hrvBaseline)})` });
+      factors.push({ label: 'HRV ниже твоей базы', impact: -pen, detail: `${Math.round(c.hrvMs)} мс (${Math.round((r - 1) * 100)}% к базе ${Math.round(ctx.hrvBaseline)})` });
     } else if (r > 1.1) {
       score += 3;
-      factors.push({ label: 'HRV выше нормы', impact: 3, detail: `${Math.round(c.hrvMs)} мс` });
+      factors.push({ label: 'HRV выше твоей базы', impact: 3, detail: `${Math.round(c.hrvMs)} мс (+${Math.round((r - 1) * 100)}%)` });
     }
   }
   if (c.restingHr && ctx.rhrBaseline && c.restingHr - ctx.rhrBaseline >= 5) {
     const pen = c.restingHr - ctx.rhrBaseline >= 8 ? 8 : 5;
     score -= pen;
-    factors.push({ label: 'Пульс покоя повышен', impact: -pen, detail: `${c.restingHr} уд/мин` });
+    factors.push({ label: 'Пульс покоя повышен', impact: -pen, detail: `${c.restingHr} уд/мин (+${Math.round(c.restingHr - ctx.rhrBaseline)} к базе)` });
   }
 
   if (c.pain) {

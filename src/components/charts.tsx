@@ -145,7 +145,7 @@ export function MiniBars({ values, max, height = 48, highlightLast = true, color
             flex: 1,
             height: Math.max(3, (Math.min(v, m) / m) * height),
             borderRadius: 3,
-            backgroundColor: v > 0 ? (highlightLast && i === values.length - 1 ? color : 'rgba(200,245,60,0.45)') : colors.surface3,
+            backgroundColor: v > 0 ? (highlightLast && i === values.length - 1 ? color : colors.barSoft) : colors.surface3,
           }}
         />
       ))}

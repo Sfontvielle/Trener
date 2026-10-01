@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, View } from 'react-native';
 import { useWorkouts } from '@/stores/workouts';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from '@/components/ui';
 import { formatDuration } from '@/utils/date';
 import { haptic } from '@/services/haptics';
@@ -14,6 +14,13 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   const [now, setNow] = useState(() => Date.now());
   const firedFor = useRef<number | null>(null);
   const pulse = useState(() => new Animated.Value(0))[0];
+  const enter = useState(() => new Animated.Value(0))[0];
+  const startedAt = rest?.startedAt;
+  useEffect(() => {
+    if (!startedAt) return;
+    enter.setValue(0);
+    Animated.spring(enter, { toValue: 1, friction: 8, tension: 90, useNativeDriver: true }).start();
+  }, [startedAt, enter]);
 
   useEffect(() => {
     if (!rest) return;
@@ -35,17 +42,20 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   if (!rest) return null;
   const progress = rest.duration ? 1 - left / rest.duration : 1;
   return (
-    <Animated.View style={[styles.bar, { bottom, transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }] }, done && { borderColor: colors.accent }]}>
+    <Animated.View style={[styles.bar, { bottom, opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }, { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }] }, done && { borderColor: colors.accent }]}>
       <View style={[styles.fill, { width: `${Math.min(100, progress * 100)}%` }]} />
       <Pressable accessibilityLabel="Минус 15 секунд" onPress={() => adjust(-15)} style={styles.adj} hitSlop={6}>
         <T v="small" style={{ fontWeight: '800' }}>−15</T>
       </Pressable>
       <View style={{ flex: 1, alignItems: 'center' }}>
         <T v="caption" numberOfLines={1} style={{ fontSize: 10 }}>
-          {done ? 'Отдых закончен' : `Отдых · ${rest.label}`}
+          {done ? 'Отдых закончен' : 'Отдых'}
         </T>
         <T v="num" style={{ fontSize: 26, color: done ? colors.accent : colors.text }}>
           {formatDuration(left)}
+        </T>
+        <T v="small" numberOfLines={1} style={{ fontSize: 11 }}>
+          Следующий: {rest.label}
         </T>
       </View>
       <Pressable accessibilityLabel="Плюс 15 секунд" onPress={() => adjust(15)} style={styles.adj} hitSlop={6}>
@@ -58,12 +68,12 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   bar: {
     position: 'absolute',
     left: space.lg,
     right: space.lg,
-    height: 68,
+    height: 76,
     borderRadius: radius.lg,
     backgroundColor: colors.surface2,
     borderWidth: 1,

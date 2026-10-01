@@ -54,6 +54,10 @@ export interface CoachInputs {
   memory: CoachMemoryItem[];
   /** Ключи предложений, от которых пользователь отказался навсегда */
   rejected?: string[];
+  /** Заметки пользователя за сегодня (дневник) */
+  notes?: string[];
+  /** Apple Health за сегодня и отклонения от персональной базы */
+  health?: { sleepHours?: number; steps?: number; restingHr?: number; rhrDelta?: number; hrvMs?: number; hrvDeltaPct?: number; activeKcal?: number };
   /** Идущая сейчас тренировка */
   active?: WorkoutSession | null;
   now?: Date;
@@ -97,6 +101,7 @@ export function buildCoachContext(i: CoachInputs): string {
   const prefs = getPrefs(p);
   sec('TRAINING PREFERENCES & LIMITATIONS');
   L.push(`Сплит: ${SPLIT_PREF_LABEL[prefs.preferredSplit]}${i.plan?.splitChoice?.reasons.length ? ` (FORM: ${i.plan.splitChoice.reasons.slice(0, 3).join('; ')})` : ''}`);
+  L.push(`Восстановление (тренировочный контекст): ${prefs.recoveryProfile === 'enhanced' ? 'пользователь указал повышенное' : prefs.recoveryProfile === 'standard' ? 'стандартное' : 'определяется по данным'}${i.plan?.recovery ? `; оценка FORM: ${i.plan.recovery.level}, объём ×${i.plan.recovery.factor}` : ''}`);
   L.push(`Подходы: ${prefs.setStyle === 'auto' ? 'решает FORM' : `${prefs.setStyle} в упражнении`}; повторы: ${prefs.repStyle}`);
   if (prefs.priorityMuscles.length) L.push(`Приоритетные группы: ${prefs.priorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
   if (prefs.lowPriorityMuscles.length) L.push(`Низкий приоритет: ${prefs.lowPriorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
@@ -111,7 +116,7 @@ export function buildCoachContext(i: CoachInputs): string {
   if (i.rejected?.length) L.push(`Пользователь отказался (не предлагать снова): ${i.rejected.join(', ')}`);
 
   sec('WEEKLY VOLUME by muscle (прямые подходы: сделано за 7 дн / план / цель)');
-  const tg = weeklyTargets(p, prefs);
+  const tg = weeklyTargets(p, prefs, i.plan?.recovery?.factor ?? 1);
   const done7 = doneFineVolume(i.sessions, addDays(d, -6), d);
   const planned = i.plan ? planVolume(i.plan) : null;
   L.push(VOLUME_MUSCLES.filter((m) => tg[m] > 0).map((m) => `${VM_LABEL[m]} ${Math.round(done7[m])}/${planned ? Math.round(planned[m]) : '—'}/${tg[m]}`).join(', '));
@@ -136,6 +141,16 @@ export function buildCoachContext(i: CoachInputs): string {
       const subs = substitutesFor(x.id, p, prefs, [], 3).map((e) => `${e.name} [${e.id}]`).join(', ');
       L.push(`- ${nameId(x.id)}: ${x.plan}${x.done ? `; сделано: ${x.done}` : ''}${last ? `; прошлый раз ${last.date}: ${workingSets(last.sets).map((st) => `${st.weight}×${st.reps}`).join(', ')}` : ''}${subs ? `; допустимые замены: ${subs}` : ''}`);
     }
+  }
+
+  if (i.notes?.length) {
+    sec('TODAY NOTES (дневник пользователя)');
+    for (const n of i.notes) L.push(`- ${n}`);
+  }
+  if (i.health) {
+    const h = i.health;
+    sec('APPLE HEALTH (сегодня, база — личная)');
+    L.push([h.sleepHours ? `сон ${formatHours(h.sleepHours)}` : '', h.steps ? `шаги ${h.steps}` : '', h.restingHr ? `пульс покоя ${h.restingHr}${h.rhrDelta !== undefined ? ` (${h.rhrDelta >= 0 ? '+' : ''}${h.rhrDelta} к базе 14 дн)` : ''}` : '', h.hrvMs ? `HRV ${h.hrvMs} мс${h.hrvDeltaPct !== undefined ? ` (${h.hrvDeltaPct >= 0 ? '+' : ''}${h.hrvDeltaPct}% к базе 21 дн)` : ''}` : '', h.activeKcal ? `активные ккал ${h.activeKcal}` : ''].filter(Boolean).join('; ') || 'нет данных');
   }
 
   sec('READINESS / SLEEP');

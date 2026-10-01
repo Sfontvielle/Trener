@@ -9,6 +9,7 @@ import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
 import { useWorkouts } from '@/stores/workouts';
 import { useCoach } from '@/stores/coach';
+import { useJournal } from '@/stores/journal';
 import { today } from '@/utils/date';
 
 /**
@@ -27,9 +28,10 @@ export interface BackupFile {
     plan: { plan: unknown; target: unknown; overrides: unknown; adjustments: unknown };
     checkins: { byDate: unknown };
     body: { weights: unknown; metrics: unknown };
-    nutrition: { entries: unknown; products: unknown; recent: unknown; lastGrams: unknown };
+    nutrition: { entries: unknown; products: unknown; recent: unknown; lastGrams: unknown; meals?: unknown };
     workouts: { sessions: unknown; draft: unknown; customExercises: unknown };
     coach: { messages: unknown; summary: unknown; summarizedUntil: unknown; memory: unknown };
+    journal?: { notes: unknown };
   };
 }
 
@@ -49,10 +51,11 @@ export function buildBackup(): BackupFile {
       plan: { plan: pl.plan, target: pl.target, overrides: pl.overrides, adjustments: pl.adjustments },
       checkins: { byDate: useCheckins.getState().byDate },
       body: { weights: b.weights, metrics: b.metrics },
-      nutrition: { entries: n.entries, products: n.products, recent: n.recent, lastGrams: n.lastGrams },
+      nutrition: { entries: n.entries, products: n.products, recent: n.recent, lastGrams: n.lastGrams, meals: n.meals },
       // активная тренировка не входит в копию — это незавершённое состояние
       workouts: { sessions: w.sessions, draft: w.draft, customExercises: w.customExercises },
       coach: { messages: c.messages, summary: c.summary, summarizedUntil: c.summarizedUntil, memory: c.memory },
+      journal: { notes: useJournal.getState().notes },
     },
   };
 }
@@ -118,7 +121,8 @@ export function restoreBackup(b: BackupFile): void {
   usePlan.setState({ plan: d.plan?.plan ?? null, target: d.plan?.target ?? null, overrides: obj(d.plan?.overrides), adjustments: arr(d.plan?.adjustments) });
   useCheckins.setState({ byDate: obj(d.checkins?.byDate) });
   useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics) });
-  useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams) });
+  useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams), meals: arr(d.nutrition?.meals) });
+  useJournal.setState({ notes: arr(d.journal?.notes) });
   useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null, rest: null });
   useCoach.setState({ messages: arr(d.coach?.messages), summary: d.coach?.summary ?? '', summarizedUntil: d.coach?.summarizedUntil ?? 0, memory: arr(d.coach?.memory), insight: null });
 }

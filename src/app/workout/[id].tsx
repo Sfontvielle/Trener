@@ -9,6 +9,7 @@ import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
 import { getExercise } from '@/data/exercises';
 import { sessionVolume } from '@/features/training/analytics';
+import { workoutDebrief } from '@/features/training/debrief';
 import { bestSet, historyFor, isPersonalRecord, workingSets } from '@/features/training/progression';
 import { formatDayLong } from '@/utils/date';
 import { fmtNum, fmtWeight } from '@/utils/format';
@@ -43,6 +44,7 @@ export default function SessionDetail() {
     );
   }
   const v = sessionVolume(s);
+  const debrief = workoutDebrief(s, sessions);
   const planned = s.exercises.reduce((a, e) => a + e.plannedSets, 0);
 
   return (
@@ -62,10 +64,26 @@ export default function SessionDetail() {
       {fresh ? (
         <Card tone="accent" style={{ alignItems: 'center', gap: 6, paddingVertical: space.xl }}>
           <Icon name="trophy" size={40} color={colors.accent} />
-          <T v="h1">Отличная работа!</T>
+          <T v="h1">Тренировка завершена</T>
           <T v="small" style={{ textAlign: 'center' }}>
-            Результаты сохранены — FORM учтёт их в следующей тренировке и прогрессии весов.
+            {debrief.minutes} мин · {debrief.sets} рабочих подходов{debrief.volumeDeltaPct !== null ? ` · объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}%` : ''}{debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}
           </T>
+        </Card>
+      ) : null}
+      {debrief.lines.length ? (
+        <Card style={{ marginTop: space.md, gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="sparkles" size={16} color={colors.accent} />
+            <T v="caption" color={colors.accent}>
+              FORM Coach
+            </T>
+          </View>
+          {debrief.lines.map((l) => (
+            <T key={l} v="body" color={colors.text}>
+              {l}
+            </T>
+          ))}
+          <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} />
         </Card>
       ) : null}
       <Card style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.md }}>

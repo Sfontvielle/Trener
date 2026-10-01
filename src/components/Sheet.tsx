@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
 
 /**
@@ -86,7 +86,7 @@ export function Sheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,

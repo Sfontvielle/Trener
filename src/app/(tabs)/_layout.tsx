@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/theme';
+import { colors, themed } from '@/theme';
 import { Icon, T, type IconName } from '@/components/ui';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { TrainingHub } from '@/features/training/TrainingHub';
@@ -84,14 +84,14 @@ export default function TabsLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   bar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     flexDirection: 'row',
-    backgroundColor: 'rgba(12,13,15,0.97)',
+    backgroundColor: colors.tabBar,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderStrong,
   },

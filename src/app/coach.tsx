@@ -3,7 +3,7 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleS
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CoachAction, CoachMessage } from '@/types';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header } from '@/components/Screen';
 import { Button, Chip, Icon, IconButton, T } from '@/components/ui';
 import { confirm, toast } from '@/components/Dialog';
@@ -229,7 +229,7 @@ function Typing() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed({
   composer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 8, gap: 8, backgroundColor: colors.bg },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: space.lg },
   input: { flex: 1, minWidth: 0, minHeight: 46, maxHeight: 120, borderRadius: 23, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: 16, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },

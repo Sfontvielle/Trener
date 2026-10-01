@@ -6,6 +6,9 @@ import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
 import { useCheckins } from '@/stores/checkins';
 import { useCoach } from '@/stores/coach';
+import { useHealth } from '@/stores/health';
+import { useJournal } from '@/stores/journal';
+import { healthContext } from '@/features/health/model';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from '@/features/training/today';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
@@ -31,7 +34,7 @@ function snapshot() {
   const nut = useNutrition.getState();
   const checkins = useCheckins.getState().byDate;
   const d = today();
-  const readiness = readinessFor(d, checkins, ws.sessions);
+  const readiness = readinessFor(d, checkins, ws.sessions, useHealth.getState().days);
   const todayW = resolveToday({ date: d, plan: ps.plan, sessions: ws.sessions, override: ps.overrides[d], readiness });
   return { profile, ps, ws, nut, checkins, readiness, todayW, weights: useBody.getState().weights, memory: useCoach.getState().memory };
 }
@@ -54,6 +57,8 @@ export function currentContext(): string {
     memory: s.memory,
     rejected: useCoach.getState().rejected,
     active: s.ws.active,
+    notes: useJournal.getState().notes.filter((n) => n.date === today()).map((n) => `${new Date(n.at).toTimeString().slice(0, 5)} ${n.text}`),
+    health: healthContext(useHealth.getState().days, today()),
   });
 }
 
@@ -181,7 +186,7 @@ function applyExerciseChange(action: CoachAction) {
     ps.addAdjustment({ kind: 'volume', summary: `План: ${action.label}`, source: 'coach' });
     return;
   }
-  const readiness = readinessFor(d, useCheckins.getState().byDate, ws.sessions);
+  const readiness = readinessFor(d, useCheckins.getState().byDate, ws.sessions, useHealth.getState().days);
   const tw = resolveToday({ date: d, plan: ps.plan, sessions: ws.sessions, override: ps.overrides[d], readiness });
   if (!tw.template) return;
   const cur = ps.overrides[d];

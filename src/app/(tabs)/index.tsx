@@ -1,10 +1,13 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Animated, Pressable, ScrollView, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, space } from '@/theme';
-import { Button, Icon, T } from '@/components/ui';
+import { colors, radius, space, themed } from '@/theme';
+import { Button, Icon, T, type IconName } from '@/components/ui';
 import { Bar, Ring } from '@/components/charts';
+import { Field } from '@/components/inputs';
+import { Sheet } from '@/components/Sheet';
+import { toast } from '@/components/Dialog';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
@@ -12,46 +15,67 @@ import { useWorkouts } from '@/stores/workouts';
 import { useBody } from '@/stores/body';
 import { useCoach } from '@/stores/coach';
 import { useCheckins } from '@/stores/checkins';
+import { useNutrition, mealForHour } from '@/stores/nutrition';
+import { useHealth } from '@/stores/health';
+import { useJournal } from '@/stores/journal';
 import { useDayNutrition, useReadiness, useTodayWorkout } from '@/hooks/useToday';
 import { useDayKey } from '@/hooks/useDayKey';
-import { GOAL_LABEL, GOAL_SHORT } from '@/features/nutrition/targets';
-import { getExercise } from '@/data/exercises';
-import { dayProgress, macroState } from '@/features/nutrition/status';
-import { stateColor } from '@/components/macroColor';
-import { mainLimiter } from '@/features/recovery/readiness';
+import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { refreshDailyInsight } from '@/features/coach/service';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
-import { formatDayShort, greeting, startOfWeek } from '@/utils/date';
+import { buildJournal, dayMode, type JournalKind } from '@/features/journal/build';
+import { workoutDebrief } from '@/features/training/debrief';
+import { healthContext } from '@/features/health/model';
+import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
+import { formatDayLong, formatHours, greeting, weekdayIndex } from '@/utils/date';
 import { fmtNum, fmtWeight } from '@/utils/format';
-import { useUi } from '@/stores/ui';
+import { haptic } from '@/services/haptics';
+
+const WEEKDAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const KIND_ICON: Record<JournalKind, IconName> = {
+  checkin: 'sunny-outline',
+  weight: 'scale-outline',
+  meal: 'restaurant-outline',
+  workout_planned: 'barbell-outline',
+  workout_active: 'play-circle-outline',
+  workout_done: 'checkmark-circle',
+  pr: 'trophy-outline',
+  plan: 'sparkles-outline',
+  health: 'heart-outline',
+  note: 'create-outline',
+};
+const NOTE_CHIPS = ['Плохо спал', 'Мало времени на тренировку', 'Поясница в порядке', 'Отличное самочувствие', 'Устал после работы'];
 
 /**
- * Главный экран — строго один экран без вертикального скролла.
- * Высоты блоков подстраиваются: на iPhone 17 Pro Max (440×956) всё с запасом,
- * на 390×844 включается компактный режим (меньше вторичных подписей).
+ * Главная — дневник и центр управления дня. Самое важное сверху, порядок карточек зависит от времени:
+ * утро — готовность и план; после тренировки — результаты; вечер — итог дня. Остальное FORM пишет в
+ * дневник сам (чек-ин, вес, еда, тренировка, рекорды, изменения плана, Apple Health).
  */
 export default function Home() {
   const insets = useSafeAreaInsets();
-  const { height, width } = useWindowDimensions();
-  const avail = height - insets.top - insets.bottom - TAB_BAR_HEIGHT;
-  const compact = avail < 700;
-  const tight = avail < 620;
-
+  const d = useDayKey();
   const profile = useProfile((s) => s.profile);
+  const trainingTime = useProfile((s) => s.settings.trainingTime);
   const plan = usePlan((s) => s.plan);
-  const override = usePlan((s) => s.overrides);
+  const overrides = usePlan((s) => s.overrides);
+  const adjustments = usePlan((s) => s.adjustments);
   const active = useWorkouts((s) => s.active);
   const sessions = useWorkouts((s) => s.sessions);
+  const customs = useWorkouts((s) => s.customExercises);
   const weights = useBody((s) => s.weights);
   const insight = useCoach((s) => s.insight);
   const checkins = useCheckins((s) => s.byDate);
-  const d = useDayKey();
+  const entries = useNutrition((s) => s.entries);
+  const healthDays = useHealth((s) => s.days);
+  const healthSync = useHealth((s) => s.lastSyncAt);
+  const notes = useJournal((s) => s.notes);
   const readiness = useReadiness();
   const tw = useTodayWorkout();
   const nut = useDayNutrition();
-  const openHub = useUi((s) => s.openHub);
+  const [addFood, setAddFood] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   const trend = useMemo(() => {
     const t = weightTrend(weights);
@@ -59,314 +83,502 @@ export default function Home() {
     const r = weeklyRate(t, 21);
     return { w: t[t.length - 1].trend, rate: r?.kgPerWeek };
   }, [weights]);
+  const health = useMemo(() => healthContext(healthDays, d), [healthDays, d]);
 
-  const insightKey = `${d}|${checkins[d]?.createdAt ?? 0}|${sessions.length}|${override[d]?.createdAt ?? 0}|${plan?.id ?? ''}`;
+  const insightKey = `${d}|${checkins[d]?.createdAt ?? 0}|${sessions.length}|${overrides[d]?.createdAt ?? 0}|${plan?.id ?? ''}`;
   useFocusEffect(
     useCallback(() => {
       if (profile) void refreshDailyInsight(insightKey);
     }, [insightKey, profile]),
   );
 
+  const doneToday = tw.kind === 'done' ? tw.completedSession : undefined;
+  const debrief = useMemo(() => (doneToday ? workoutDebrief(doneToday, sessions, customs) : null), [doneToday, sessions, customs]);
+  const journal = useMemo(() => {
+    const plannedAt = new Date(`${d}T${String(trainingTime.hour).padStart(2, '0')}:${String(trainingTime.minute).padStart(2, '0')}:00`).getTime();
+    return buildJournal({
+      date: d,
+      checkin: checkins[d],
+      readiness,
+      weights,
+      entries,
+      sessions,
+      active,
+      adjustments,
+      notes,
+      planned: tw.kind === 'workout' && tw.template ? { name: tw.template.name, at: plannedAt } : null,
+      healthSyncAt: healthSync,
+      customs,
+    });
+  }, [d, checkins, readiness, weights, entries, sessions, active, adjustments, notes, tw, healthSync, customs, trainingTime]);
+
   if (!profile) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-  const target = nut.target;
-  const dp = dayProgress();
-  const kcalState = target ? macroState('kcal', nut.eaten.kcal, target.kcal, dp) : 'progress';
+  const now = new Date();
+  const mode = dayMode(now.getHours(), !!doneToday);
   const firstName = profile.name.split(' ')[0] || 'атлет';
-  const gap = tight ? 8 : compact ? 10 : 12;
-  const previewLines = 6;
-  const insightText = insight && insight.date === d ? insight.text : 'Собираю данные дня…';
-  const weekStart = startOfWeek(d);
-  const weekDone = sessions.filter((x) => x.status === 'completed' && x.date >= weekStart).length;
+  const target = nut.target;
+
+  const readinessCard = <ReadinessCard key="r" readiness={readiness} checkin={checkins[d]} health={health} compact={mode === 'after_workout' || mode === 'evening'} />;
+  const workoutCard = <TodayCard key="w" tw={tw} activeName={active?.name} activeSets={active ? active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0) : 0} debrief={debrief} />;
+  const nutritionCard = (
+    <Card key="n" title="Питание" onPress={() => router.push('/nutrition')}>
+      {target ? (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+            <T v="num" style={{ fontSize: 26 }}>
+              {fmtNum(nut.eaten.kcal)}
+            </T>
+            <T v="small">/ {fmtNum(target.kcal)} ккал</T>
+            <T v="small" style={{ marginLeft: 'auto' }}>
+              осталось {fmtNum(Math.max(0, target.kcal - nut.eaten.kcal))}
+            </T>
+          </View>
+          <Bar progress={nut.eaten.kcal / target.kcal} height={6} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            <T v="small" style={{ width: 48 }}>
+              Белок
+            </T>
+            <Bar progress={nut.eaten.protein / target.protein} color={colors.protein} height={5} style={{ flex: 1 }} />
+            <T v="small" color={colors.text} style={{ fontWeight: '700', minWidth: 64, textAlign: 'right' }}>
+              {Math.round(nut.eaten.protein)} / {target.protein}
+            </T>
+          </View>
+        </>
+      ) : null}
+      <Button title="Добавить еду" icon="add" size="md" variant="secondary" onPress={() => setAddFood(true)} style={{ marginTop: 4 }} />
+    </Card>
+  );
+  const coachCard = <CoachCard key="c" text={insight && insight.date === d ? insight.text : null} local={insight?.source === 'local'} debrief={mode === 'after_workout' ? debrief?.lines[0] : undefined} />;
+  const summaryCard =
+    mode === 'evening' ? (
+      <DaySummary key="s" workout={doneToday ? `${doneToday.name} ✓` : tw.kind === 'rest' ? 'День отдыха' : tw.kind === 'workout' ? 'Не выполнена' : '—'} kcal={target ? [nut.eaten.kcal, target.kcal] : null} protein={target ? [nut.eaten.protein, target.protein] : null} steps={health?.steps} workoutDone={!!doneToday} restDay={tw.kind === 'rest'} />
+    ) : null;
+
+  // Приоритет карточек по времени суток
+  const order =
+    mode === 'evening' ? [summaryCard, coachCard, workoutCard, nutritionCard, readinessCard] : mode === 'after_workout' ? [workoutCard, coachCard, nutritionCard, readinessCard] : [readinessCard, workoutCard, nutritionCard, coachCard];
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + (compact ? 4 : 8), paddingBottom: insets.bottom + TAB_BAR_HEIGHT + gap, gap }]}>
-      {/* Шапка */}
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <T v="caption" color={colors.accent} style={{ letterSpacing: 2 }}>
-            FORM <T v="caption"> / PERSONAL COACH</T>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl, gap: 12 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={{ flex: 1 }}>
+            <T v="caption" color={colors.accent} style={{ letterSpacing: 2 }}>
+              FORM
+            </T>
+            <T v="h1" numberOfLines={1} style={{ marginTop: 2 }}>
+              {mode === 'evening' ? 'Итог дня' : `${greeting()}, ${firstName}`}
+            </T>
+            <T v="small">
+              {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
+            </T>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="AI Coach" onPress={() => router.push('/coach')} style={styles.headBtn} hitSlop={4}>
+            <Icon name="chatbubble-ellipses-outline" size={21} color={colors.text} />
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Профиль" onPress={() => router.push('/profile')} style={styles.avatar} hitSlop={4}>
+            <T v="h3" color={colors.onAccent}>
+              {firstName.charAt(0).toUpperCase()}
+            </T>
+          </Pressable>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/plan')} style={styles.goal}>
+            <View style={styles.goalDot} />
+            <T v="caption" color={colors.text} numberOfLines={1} style={{ flexShrink: 1, letterSpacing: 1.2 }}>
+              {GOAL_LABEL[profile.goal]}
+            </T>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Вес" onPress={() => router.push('/weight')} style={styles.pill}>
+            <Icon name="scale-outline" size={14} color={colors.textDim} />
+            <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+              {trend ? `${fmtWeight(Math.round(trend.w * 10) / 10)}` : 'Вес'}
+            </T>
+            {trend?.rate !== undefined ? (
+              <T v="small" style={{ fontSize: 11 }}>
+                {trend.rate >= 0 ? '+' : ''}
+                {trend.rate.toFixed(2).replace('.', ',')}
+              </T>
+            ) : null}
+          </Pressable>
+        </View>
+
+        {order.filter(Boolean)}
+
+        <View style={styles.journalHead}>
+          <T v="caption" style={{ flex: 1 }}>
+            Дневник · сегодня
           </T>
-          <T v={compact || width < 420 ? 'h2' : 'h1'} numberOfLines={1} style={{ marginTop: 2 }}>
-            {greeting()}, {firstName}
+          <Pressable accessibilityRole="button" onPress={() => setNoteOpen(true)} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Icon name="add" size={16} color={colors.accent} />
+            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+              Заметка
+            </T>
+          </Pressable>
+        </View>
+        <View style={styles.journal}>
+          {journal.length === 0 ? (
+            <T v="small" style={{ padding: space.md }}>
+              FORM будет записывать сюда день сам: чек-ин, вес, еду, тренировку, рекорды и изменения плана.
+            </T>
+          ) : null}
+          {journal.map((e, i) => (
+            <Pressable
+              key={e.id}
+              accessibilityRole="button"
+              onPress={() => {
+                if (e.kind === 'workout_done' && e.refId) router.push({ pathname: '/workout/[id]', params: { id: e.refId } });
+                else if (e.kind === 'workout_active') resumeActive();
+                else if (e.kind === 'meal') router.push('/nutrition');
+                else if (e.kind === 'checkin') router.push('/checkin');
+                else if (e.kind === 'weight') router.push('/weight');
+              }}
+              onLongPress={() => {
+                if (e.kind === 'note' && e.refId) {
+                  useJournal.getState().removeNote(e.refId);
+                  toast('Заметка удалена');
+                }
+              }}
+              accessibilityHint={e.kind === 'note' ? 'Удерживай, чтобы удалить' : undefined}
+              style={styles.jRow}
+            >
+              <T v="small" style={{ width: 44, fontVariant: ['tabular-nums'], fontWeight: '700' }} color={e.planned ? colors.muted : colors.textDim}>
+                {new Date(e.at).toTimeString().slice(0, 5)}
+              </T>
+              <View style={styles.jRail}>
+                <View style={[styles.jDot, e.kind === 'pr' && { backgroundColor: colors.accent }, e.planned && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.muted }]}>
+                  <Icon name={KIND_ICON[e.kind]} size={12} color={e.kind === 'pr' ? colors.onAccent : e.planned ? colors.muted : colors.text} />
+                </View>
+                {i < journal.length - 1 ? <View style={styles.jLine} /> : null}
+              </View>
+              <View style={{ flex: 1, paddingBottom: 12 }}>
+                <T v="body" style={{ fontWeight: '700', fontSize: 14 }} color={e.planned ? colors.textDim : colors.text}>
+                  {e.title}
+                </T>
+                {e.sub ? (
+                  <T v="small" style={{ fontSize: 12 }} numberOfLines={e.kind === 'note' ? 4 : 2}>
+                    {e.sub}
+                  </T>
+                ) : null}
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+
+      <AddFoodSheet visible={addFood} onClose={() => setAddFood(false)} date={d} meal={mealForHour(now.getHours())} />
+      <NoteSheet visible={noteOpen} onClose={() => setNoteOpen(false)} date={d} />
+    </View>
+  );
+}
+
+function Card({ title, right, onPress, children, accent }: { title: string; right?: React.ReactNode; onPress?: () => void; children: React.ReactNode; accent?: boolean }) {
+  // Нажимается только заголовок: внутри карточки могут быть свои кнопки (вложенные кнопки недопустимы)
+  return (
+    <View style={[styles.card, accent && { borderColor: colors.accentLine }]}>
+      <Pressable accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} disabled={!onPress} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 22 }}>
+        <T v="caption" style={{ flex: 1 }}>
+          {title}
+        </T>
+        {right}
+        {onPress && !right ? <Icon name="chevron-forward" size={16} color={colors.muted} /> : null}
+      </Pressable>
+      {children}
+    </View>
+  );
+}
+
+function ReadinessCard({ readiness, checkin, health, compact }: { readiness: ReturnType<typeof useReadiness>; checkin?: { sleepHours: number; energy: number; stress: number }; health?: ReturnType<typeof healthContext>; compact?: boolean }) {
+  const [why, setWhy] = useState(false);
+  if (!readiness) {
+    return (
+      <Pressable accessibilityRole="button" onPress={() => router.push('/checkin')} style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: space.md }]}>
+        <Ring size={64} stroke={6} progress={0}>
+          <Icon name="sunny-outline" size={24} color={colors.accent} />
+        </Ring>
+        <View style={{ flex: 1 }}>
+          <T v="caption">Готовность</T>
+          <T v="h3" style={{ marginTop: 2 }}>
+            Как ты сегодня? 4 вопроса — и план подстроится
           </T>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="AI Coach" onPress={() => router.push('/coach')} style={styles.headBtn} hitSlop={4}>
-          <Icon name="chatbubble-ellipses-outline" size={21} color={colors.text} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Профиль" onPress={() => router.push('/profile')} style={styles.avatar} hitSlop={4}>
-          <T v="h3" color={colors.onAccent}>
-            {firstName.charAt(0).toUpperCase()}
+        <Icon name="chevron-forward" size={18} color={colors.muted} />
+      </Pressable>
+    );
+  }
+  const col = readiness.band === 'go' ? colors.accent : readiness.band === 'reduce' ? colors.warning : colors.danger;
+  const sleep = checkin?.sleepHours ?? health?.sleepHours;
+  return (
+    <View style={[styles.card, { gap: 10 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <Ring size={compact ? 64 : 92} stroke={compact ? 6 : 8} progress={readiness.score / 100} color={col}>
+          <T v="num" style={{ fontSize: compact ? 22 : 32 }}>
+            {readiness.score}
           </T>
-        </Pressable>
+        </Ring>
+        <View style={{ flex: 1 }}>
+          <T v="caption">Готовность{readiness.source === 'health' ? ' · Apple Health' : ''}</T>
+          <T v="h3" style={{ marginTop: 2 }}>
+            {readiness.headline}
+          </T>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+            {sleep ? <Mini label="Сон" value={formatHours(sleep)} /> : null}
+            {checkin ? <Mini label="Энергия" value={`${checkin.energy}/5`} /> : null}
+            {checkin ? <Mini label="Стресс" value={`${checkin.stress}/5`} /> : null}
+            {health?.hrvDeltaPct !== undefined ? <Mini label="HRV" value={`${health.hrvDeltaPct >= 0 ? '+' : ''}${health.hrvDeltaPct}%`} /> : null}
+          </View>
+        </View>
       </View>
-
-      {/* Цель + тренд веса */}
-      <View style={styles.goalRow}>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/plan')} style={styles.goal}>
-          <View style={styles.goalDot} />
-          <T v="caption" color={colors.text} numberOfLines={1} style={{ flexShrink: 1, letterSpacing: 1.2 }}>
-            {tight ? `Цель · ${GOAL_SHORT[profile.goal]}` : GOAL_LABEL[profile.goal]}
+      <View style={{ flexDirection: 'row', gap: 16 }}>
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setWhy(!why)}>
+          <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+            {why ? 'Скрыть' : `Почему ${readiness.score}?`}
           </T>
         </Pressable>
-        {plan ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Почему такой план" onPress={() => router.push('/plan')} style={styles.weight}>
-            <Icon name="git-branch-outline" size={15} color={colors.textDim} />
-            <T v="small" color={colors.text} style={{ fontWeight: '700' }} numberOfLines={1}>
-              {plan.splitLabel}
+        {readiness.source === 'health' || !checkin ? (
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/checkin')}>
+            <T v="small" style={{ fontWeight: '700' }}>
+              Чек-ин для точности
             </T>
           </Pressable>
         ) : null}
       </View>
-
-      {/* Готовность */}
-      <Pressable accessibilityRole="button" accessibilityLabel="Чек-ин и готовность" onPress={() => router.push('/checkin')} style={[styles.card, styles.readiness]}>
-        {readiness ? (
-          <>
-            <Ring size={compact ? 58 : 66} stroke={6} progress={readiness.score / 100} color={readiness.band === 'go' ? colors.accent : readiness.band === 'reduce' ? colors.warning : colors.danger}>
-              <T v="num" style={{ fontSize: compact ? 19 : 22 }}>
-                {readiness.score}
+      {why ? (
+        <View style={{ gap: 4 }}>
+          {readiness.factors.map((f) => (
+            <View key={f.label} style={{ flexDirection: 'row', gap: 8 }}>
+              <T v="small" style={{ flex: 1 }} color={colors.text}>
+                {f.label}: {f.detail}
               </T>
-            </Ring>
-            <View style={{ flex: 1 }}>
-              <T v="caption">Готовность · {readiness.score}/100</T>
-              <T v="h3" numberOfLines={2} style={{ marginTop: 2 }}>
-                {tw.kind === 'rest' ? (readiness.band === 'go' ? 'Отдых по плану — силы есть на завтра' : 'Отдых по плану — как раз вовремя') : tw.kind === 'done' ? 'Тренировка сделана — восстанавливайся' : readiness.headline}
+              <T v="small" color={f.impact < 0 ? colors.warning : colors.accent} style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                {f.impact > 0 ? '+' : ''}
+                {f.impact}
               </T>
-              {!tight && mainLimiter(readiness) ? (
-                <T v="small" numberOfLines={1} style={{ marginTop: 1 }}>
-                  {mainLimiter(readiness)}
-                </T>
-              ) : null}
-            </View>
-          </>
-        ) : (
-          <>
-            <Ring size={compact ? 58 : 66} stroke={6} progress={0}>
-              <Icon name="sunny-outline" size={24} color={colors.accent} />
-            </Ring>
-            <View style={{ flex: 1 }}>
-              <T v="caption">Утренний чек-ин</T>
-              <T v="h3" numberOfLines={2} style={{ marginTop: 2 }}>
-                Как ты сегодня? 4 вопроса — и план подстроится
-              </T>
-            </View>
-            <Icon name="chevron-forward" size={18} color={colors.muted} />
-          </>
-        )}
-      </Pressable>
-
-      {/* Сегодняшняя тренировка */}
-      <View style={[styles.card, styles.workout, { flex: 1, minHeight: tight ? 150 : 170 }]}>
-        <View style={styles.rowBetween}>
-          <T v="caption">Сегодняшняя тренировка</T>
-          {tw.kind === 'workout' && tw.mode !== 'normal' ? (
-            <View style={[styles.badge, { backgroundColor: colors.warningDim }]}>
-              <T v="small" color={colors.warning} style={{ fontSize: 11, fontWeight: '800' }}>
-                {MODE_LABEL[tw.mode]}
-              </T>
-            </View>
-          ) : null}
-        </View>
-        {active ? (
-          <WorkoutBody title={active.name} sub={active.focus} meta={`В процессе · ${active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0)} подходов сделано`} cta="Продолжить" icon="play" onPress={resumeActive} compact={compact} />
-        ) : tw.kind === 'workout' && tw.template ? (
-          <WorkoutBody
-            title={tw.template.name}
-            sub={tw.template.focus}
-            meta={`~${tw.estMinutes} мин · ${tw.template.exercises.length} упр · ${tw.totalSets} подходов · RIR ${Math.min(...tw.template.exercises.map((e) => e.targetRir)) + tw.rirDelta}–${Math.max(...tw.template.exercises.map((e) => e.targetRir)) + tw.rirDelta}`}
-            cta="Начать"
-            icon="play"
-            onPress={() => startTodayPlanned()}
-            secondary={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })}
-            compact={compact}
-            lines={tw.template.exercises.slice(0, previewLines).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${Math.max(1, Math.round(e.sets * tw.volumeFactor))}×${e.repMin}–${e.repMax}` }))}
-          />
-        ) : tw.kind === 'done' ? (
-          <WorkoutBody
-            title="Готово ✓"
-            sub={tw.completedSession?.name ?? ''}
-            meta={tw.nextWorkout ? `Следующая: ${tw.nextWorkout.template.name}, ${formatDayShort(tw.nextWorkout.date)}` : 'Восстанавливайся'}
-            cta="Итоги тренировки"
-            icon="stats-chart"
-            variant="secondary"
-            onPress={() => tw.completedSession && router.push({ pathname: '/workout/[id]', params: { id: tw.completedSession.id } })}
-            compact={compact}
-            lines={tw.completedSession ? tw.completedSession.exercises.filter((e) => e.sets.some((x) => x.done)).slice(0, previewLines).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${e.sets.filter((x) => x.done).length} подх.` })) : []}
-          />
-        ) : tw.kind === 'rest' ? (
-          <WorkoutBody
-            title="Отдых"
-            sub={tw.reason ?? 'Восстановление — часть плана'}
-            meta={tw.nextWorkout ? `Следующая: ${tw.nextWorkout.template.name}, ${formatDayShort(tw.nextWorkout.date)}` : ''}
-            cta="Всё равно потренироваться"
-            icon="add"
-            variant="secondary"
-            onPress={openHub}
-            compact={compact}
-            lines={tw.nextWorkout ? tw.nextWorkout.template.exercises.slice(0, Math.max(0, previewLines - 1)).map((e) => ({ name: getExercise(e.exerciseId)?.name ?? '', meta: `${e.sets}×${e.repMin}–${e.repMax}` })) : []}
-            linesTitle={tw.nextWorkout ? `Следующая · ${tw.nextWorkout.template.name}` : undefined}
-          />
-        ) : (
-          <WorkoutBody title="Нет плана" sub="Заполни профиль — FORM составит план" meta="" cta="Открыть профиль" icon="person" onPress={() => router.push('/profile')} compact={compact} />
-        )}
-      </View>
-
-      {/* Компактные метрики: калории, белок, тренировки за неделю, вес */}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Metric
-          label="Калории"
-          value={target ? fmtNum(Math.max(0, target.kcal - nut.eaten.kcal)) : '—'}
-          sub={target ? (nut.eaten.kcal > target.kcal ? `+${fmtNum(nut.eaten.kcal - target.kcal)} сверх` : 'осталось') : ''}
-          color={stateColor(kcalState, colors.text)}
-          progress={target ? nut.eaten.kcal / target.kcal : 0}
-          onPress={() => router.push('/nutrition')}
-        />
-        <Metric
-          label="Белок"
-          value={`${Math.round(nut.eaten.protein)}`}
-          sub={target ? `из ${target.protein} г` : 'г'}
-          color={colors.protein}
-          progress={target ? nut.eaten.protein / target.protein : 0}
-          onPress={() => router.push('/nutrition')}
-        />
-        <Metric label="Тренировки" value={`${weekDone}/${plan?.daysPerWeek ?? profile.daysPerWeek}`} sub="за неделю" color={colors.text} progress={weekDone / Math.max(1, plan?.daysPerWeek ?? profile.daysPerWeek)} onPress={() => router.push('/progress')} />
-        <Metric
-          label="Вес"
-          value={trend ? fmtWeight(Math.round(trend.w * 10) / 10) : '+'}
-          sub={trend?.rate !== undefined ? `${trend.rate >= 0 ? '+' : ''}${trend.rate.toFixed(2).replace('.', ',')}/нед` : trend ? 'кг' : 'взвеситься'}
-          color={colors.text}
-          onPress={() => router.push('/weight')}
-        />
-      </View>
-
-      {/* AI insight */}
-      <View style={[styles.card, styles.insight]}>
-        <View style={styles.insightIcon}>
-          <Icon name="sparkles" size={17} color={colors.onAccent} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <T v="caption" color={colors.accent}>
-            FORM Coach{insight?.source === 'local' ? ' · расчёт' : ''}
-          </T>
-          <T v="small" color={colors.text} numberOfLines={compact ? 2 : 3} style={{ marginTop: 2, lineHeight: 18 }}>
-            {insightText}
-          </T>
-          {insight && insight.date === d ? (
-            <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push({ pathname: '/coach', params: { q: `Почему ты так советуешь: «${insight.text}»? Объясни по моим данным.` } })}>
-                <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                  Почему?
-                </T>
-              </Pressable>
-              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/coach')}>
-                <T v="small" style={{ fontWeight: '700' }}>
-                  Подробнее
-                </T>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function WorkoutBody({
-  title,
-  sub,
-  meta,
-  cta,
-  icon,
-  onPress,
-  secondary,
-  variant = 'primary',
-  compact,
-  lines = [],
-  linesTitle,
-}: {
-  title: string;
-  sub: string;
-  meta: string;
-  cta: string;
-  icon: 'play' | 'add' | 'stats-chart' | 'person';
-  onPress: () => void;
-  secondary?: () => void;
-  variant?: 'primary' | 'secondary';
-  compact?: boolean;
-  lines?: { name: string; meta: string }[];
-  linesTitle?: string;
-}) {
-  // Сколько строк состава влезает — по реальной высоте карточки (кнопка «Начать» всегда видна)
-  const [fit, setFit] = useState(0);
-  return (
-    <View style={{ flex: 1, justifyContent: 'space-between', gap: 8 }}>
-      <View>
-        <T v="display" numberOfLines={1} style={{ fontSize: compact ? 30 : 36, marginTop: 2 }}>
-          {title}
-        </T>
-        <T v="body" numberOfLines={1} color={colors.textDim}>
-          {sub}
-        </T>
-        {meta ? (
-          <T v="small" numberOfLines={1} style={{ marginTop: 4 }}>
-            {meta}
-          </T>
-        ) : null}
-      </View>
-      {lines.length ? (
-        <View style={{ flex: 1, minHeight: 0, gap: 6, justifyContent: 'center' }} onLayout={(e) => setFit(Math.max(0, Math.floor((e.nativeEvent.layout.height - (linesTitle ? 18 : 0) + 6) / 38)))}>
-          {linesTitle && fit > 0 ? <T v="caption" style={{ fontSize: 10 }}>{linesTitle}</T> : null}
-          {lines.slice(0, fit).map((l, i) => (
-            <View key={i} style={styles.line}>
-              <T v="small" color={colors.text} numberOfLines={1} style={{ flex: 1, fontWeight: '600' }}>
-                {l.name}
-              </T>
-              <T v="small" style={{ fontVariant: ['tabular-nums'] }}>{l.meta}</T>
             </View>
           ))}
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button title={cta} icon={icon} variant={variant} size={compact ? 'md' : 'lg'} onPress={onPress} style={{ flex: 1 }} />
-        {secondary ? <Button title="Состав" variant="outline" size={compact ? 'md' : 'lg'} onPress={secondary} /> : null}
+    </View>
+  );
+}
+
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <T v="small" style={{ fontSize: 12 }}>
+      {label} <T v="small" color={colors.text} style={{ fontWeight: '800', fontSize: 12 }}>{value}</T>
+    </T>
+  );
+}
+
+function TodayCard({ tw, activeName, activeSets, debrief }: { tw: ReturnType<typeof useTodayWorkout>; activeName?: string; activeSets: number; debrief: ReturnType<typeof workoutDebrief> | null }) {
+  if (activeName) {
+    return (
+      <Card title="Сегодня · идёт тренировка" accent>
+        <T v="display" style={{ fontSize: 30 }} numberOfLines={1}>
+          {activeName}
+        </T>
+        <T v="small">Выполнено подходов: {activeSets} · всё сохранено</T>
+        <Button title="Продолжить тренировку" icon="play" size="lg" onPress={resumeActive} />
+      </Card>
+    );
+  }
+  if (tw.kind === 'done' && tw.completedSession) {
+    const s = tw.completedSession;
+    return (
+      <Card title="Тренировка выполнена" accent onPress={() => router.push({ pathname: '/workout/[id]', params: { id: s.id } })}>
+        <T v="display" style={{ fontSize: 28 }} numberOfLines={1}>
+          {s.name} ✓
+        </T>
+        {debrief ? (
+          <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
+            <Mini label="Время" value={`${debrief.minutes} мин`} />
+            <Mini label="Подходов" value={`${debrief.sets}`} />
+            {debrief.volumeDeltaPct !== null ? <Mini label="Объём" value={`${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}%`} /> : null}
+            {debrief.prs.length ? <Mini label="Рекорды" value={`${debrief.prs.length}`} /> : null}
+          </View>
+        ) : null}
+        <T v="small">{tw.nextWorkout ? `Следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : 'Восстанавливайся'}</T>
+      </Card>
+    );
+  }
+  if (tw.kind === 'workout' && tw.template) {
+    return (
+      <Card title="Сегодня" accent right={tw.mode !== 'normal' ? <Badge text={MODE_LABEL[tw.mode]} /> : undefined}>
+        <T v="display" style={{ fontSize: 32 }} numberOfLines={1}>
+          {tw.template.name}
+        </T>
+        <T v="body" color={colors.textDim} numberOfLines={1}>
+          {tw.template.focus}
+        </T>
+        <T v="small">
+          ~{tw.estMinutes} мин · {tw.template.exercises.length} упр · {tw.totalSets} подходов
+        </T>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <Button title="Начать тренировку" icon="play" size="lg" onPress={() => startTodayPlanned()} style={{ flex: 1 }} />
+          <Button title="Состав" variant="outline" size="lg" onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })} />
+        </View>
+      </Card>
+    );
+  }
+  if (tw.kind === 'rest') {
+    return (
+      <Card title="Сегодня">
+        <T v="h2">Отдых</T>
+        <T v="small">{tw.reason ?? 'Восстановление — часть плана'}{tw.nextWorkout ? ` · следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''}</T>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Сегодня">
+      <T v="body">Плана пока нет — заполни профиль, и FORM его составит.</T>
+      <Button title="Открыть профиль" variant="secondary" onPress={() => router.push('/profile')} />
+    </Card>
+  );
+}
+
+function Badge({ text }: { text: string }) {
+  return (
+    <View style={styles.badge}>
+      <T v="small" color={colors.warning} style={{ fontSize: 11, fontWeight: '800' }}>
+        {text}
+      </T>
+    </View>
+  );
+}
+
+/** FORM Coach: совет дня (появляется плавно) + «Почему?» / «Спросить тренера» */
+function CoachCard({ text, local, debrief }: { text: string | null; local?: boolean; debrief?: string }) {
+  const [fade] = useState(() => new Animated.Value(0));
+  const shown = debrief ?? text;
+  useEffect(() => {
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [shown, fade]);
+  return (
+    <View style={[styles.card, styles.coach]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={styles.coachIcon}>
+          <Icon name="sparkles" size={14} color={colors.onAccent} />
+        </View>
+        <T v="caption" color={colors.accent} style={{ flex: 1 }}>
+          FORM Coach{local ? ' · расчёт' : ''}
+        </T>
+      </View>
+      <Animated.View style={{ opacity: fade, transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }}>
+        <T v="body" color={colors.text} style={{ lineHeight: 21 }}>
+          {shown ?? 'Собираю данные дня…'}
+        </T>
+      </Animated.View>
+      <View style={{ flexDirection: 'row', gap: 16 }}>
+        {shown ? (
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push({ pathname: '/coach', params: { q: `Почему ты так советуешь: «${shown}»? Объясни по моим данным.` } })}>
+            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+              Почему?
+            </T>
+          </Pressable>
+        ) : null}
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/coach')}>
+          <T v="small" style={{ fontWeight: '700' }}>
+            Спросить тренера
+          </T>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-function Metric({ label, value, sub, color, progress, onPress }: { label: string; value: string; sub: string; color: string; progress?: number; onPress: () => void }) {
+/** Вечером: итог дня одним взглядом и вывод FORM */
+function DaySummary({ workout, kcal, protein, steps, workoutDone, restDay }: { workout: string; kcal: [number, number] | null; protein: [number, number] | null; steps?: number; workoutDone: boolean; restDay: boolean }) {
+  const kOk = kcal ? Math.abs(kcal[0] - kcal[1]) / kcal[1] <= 0.1 : false;
+  const pOk = protein ? protein[0] >= protein[1] * 0.9 : false;
+  const verdict =
+    (workoutDone || restDay) && kOk && pOk
+      ? 'Хороший день. Завтра план можно оставить без изменений.'
+      : protein && !pOk
+        ? `Белка не хватило ~${Math.round(protein[1] - protein[0])} г — добери перед сном (творог, йогурт) или завтра с утра.`
+        : kcal && kcal[0] < kcal[1] * 0.85
+          ? `Недобор ~${Math.round(kcal[1] - kcal[0])} ккал — для твоей цели лучше закрыть его.`
+          : kcal && kcal[0] > kcal[1] * 1.1
+            ? 'Калорий больше цели — завтра без компенсаций, просто по плану.'
+            : 'День в рамках плана.';
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${value} ${sub}`} onPress={onPress} style={[styles.card, styles.metric]}>
-      <T v="caption" numberOfLines={1} style={{ fontSize: 10 }}>
-        {label}
+    <Card title="Итог дня" accent>
+      <View style={{ gap: 8 }}>
+        <Row label="Тренировка" value={workout} ok={workoutDone || restDay} />
+        {kcal ? <Row label="Ккал" value={`${fmtNum(kcal[0])} / ${fmtNum(kcal[1])}`} ok={kOk} /> : null}
+        {protein ? <Row label="Белок" value={`${Math.round(protein[0])} / ${protein[1]} г`} ok={pOk} /> : null}
+        {steps ? <Row label="Шаги" value={steps.toLocaleString('ru-RU')} /> : null}
+      </View>
+      <T v="body" color={colors.text} style={{ marginTop: 4 }}>
+        <T v="body" color={colors.accent} style={{ fontWeight: '800' }}>
+          FORM:{' '}
+        </T>
+        {verdict}
       </T>
-      <T v="num" numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: 20, color }}>
-        {value}
-      </T>
-      <T v="small" numberOfLines={1} style={{ fontSize: 10.5 }}>
-        {sub}
-      </T>
-      {progress !== undefined ? <Bar progress={Math.min(1, progress)} color={color === colors.text ? colors.accent : color} height={3} style={{ marginTop: 4 }} /> : null}
-    </Pressable>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
+function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <T v="body" style={{ flex: 1 }} color={colors.textDim}>
+        {label}
+      </T>
+      <T v="body" style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+        {value}
+      </T>
+      {ok !== undefined ? <Icon name={ok ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={ok ? colors.accent : colors.muted} style={{ marginLeft: 6 }} /> : null}
+    </View>
+  );
+}
+
+function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () => void; date: string }) {
+  const [text, setText] = useState('');
+  const save = (t: string) => {
+    if (!t.trim()) return;
+    useJournal.getState().addNote(date, t);
+    haptic.success();
+    toast('Заметка в дневнике — тренер её учтёт');
+    setText('');
+    onClose();
+  };
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Заметка" subtitle="Видна тебе и FORM Coach в сегодняшнем контексте">
+      <View style={{ gap: space.md }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {NOTE_CHIPS.map((c) => (
+            <Pressable key={c} accessibilityRole="button" onPress={() => save(c)} style={styles.chip}>
+              <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+                {c}
+              </T>
+            </Pressable>
+          ))}
+        </View>
+        <Field placeholder="Например: поясница чувствует себя нормально" value={text} onChangeText={setText} multiline maxLength={280} />
+        <Button title="Сохранить" icon="checkmark" size="lg" disabled={!text.trim()} onPress={() => save(text)} />
+      </View>
+    </Sheet>
+  );
+}
+
+const styles = themed({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  goalRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   goal: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 36, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   goalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
-  weight: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 36, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md },
-  readiness: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 12 },
-  workout: { borderColor: colors.accentLine, gap: 4 },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  metric: { flex: 1, paddingVertical: 10, paddingHorizontal: 10, gap: 1 },
-  line: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2 },
-  insight: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  insightIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 36, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  card: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md, gap: 8 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.warningDim },
+  coach: { gap: 10 },
+  coachIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  journalHead: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  journal: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingTop: 14, paddingHorizontal: space.md },
+  jRow: { flexDirection: 'row', gap: 10 },
+  jRail: { alignItems: 'center', width: 24 },
+  jDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  jLine: { flex: 1, width: 2, backgroundColor: colors.border, marginVertical: 2 },
+  chip: { paddingHorizontal: 12, height: 34, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
 });
