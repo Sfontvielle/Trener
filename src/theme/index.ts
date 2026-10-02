@@ -116,7 +116,7 @@ const ACCENTS: Record<SchemeName, Record<AccentName, AccentSet>> = {
   },
 };
 
-export const ACCENT_LABEL: Record<AccentName, string> = { lime: 'Acid Green', blue: 'Electric Blue', orange: 'Orange' };
+export const ACCENT_LABEL: Record<AccentName, string> = { lime: 'Салатовый', blue: 'Синий', orange: 'Оранжевый' };
 /** Образец для выбора акцента (одинаковый в обеих схемах) */
 export const ACCENT_SWATCH: Record<AccentName, string> = { lime: '#C8F53C', blue: '#4DA3FF', orange: '#FF8A3D' };
 

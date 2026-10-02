@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DayOverride, ISODate, NutritionTarget, PlanAdjustment, WorkoutPlan, WorkoutTemplate } from '@/types';
 import { persistOptions } from '@/storage/persist';
+import { localizeWorkoutName } from '@/features/training/names';
 import { uid } from '@/utils/id';
 
 interface PlanState {
@@ -44,6 +45,14 @@ export const usePlan = create<PlanState>()(
         set((s) => (s.plan ? { plan: { ...s.plan, templates: s.plan.templates.map((x) => (x.id === t.id ? t : x)) } } : {})),
       reset: () => set({ plan: null, target: null, overrides: {}, adjustments: [] }),
     }),
-    persistOptions<PlanState>('plan', 1, (s) => ({ plan: s.plan, target: s.target, overrides: s.overrides, adjustments: s.adjustments }) as PlanState),
+    {
+      ...persistOptions<PlanState>('plan', 1, (s) => ({ plan: s.plan, target: s.target, overrides: s.overrides, adjustments: s.adjustments }) as PlanState),
+      // Планы, созданные до русификации, получают русские названия дней
+      merge: (persisted, current) => {
+        const p = { ...current, ...(persisted as Partial<PlanState>) };
+        if (p.plan) p.plan = { ...p.plan, templates: p.plan.templates.map((t) => ({ ...t, name: localizeWorkoutName(t.name) })) };
+        return p;
+      },
+    },
   ),
 );

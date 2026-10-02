@@ -195,7 +195,7 @@ export default function Progress() {
         <Card style={{ flex: 1 }}>
           <Stat label="Выполнение плана" value={adh.pct === null ? '—' : `${adh.pct}%`} color={adh.pct === null ? colors.text : adh.pct >= 85 ? colors.accent : adh.pct >= 65 ? colors.warning : colors.danger} sub={`${adh.workoutsDone}/${adh.workoutsPlanned} трен · 28 дн`} />
           <T v="small" style={{ fontSize: 11, marginTop: 6 }}>
-            {strength !== null ? `Сила: ${strength >= 0 ? '+' : ''}${strength}% e1RM за 60 дн` : 'Учитывает пропуски и недоделанные подходы'}
+            {strength !== null ? `Сила: ${strength >= 0 ? '+' : ''}${strength}% расчётного максимума за 60 дн` : 'Учитывает пропуски и недоделанные подходы'}
           </T>
         </Card>
       </View>

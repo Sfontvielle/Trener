@@ -460,6 +460,24 @@ const DEFS: Def[] = [
 
 export const EXERCISES: Exercise[] = DEFS.map(build);
 
+/** Своё упражнение (например, созданное тренером по запросу): те же правила, что и для встроенных */
+export function makeCustomExercise(o: {
+  id: string;
+  name: string;
+  category: ExerciseCategory;
+  pattern: MovementPattern;
+  compound: boolean;
+  equipment: Equipment[];
+  primary: MuscleSlug[];
+  secondary?: MuscleSlug[];
+  reps: [number, number];
+  cues?: string[];
+  mistakes?: string[];
+}): Exercise {
+  const inc = o.equipment.some((e) => e === 'barbell' || e === 'machine' || e === 'smith') ? 2.5 : o.equipment.some((e) => LOADED.includes(e)) ? 2 : 0;
+  return { ...build([o.id, o.name, o.name, o.category, o.pattern, o.compound ? 'c' : 'i', o.equipment, o.primary, o.secondary ?? [], o.reps, inc, o.compound ? 2 : 3, undefined, o.cues ?? [], o.mistakes ?? []]), custom: true };
+}
+
 const BY_ID = new Map(EXERCISES.map((e) => [e.id, e]));
 
 export function getExercise(id: string, custom: Exercise[] = []): Exercise | undefined {
@@ -477,7 +495,7 @@ export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
   abs: 'Пресс',
   forearms: 'Предплечья',
   calves: 'Икры',
-  fullbody: 'Full body',
+  fullbody: 'Всё тело',
 };
 
 export const EQUIPMENT_LABEL: Record<Equipment, string> = {

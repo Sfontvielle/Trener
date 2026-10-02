@@ -32,6 +32,10 @@ import { suggestMeals } from '../src/features/nutrition/suggest';
 import { detectSafety } from '../src/features/coach/safety';
 import { localCoach } from '../src/features/coach/local/engine';
 import { KB } from '../src/features/coach/local/kb';
+import { extractFacts } from '../src/features/coach/local/memory';
+import { readLabs } from '../src/features/coach/local/labs';
+import { keyHit } from '../src/features/coach/local/text';
+import { localizeWorkoutName } from '../src/features/training/names';
 import { getExercise, EXERCISES } from '../src/data/exercises';
 import { addDays, today, weekdayIndex } from '../src/utils/date';
 
@@ -631,11 +635,95 @@ test('Локальный коуч: отвечает без сервера по �
   assert.equal(sick.intent, 'kb:sick');
   assert.ok(sick.text.includes('врач'));
   assert.equal(ask('у меня температура 38').intent, 'kb:sick');
-  assert.equal(ask('расскажи про стероиды курс').intent, 'kb:pharma');
+  assert.equal(ask('расскажи про стероиды курс').intent, 'kb:aas_risks');
   assert.equal(ask('Разбери мою неделю').intent, 'week');
   assert.equal(ask('сколько креатина пить').intent, 'kb:creatine');
   assert.equal(ask('плохо спал что делать').intent, 'kb:sleep');
   // База знаний: у каждой статьи уникальный id и непустой ответ
   assert.equal(new Set(KB.map((k) => k.id)).size, KB.length);
   for (const k of KB) assert.ok(k.answer({ weightKg: 80, goal: 'bulk', proteinG: 160, kcal: 2800, level: 'intermediate' }).length > 40, k.id);
+});
+
+test('Тренер: «что мне сегодня делать» — план дня без обязательного чек-ина, с кнопкой «Начать»', () => {
+  const plan = generatePlan(base);
+  const target = computeNutritionTarget(base);
+  // День с тренировкой: ищем ближайшую дату, где по плану тренировка
+  let date = today();
+  for (let i = 0; i < 7 && plan.schedule[weekdayIndex(date)] === null; i++) date = addDays(date, 1);
+  const todayW = resolveToday({ date, plan, sessions: [] });
+  const r = localCoach({ question: 'Что мне сегодня делать?', profile: base, target, entries: [], recentProducts: [], todayW, insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {} });
+  assert.equal(r.intent, 'today');
+  assert.ok(r.text.includes(todayW.template!.name), 'называет тренировку');
+  assert.ok(!/чек-ин, четыре|Пройди утренний чек-ин/i.test(r.text), 'не требует чек-ин');
+  assert.ok(r.actions.some((a) => a.type === 'start_today'));
+});
+
+test('Тренер: программа на зону мышц учитывает исключения и даёт кнопки «Начать» и «В план»', () => {
+  const profile = excludeExercise(base, 'incline_db_press');
+  const plan = generatePlan(profile);
+  const ask = (question: string) => localCoach({ question, profile, target: computeNutritionTarget(profile), entries: [], recentProducts: [], todayW: resolveToday({ date: today(), plan, sessions: [] }), insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {} });
+  const r = ask('хочу упражнение на верх груди');
+  assert.equal(r.intent, 'target');
+  assert.ok(!/1\. \*\*Жим гантелей на наклонной/.test(r.text), 'исключённое не первым');
+  const start = r.actions.find((a) => a.type === 'start_custom_workout');
+  assert.ok(start && !start.params.exerciseIds!.includes('incline_db_press'));
+  assert.ok(r.actions.some((a) => a.type === 'add_to_plan'));
+  assert.equal(ask('как накачать ширину спины').intent, 'target');
+  assert.equal(ask('упражнения на низ пресса').intent, 'target');
+  // Создание своего упражнения
+  const c = ask('создай упражнение жим гантелей на полу');
+  assert.equal(c.intent, 'create_exercise');
+  const ex = c.actions[0].params.exercise!;
+  assert.equal(ex.category, 'chest');
+  assert.ok(ex.custom && ex.equipment.includes('dumbbell'));
+});
+
+test('Тренер: фармакология — без доз и схем; анализы — разбор чисел; общий вопрос — не тревога', () => {
+  const plan = generatePlan(base);
+  const ask = (question: string) => localCoach({ question, profile: base, target: computeNutritionTarget(base), entries: [], recentProducts: [], todayW: resolveToday({ date: today(), plan, sessions: [] }), insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {} });
+  for (const q of ['сколько колоть тестостерон на массу', 'распиши курс на сушку', 'какая дозировка гормона роста']) {
+    const r = ask(q);
+    assert.equal(r.intent, 'pharma_refusal', q);
+    assert.ok(!/\d+\s*мг/.test(r.text), 'никаких доз');
+  }
+  assert.equal(ask('кленбутерол для сушки').intent, 'kb:fatburner_drugs');
+  const labs = ask('ттг 5.2, ферритин 18, витамин д 45');
+  assert.equal(labs.intent, 'labs');
+  assert.match(labs.text, /ТТГ 5,2/);
+  assert.match(labs.text, /⬇️ \*\*Ферритин/);
+  assert.match(labs.text, /✅ \*\*Витамин D/);
+  assert.equal(readLabs('сахар 20 грамм в день', 'male').length, 0, 'граммы — не анализ');
+  assert.equal(detectSafety('можно ли тренироваться при аритмии'), 'none');
+  assert.equal(detectSafety('у меня аритмия сейчас'), 'emergency');
+  assert.equal(ask('можно ли тренироваться при аритмии').intent, 'kb:blood_pressure');
+  assert.equal(ask('низкий тестостерон симптомы').intent, 'kb:low_t');
+  assert.equal(ask('у меня гастрит что есть').intent, 'kb:gastritis_reflux');
+  assert.equal(ask('привет').intent, 'greeting');
+  assert.ok(KB.length >= 130, `в базе ${KB.length} статей`);
+});
+
+test('Тренер: память — факты из сообщений и их учёт в ответах', () => {
+  const d = today();
+  const facts = [...extractFacts('У меня гипотиреоз, пью эутирокс. Я не ем рыбу.', d), ...extractFacts('болит правое плечо при жиме', d), ...extractFacts('можно ли пить кофе?', d)];
+  assert.deepEqual(facts.map((f) => f.category), ['health', 'food', 'injury']);
+  const memory = facts.map((f, i) => ({ ...f, id: `m${i}`, createdAt: Date.now(), source: 'user' as const }));
+  const plan = generatePlan(base);
+  const ask = (question: string, previousQuestion?: string) => localCoach({ question, profile: base, target: computeNutritionTarget(base), entries: [], recentProducts: [], todayW: resolveToday({ date: today(), plan, sessions: [] }), insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {}, memory, previousQuestion });
+  const m = ask('что ты обо мне помнишь');
+  assert.equal(m.intent, 'memory');
+  assert.match(m.text, /гипотиреоз/);
+  assert.match(ask('ттг это что').text, /Учитываю, что ты рассказывал: «У меня гипотиреоз/);
+  // Уточнение к прошлому вопросу
+  assert.match(ask('а если дома?', 'упражнения на ягодицы').intent, /target/);
+  assert.ok(keyHit('как накачать ширину спины', 'ширин спин'));
+  assert.ok(!keyHit('температура 38', 'темп повтор'));
+});
+
+test('Русификация: старые названия тренировок переводятся', () => {
+  assert.equal(localizeWorkoutName('Upper A'), 'Верх А');
+  assert.equal(localizeWorkoutName('Full Body C'), 'Всё тело В');
+  assert.equal(localizeWorkoutName('Push'), 'Жимовая');
+  assert.equal(localizeWorkoutName('Своя тренировка'), 'Своя тренировка');
+  const plan = generatePlan(base);
+  for (const t of plan.templates) assert.ok(!/[A-Za-z]/.test(t.name), t.name);
 });

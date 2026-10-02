@@ -573,7 +573,11 @@ export type CoachActionType =
   | 'generate_workout'
   | 'apply_deload'
   | 'adjust_weekly_volume'
-  | 'suggest_meal';
+  | 'suggest_meal'
+  | 'start_today' // начать сегодняшнюю тренировку
+  | 'start_custom_workout' // собрать и начать тренировку из указанных упражнений
+  | 'add_to_plan' // добавить упражнение в тренировку плана
+  | 'create_exercise'; // создать своё упражнение
 
 export interface CoachActionParams {
   mode?: DayOverride['mode'];
@@ -596,6 +600,11 @@ export interface CoachActionParams {
   deltaSets?: number;
   split?: SplitPreference;
   minutes?: number;
+  /** start_custom_workout: упражнения по порядку */
+  exerciseIds?: ID[];
+  name?: string;
+  /** create_exercise: описание нового упражнения */
+  exercise?: Exercise;
 }
 
 export interface CoachAction {
@@ -625,7 +634,7 @@ export interface CoachMessage {
 export interface CoachMemoryItem {
   id: ID;
   text: string;
-  category: 'food' | 'training' | 'injury' | 'schedule' | 'preference' | 'other';
+  category: 'food' | 'training' | 'injury' | 'health' | 'schedule' | 'preference' | 'other';
   createdAt: number;
   source: 'coach' | 'user';
 }

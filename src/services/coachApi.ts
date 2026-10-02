@@ -31,7 +31,7 @@ export interface CoachApiResponse {
   reply: string;
   safety: boolean;
   actions: CoachApiAction[];
-  memory: { text: string; category: 'food' | 'training' | 'injury' | 'schedule' | 'preference' | 'other' }[];
+  memory: { text: string; category: 'food' | 'training' | 'injury' | 'health' | 'schedule' | 'preference' | 'other' }[];
 }
 
 export class CoachApiError extends Error {

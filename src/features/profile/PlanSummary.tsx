@@ -82,7 +82,7 @@ export function WeekStrip({ plan }: { plan: WorkoutPlan }) {
               {WEEKDAYS_SHORT[i]}
             </T>
             <T v="small" color={t ? colors.text : colors.muted} style={{ fontSize: 10, fontWeight: '800' }} numberOfLines={1} adjustsFontSizeToFit>
-              {t ? t.name.replace('Full Body', 'FB').replace('Upper', 'Up').replace('Lower', 'Lo') : '—'}
+              {t ? t.name.replace('Всё тело', 'Тело').replace('Конечности', 'Конеч.').replace('Жимовая', 'Жим').replace('Тяговая', 'Тяга') : '—'}
             </T>
           </View>
         );

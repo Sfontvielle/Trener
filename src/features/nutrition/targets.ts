@@ -77,7 +77,7 @@ export function computeNutritionTarget(
   const steps: CalcStep[] = [];
 
   const bmr = bmrMifflin(profile, w);
-  steps.push({ label: 'Основной обмен (BMR)', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора' });
+  steps.push({ label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора' });
 
   const nt = nonTrainingFactor(profile);
   const neat = bmr * nt.factor;
@@ -94,7 +94,7 @@ export function computeNutritionTarget(
     source = 'adaptive';
     steps.push({ label: 'Фактический расход', value: `${round(opts.observedTdee, 10)} ккал`, note: 'По дневнику питания и тренду веса, вес 70%' });
   }
-  steps.push({ label: 'Расход (TDEE)', value: `${round(tdee, 10)} ккал` });
+  steps.push({ label: 'Расход за сутки', value: `${round(tdee, 10)} ккал` });
 
   let goalDelta = 0;
   const kgPerWeek = targetWeeklyChangeKg(profile, w);

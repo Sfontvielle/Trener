@@ -799,7 +799,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, askFeel,
           </T>
           {set.done && set.feel ? (
             <T v="small" style={{ fontSize: 9, fontWeight: '800' }} color={set.feel === 'hard' ? colors.warning : colors.textDim}>
-              {set.feel === 'easy' ? 'RIR3' : set.feel === 'ok' ? 'RIR2' : 'RIR0'}
+              {set.feel === 'easy' ? 'запас 3' : set.feel === 'ok' ? 'запас 2' : 'отказ'}
             </T>
           ) : null}
         </Pressable>
@@ -851,7 +851,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, askFeel,
           {(['easy', 'ok', 'hard'] as SetFeel[]).map((f) => (
             <Pressable key={f} onPress={() => setFeel(f)} style={[styles.feel, set.feel === f && { backgroundColor: f === 'hard' ? colors.warning : colors.accent }]} accessibilityRole="button" accessibilityState={{ selected: set.feel === f }}>
               <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={set.feel === f ? colors.onAccent : colors.textDim}>
-                {f === 'easy' ? 'Легко · RIR 3+' : f === 'ok' ? 'Норм · RIR 2' : 'Тяжело · 0–1'}
+                {f === 'easy' ? 'Легко · запас 3+' : f === 'ok' ? 'Норм · запас 2' : 'Тяжело · 0–1'}
               </T>
             </Pressable>
           ))}

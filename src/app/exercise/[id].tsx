@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
+import { startExercises } from '@/features/training/actions';
 import { Banner, Button, Card, EmptyState, Icon, SectionTitle, T } from '@/components/ui';
 import { confirm, toast } from '@/components/Dialog';
 import { getExercise, CATEGORY_LABEL, EQUIPMENT_LABEL } from '@/data/exercises';
@@ -148,6 +149,7 @@ function ExercisePrefButtons({ id }: { id: string }) {
     <View style={{ gap: 8, marginTop: space.lg }}>
       {!blocked.ok && !excluded ? <Banner tone="warning" icon="shield-checkmark-outline" text={`Не попадает в план: ${blocked.reason}`} /> : null}
       {excluded ? <Banner tone="warning" icon="ban-outline" text={excluded.reason === 'discomfort' ? 'Исключено из-за дискомфорта — не назначается автоматически.' : 'В списке «Не предлагать».'} /> : null}
+      <Button title="Тренировать сейчас" icon="play" onPress={() => startExercises([id])} />
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button title={fav ? 'В избранном' : 'В избранное'} icon={fav ? 'star' : 'star-outline'} size="sm" variant={fav ? 'primary' : 'secondary'} style={{ flex: 1 }} onPress={() => toast(prefFavorite(id))} />
         <Button title={dis ? 'Не нравится ✓' : 'Не нравится'} icon="thumbs-down-outline" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => toast(prefDislike(id))} />

@@ -83,7 +83,7 @@ export default function TrainingPrefs() {
 
   return (
     <Screen>
-      <Header title="Предпочтения и ограничения" subtitle="Учитываются генератором до AI" />
+      <Header title="Предпочтения и ограничения" subtitle="Учитываются при составлении любой тренировки" />
 
       <SectionTitle title="Сплит" />
       <Card style={{ gap: 10 }}>

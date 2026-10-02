@@ -13,7 +13,7 @@ import { coachBaseUrl } from '@/services/coachApi';
 import { haptic } from '@/services/haptics';
 import { toISODate } from '@/utils/date';
 
-const QUICK = ['Как сегодня тренироваться?', 'Что мне поесть сейчас?', 'Сколько мне белка?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит колено — что делать?', 'Чем заменить присед?'];
+const QUICK = ['Что мне сегодня делать?', 'Упражнения на верх груди', 'Что мне поесть сейчас?', 'Какие анализы сдать?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит плечо при жиме', 'Что ты обо мне помнишь?'];
 
 export default function Coach() {
   const insets = useSafeAreaInsets();
@@ -47,8 +47,8 @@ export default function Coach() {
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
       <View style={{ paddingHorizontal: space.lg }}>
         <Header
-          title="FORM Coach"
-          subtitle={`${configured ? 'AI-сервер' : 'На устройстве'} · помнит ${memoryCount} ${memoryCount === 1 ? 'факт' : 'фактов'} о тебе`}
+          title="Тренер FORM"
+          subtitle={`${configured ? 'Внешний сервер' : 'На устройстве'} · помнит ${memoryCount} ${memoryCount === 1 ? 'факт' : 'фактов'} о тебе`}
           right={
             <IconButton
               name="ellipsis-horizontal"
@@ -114,7 +114,7 @@ function Intro() {
         <Icon name="sparkles" size={28} color={colors.onAccent} />
       </View>
       <T v="h2">Я знаю твой план, питание, тренировки и восстановление</T>
-      <T v="bodyDim">Спрашивай про тренировку на сегодня, любое упражнение (вес, техника, замена), питание, сон, боль и травмы, добавки. Работаю прямо на устройстве — без интернета и настроек.</T>
+      <T v="bodyDim">Тренировка на сегодня с весами, программа на любую мышцу (соберу и запущу), техника и замены, подготовка к соревнованиям, питание и диетология, разбор анализов (напиши «ТТГ 5,2, ферритин 18»), гормоны, травмы и риски препаратов. Помню, что ты рассказываешь о себе. Работаю на устройстве — без интернета и настроек.</T>
       {todayInsight ? (
         <View style={styles.insightCard}>
           <T v="caption" color={colors.accent}>
@@ -172,7 +172,7 @@ function Bubble({ m }: { m: CoachMessage }) {
 /** AI предлагает → приложение проверило → пользователь решает */
 function ActionState({ messageId, a }: { messageId: string; a: CoachAction }) {
   if (a.applied || a.declined || a.invalid) {
-    const label = a.applied ? 'Применено' : a.declined ? 'Не менять' : `Отклонено FORM: ${a.invalid}`;
+    const label = a.applied ? (a.type.startsWith('start') ? 'Начато' : a.type === 'create_exercise' || a.type === 'add_to_plan' ? 'Готово' : 'Применено') : a.declined ? 'Не сейчас' : `Отклонено FORM: ${a.invalid}`;
     const color = a.applied ? colors.accent : a.invalid ? colors.warning : colors.textDim;
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, maxWidth: '45%' }}>
@@ -184,10 +184,12 @@ function ActionState({ messageId, a }: { messageId: string; a: CoachAction }) {
     );
   }
   const replace = a.type === 'replace_exercise';
+  const verb = a.type === 'start_today' || a.type === 'start_custom_workout' ? 'Начать' : a.type === 'create_exercise' ? 'Создать' : a.type === 'generate_workout' ? 'Собрать' : a.type === 'add_to_plan' ? 'Добавить' : 'Применить';
+  const optional = verb !== 'Применить';
   return (
     <View style={{ gap: 6, alignItems: 'flex-end' }}>
       <Button
-        title="Применить"
+        title={verb}
         size="sm"
         onPress={() => {
           const r = applyCoachAction(messageId, a);
@@ -198,7 +200,7 @@ function ActionState({ messageId, a }: { messageId: string; a: CoachAction }) {
       />
       <Pressable accessibilityRole="button" hitSlop={6} onPress={() => declineCoachAction(messageId, a)}>
         <T v="small" color={colors.textDim} style={{ fontSize: 12, fontWeight: '600' }}>
-          Не менять
+          {optional ? 'Не сейчас' : 'Не менять'}
         </T>
       </Pressable>
       {replace ? (

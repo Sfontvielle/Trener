@@ -177,7 +177,7 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           ))}
         </View>
       </View>
-      <Field label="Ограничения и травмы" placeholder="Например: правое плечо не любит жим над головой" value={p.limitations} onChangeText={(t) => set({ limitations: t })} multiline hint="Для AI-тренера. Структурированные ограничения (зона, движения) и исключения — в Профиль → Предпочтения и ограничения." />
+      <Field label="Ограничения и травмы" placeholder="Например: правое плечо не любит жим над головой" value={p.limitations} onChangeText={(t) => set({ limitations: t })} multiline hint="Учитывается тренером FORM. Структурированные ограничения (зона, движения) и исключения — в Профиль → Предпочтения и ограничения." />
     </View>
   );
 }

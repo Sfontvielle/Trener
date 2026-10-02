@@ -1,3 +1,4 @@
+import { useNavigationContainerRef } from 'expo-router';
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { colors, radius, space, themed, ACCENT_LABEL, ACCENT_SWATCH, paletteFor, type AccentName, type ThemePref } from '@/theme';
@@ -5,7 +6,7 @@ import { Header, Screen } from '@/components/Screen';
 import { Card, Icon, SectionTitle, T } from '@/components/ui';
 import { useProfile } from '@/stores/profile';
 import { haptic } from '@/services/haptics';
-import { setPendingRoute } from '@/features/settings/themeNav';
+import { setPendingNavState } from '@/features/settings/themeNav';
 
 const THEMES: { key: ThemePref; label: string; sub: string }[] = [
   { key: 'system', label: 'Системная', sub: 'Как в настройках iPhone' },
@@ -18,10 +19,11 @@ const ACCENTS: AccentName[] = ['lime', 'blue', 'orange'];
 export default function Appearance() {
   const settings = useProfile((s) => s.settings);
   const update = useProfile((s) => s.updateSettings);
+  const nav = useNavigationContainerRef();
   const set = (patch: Partial<typeof settings>) => {
     haptic.tap();
     // Навигатор перемонтируется для перекраски — вернёмся на этот экран
-    setPendingRoute('/appearance');
+    setPendingNavState(nav.getRootState());
     update(patch);
   };
 

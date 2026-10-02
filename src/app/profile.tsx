@@ -202,11 +202,11 @@ export default function Profile() {
         ) : null}
       </Card>
 
-      <SectionTitle title="Внешний AI-сервер · необязательно" />
+      <SectionTitle title="Внешний сервер тренера · необязательно" />
       <Card style={{ gap: 10 }}>
-        <Field label="Адрес AI-сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="FORM Coach уже работает на устройстве без настройки. Сервер (папка server/) нужен только для свободных ответов большой модели." />
+        <Field label="Адрес сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="Тренер FORM уже работает на устройстве без настройки. Сервер (папка server/) нужен только для свободных ответов большой модели." />
         <Button title="Сохранить и проверить" size="sm" variant="secondary" loading={ping === 'busy'} onPress={testServer} />
-        {ping === 'ok' ? <Banner tone="accent" icon="checkmark-circle" text="Сервер отвечает — AI Coach подключён." /> : null}
+        {ping === 'ok' ? <Banner tone="accent" icon="checkmark-circle" text="Сервер отвечает — внешний тренер подключён." /> : null}
         {ping === 'fail' ? <Banner tone="warning" icon="alert-circle" text="Сервер не отвечает. Проверь адрес, что сервер запущен и телефон в той же сети." /> : null}
       </Card>
 
@@ -221,7 +221,7 @@ export default function Profile() {
             </View>
           ) : (
             <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
+              <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' || m.category === 'health' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
               <Pressable style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`Изменить: ${m.text}`} onPress={() => setEditMem({ id: m.id, text: m.text })}>
                 <T v="body" style={{ fontSize: 14 }}>
                   {m.text}
@@ -244,7 +244,7 @@ export default function Profile() {
 
       <SectionTitle title="Данные на устройстве" />
       <Card style={{ gap: 10 }}>
-        <T v="small">Все данные хранятся локально на iPhone. В AI уходит только сводка, нужная для ответа.</T>
+        <T v="small">Все данные хранятся локально на iPhone. На внешний сервер (если подключён) уходит только сводка, нужная для ответа.</T>
         <T v="small" color={settings.lastBackupAt ? colors.textDim : colors.warning}>
           {settings.lastBackupAt ? `Последняя копия: ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Резервной копии ещё нет — при потере телефона история пропадёт.'}
         </T>

@@ -15,8 +15,8 @@ export type GenFocus = 'auto' | 'push' | 'pull' | 'legs' | 'upper' | 'lower' | '
 
 export const FOCUS_LABEL: Record<GenFocus, string> = {
   auto: 'Авто',
-  push: 'Push',
-  pull: 'Pull',
+  push: 'Жимовая',
+  pull: 'Тяговая',
   legs: 'Ноги',
   upper: 'Верх',
   lower: 'Низ',

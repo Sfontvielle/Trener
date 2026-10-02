@@ -18,7 +18,7 @@ export function SplitCompareButton({ plan, style }: { plan: WorkoutPlan; style?:
   const fb = chosen !== 'fullbody' && cands.some((c) => c.split === 'fullbody');
   return (
     <>
-      <Button title={fb ? 'Почему не Full Body?' : 'Сравнить с другими вариантами'} icon="git-compare-outline" size="sm" variant="secondary" onPress={() => setOpen(true)} style={style} />
+      <Button title={fb ? 'Почему не «Всё тело»?' : 'Сравнить с другими вариантами'} icon="git-compare-outline" size="sm" variant="secondary" onPress={() => setOpen(true)} style={style} />
       <Sheet visible={open} onClose={() => setOpen(false)} title="Варианты программы" subtitle={`${plan.daysPerWeek} дн. в неделю · сравнение под твои параметры`}>
         <View style={{ gap: 10 }}>
           {[...cands].sort((a, b) => (a.split === chosen ? -1 : b.split === chosen ? 1 : b.score - a.score)).map((c) => (
