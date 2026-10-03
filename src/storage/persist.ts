@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createJSONStorage, type PersistOptions } from 'zustand/middleware';
+import { BRAND } from '@/config/brand';
 
 /**
  * Локальное хранилище FORM.
@@ -21,7 +22,7 @@ const safeStorage = {
     try {
       await AsyncStorage.setItem(name, value);
     } catch (e) {
-      console.warn('[FORM] storage write failed', name, e);
+      console.warn(`[${BRAND}] storage write failed`, name, e);
     }
   },
   removeItem: async (name: string) => {

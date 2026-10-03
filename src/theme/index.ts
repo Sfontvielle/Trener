@@ -38,6 +38,7 @@ export interface Palette {
   dangerDim: string;
   dangerLine: string;
   secondaryMuscle: string;
+  stabilizerMuscle: string;
   muscleIdle: string;
   muscleNeutral: string;
   protein: string;
@@ -68,6 +69,7 @@ const DARK_BASE: Omit<Palette, keyof AccentSet> = {
   dangerDim: 'rgba(255,93,82,0.14)',
   dangerLine: 'rgba(255,93,82,0.45)',
   secondaryMuscle: '#FF9F2E',
+  stabilizerMuscle: '#8E7CFF',
   muscleIdle: '#2B2F35',
   muscleNeutral: '#3A3F46',
   protein: '#7CC4FF',
@@ -94,6 +96,7 @@ const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
   dangerDim: 'rgba(214,58,48,0.1)',
   dangerLine: 'rgba(214,58,48,0.4)',
   secondaryMuscle: '#F08A1C',
+  stabilizerMuscle: '#6E5CE6',
   muscleIdle: '#DADDD6',
   muscleNeutral: '#C9CDC4',
   protein: '#2D8BE0',

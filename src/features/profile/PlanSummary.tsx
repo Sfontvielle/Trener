@@ -7,6 +7,7 @@ import { WEEKDAYS_SHORT } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { VM_LABEL } from '@/features/training/engine/muscles';
 import { SplitCompareButton } from '@/features/training/SplitCompare';
+import { BRAND } from '@/config/brand';
 
 export function MacroTiles({ target }: { target: NutritionTarget }) {
   const items = [
@@ -31,7 +32,7 @@ export function MacroTiles({ target }: { target: NutritionTarget }) {
   );
 }
 
-export function CalcSteps({ steps, title = 'Как посчитано', footer = 'Это стартовая точка. Через 2–3 недели FORM сверит калории с реальным трендом веса и скорректирует их.' }: { steps: CalcStep[]; title?: string; footer?: string | null }) {
+export function CalcSteps({ steps, title = 'Как посчитано', footer = `Это стартовая точка. Через 2–3 недели ${BRAND} сверит калории с реальным трендом веса и скорректирует их.` }: { steps: CalcStep[]; title?: string; footer?: string | null }) {
   const [open, setOpen] = useState(false);
   return (
     <View>
@@ -150,7 +151,7 @@ export function PlanWhy({ plan, onChange }: { plan: WorkoutPlan; onChange: () =>
           </T>
         </Pressable>
       </View>
-      <T v="h3">{plan.splitChoice?.preference === 'auto' || !plan.splitChoice ? `FORM выбрал ${plan.splitLabel}` : plan.splitLabel}</T>
+      <T v="h3">{plan.splitChoice?.preference === 'auto' || !plan.splitChoice ? `${BRAND} выбрал ${plan.splitLabel}` : plan.splitLabel}</T>
       {reasons.map((r) => (
         <T key={r} v="small">
           • {r}

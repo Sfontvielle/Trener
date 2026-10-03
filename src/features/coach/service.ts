@@ -1,5 +1,7 @@
 import { router } from 'expo-router';
-import type { CoachAction, CoachMessage, PlannedExercise, VolumeMuscle } from '@/types';
+import type { CoachAction, CoachMessage, KnowledgeSource, PlannedExercise, VolumeMuscle } from '@/types';
+import { KB_SOURCES, pubmedSearchUrl } from './local/kbSources';
+import { searchReviews } from '@/services/knowledge';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
@@ -15,7 +17,7 @@ import { resolveToday } from '@/features/training/today';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
 import { excludeExercise, getPrefs, toggleFavorite, withPrefs } from '@/features/training/engine/prefs';
 import { estimateMinutes } from '@/features/training/engine/time';
-import { makeWorkoutExercise } from '@/features/training/session';
+import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { applyDeload } from '@/features/training/deloadActions';
 import { openGenerated, startExercises, startTodayPlanned } from '@/features/training/actions';
 import { getExercise } from '@/data/exercises';
@@ -26,7 +28,7 @@ import { detectSafety, safetyReply } from './safety';
 import { localInsights } from './insights';
 import { localCoach } from './local/engine';
 import { extractFacts } from './local/memory';
-import { today } from '@/utils/date';
+import { addDays, today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { LOCAL_FOODS } from '@/data/foods';
 
@@ -58,6 +60,7 @@ export function currentContext(): string {
     checkins: s.checkins,
     readiness: s.readiness,
     memory: s.memory,
+    advice: useCoach.getState().advice,
     rejected: useCoach.getState().rejected,
     active: s.ws.active,
     notes: useJournal.getState().notes.filter((n) => n.date === today()).map((n) => `${new Date(n.at).toTimeString().slice(0, 5)} ${n.text}`),
@@ -81,7 +84,22 @@ export function currentLocalInsights() {
     checkins: s.checkins,
     overrides: s.ps.overrides,
     lastBackupAt: useProfile.getState().settings.lastBackupAt,
+    advice: useCoach.getState().advice,
+    readinessHistory: readinessHistory(14),
   });
+}
+
+/** Готовность за прошлые дни (без сегодняшнего) — личная «норма» для сравнения */
+export function readinessHistory(days: number): number[] {
+  const ws = useWorkouts.getState();
+  const checkins = useCheckins.getState().byDate;
+  const hd = useHealth.getState().days;
+  const out: number[] = [];
+  for (let i = 1; i <= days; i++) {
+    const r = readinessFor(addDays(today(), -i), checkins, ws.sessions, hd);
+    if (r) out.push(r.score);
+  }
+  return out;
 }
 
 /** Контекст для валидации действий: сегодняшние упражнения — из активной тренировки или плана дня */
@@ -287,7 +305,7 @@ export function applyCoachAction(messageId: string, action: CoachAction): { ok: 
     case 'add_to_plan': {
       const t = ps.plan!.templates.find((x) => x.id === p.templateId)!;
       const ex = getExercise(p.exerciseId!, useWorkouts.getState().customExercises)!;
-      ps.updateTemplate({ ...t, exercises: [...t.exercises, { exerciseId: ex.id, sets: p.sets ?? 3, repMin: p.repMin ?? ex.defaultReps[0], repMax: p.repMax ?? ex.defaultReps[1], targetRir: 1, restSec: ex.mechanic === 'compound' ? 120 : 75, why: p.reason ? `Добавлено тренером: ${p.reason}` : 'Добавлено тренером' }] });
+      ps.updateTemplate({ ...t, exercises: [...t.exercises, { exerciseId: ex.id, sets: p.sets ?? DEFAULT_SETS, repMin: p.repMin ?? ex.defaultReps[0], repMax: p.repMax ?? ex.defaultReps[1], targetRir: 1, restSec: ex.mechanic === 'compound' ? 120 : 75, why: p.reason ? `Добавлено тренером: ${p.reason}` : 'Добавлено тренером' }] });
       ps.addAdjustment({ kind: 'plan_rebuild', summary: `«${ex.name}» добавлено в ${t.name}`, source: 'coach' });
       message = `Добавлено в ${t.name}`;
       break;
@@ -335,10 +353,13 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     return useCoach.getState().addMessage({ role: 'assistant', text: safetyReply(level), safety: true });
   }
 
-  // Без внешнего AI-сервера тренер работает на устройстве — сразу, без «подключите сервер»
+  // Тренер работает на устройстве — сразу, без настройки
   if (!coachBaseUrl()) {
     const r = localReply(text, previousQuestion);
-    return useCoach.getState().addMessage({ role: 'assistant', text: r.text, actions: validateActions(r.actions, actionContext()), safety: r.safety });
+    const kbId = /kb:([a-z_0-9]+)/.exec(r.intent)?.[1];
+    const msg = useCoach.getState().addMessage({ role: 'assistant', text: r.text, actions: validateActions(r.actions, actionContext()), safety: r.safety, sources: kbId ? knownSources(kbId) : undefined });
+    if (kbId) void refreshSources(msg.id, kbId);
+    return msg;
   }
   const context = currentContext();
   try {
@@ -352,6 +373,35 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
     const r = localReply(text, previousQuestion);
     const rateLimited = e instanceof CoachApiError && e.kind === 'rate_limited';
     return useCoach.getState().addMessage({ role: 'assistant', text: rateLimited ? coachErrorText(e) : r.text, actions: validateActions(r.actions, actionContext()), offline: true });
+  }
+}
+
+const KNOWLEDGE_TTL = 30 * 86400000;
+
+/** Проверенные первоисточники темы + то, что уже находили в PubMed (кэш на устройстве) */
+function knownSources(kbId: string): KnowledgeSource[] | undefined {
+  const meta = KB_SOURCES[kbId];
+  if (!meta) return undefined;
+  const cached = useCoach.getState().knowledge[kbId]?.sources ?? [];
+  const list = [...(meta.refs ?? []), ...cached];
+  const seen = new Set<string>();
+  const out = list.filter((x) => (seen.has(x.url) ? false : (seen.add(x.url), true))).slice(0, 4);
+  return out.length ? out : meta.en ? [{ title: 'Научные обзоры по теме', org: 'PubMed', url: pubmedSearchUrl(meta.en) }] : undefined;
+}
+
+/** Если есть интернет и кэш устарел — дополняем ответ свежими обзорами и сохраняем их локально */
+async function refreshSources(messageId: string, kbId: string) {
+  const meta = KB_SOURCES[kbId];
+  if (!meta?.en) return;
+  const cached = useCoach.getState().knowledge[kbId];
+  if (cached && Date.now() - cached.at < KNOWLEDGE_TTL) return;
+  try {
+    const found = await searchReviews(meta.en, 2);
+    useCoach.getState().cacheKnowledge(kbId, found);
+    const next = knownSources(kbId);
+    if (next) useCoach.getState().patchMessage(messageId, { sources: next });
+  } catch {
+    /* без сети — остаются проверенные первоисточники */
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Автотесты доменной логики FORM (без React Native).
+ * Автотесты доменной логики RYNJI (без React Native).
  * Запуск: npm test
  */
 import { test } from 'node:test';
@@ -38,6 +38,16 @@ import { keyHit } from '../src/features/coach/local/text';
 import { localizeWorkoutName } from '../src/features/training/names';
 import { getExercise, EXERCISES } from '../src/data/exercises';
 import { addDays, today, weekdayIndex } from '../src/utils/date';
+import { foodAvoidance, healthTraining, parseLimitText } from '../src/features/profile/health';
+import { setLimits } from '../src/features/training/engine/volume';
+import { sessionEnergy, roundKcal } from '../src/features/training/energy';
+import { comparePeriods, progressNarrative } from '../src/features/progress/series';
+import { analyzeProgram } from '../src/features/training/adaptPlan';
+import { goalProgress } from '../src/features/progress/goal';
+import { techniqueFor } from '../src/features/exercises/technique';
+import { KB_SOURCES } from '../src/features/coach/local/kbSources';
+import { BRAND } from '../src/config/brand';
+import { localInsights } from '../src/features/coach/insights';
 
 const base: UserProfile = {
   name: 'Тест', sex: 'male', age: 30, heightCm: 180, weightKg: 80, goal: 'bulk', ratePctPerWeek: 0.35, level: 'intermediate', trainingYears: 2,
@@ -726,4 +736,166 @@ test('Русификация: старые названия тренировок
   assert.equal(localizeWorkoutName('Своя тренировка'), 'Своя тренировка');
   const plan = generatePlan(base);
   for (const t of plan.templates) assert.ok(!/[A-Za-z]/.test(t.name), t.name);
+});
+
+
+// ─── Этап RYNJI ──────────────────────────────────────────────────────────────
+
+test('Бренд: название хранится в одном месте', () => {
+  assert.equal(BRAND, 'RYNJI');
+});
+
+test('Здоровье: свободный текст → ограничения движений (не диагноз)', () => {
+  const sh = parseLimitText('Правое плечо — больно в жиме над головой');
+  assert.equal(sh.length, 1);
+  assert.equal(sh[0].area, 'shoulder');
+  assert.ok(sh[0].movements.includes('overhead_press'));
+  const back = parseLimitText('протрузия L5');
+  assert.equal(back[0].area, 'lower_back');
+  assert.ok(back[0].movements.includes('heavy_axial'), 'зона без движений → типичные провокаторы');
+  assert.equal(parseLimitText('колени в порядке').length, 0, 'отрицание не создаёт ограничение');
+  const doc = parseLimitText('без осевой нагрузки 3 месяца', 'doctor');
+  assert.equal(doc[0].source, 'doctor');
+  assert.ok(doc[0].movements.includes('heavy_axial'));
+  assert.equal(parseLimitText('паховая грыжа').filter((l) => l.area === 'lower_back').length, 0, 'паховая грыжа — не позвоночник');
+});
+
+test('Здоровье влияет на план: травма убирает движения, давление — без отказа', () => {
+  const p = { ...base, health: { injuries: 'Плечо болит при жиме над головой', chronic: 'гипертония', painfulMovements: 'глубокий присед', medical: '', allergies: [], intolerances: [], forbiddenFoods: [], other: '' } };
+  const prefs = getPrefs(p);
+  assert.ok(prefs.limitations.some((l) => l.area === 'shoulder' && l.id.startsWith('auto_')));
+  assert.equal(checkAllowed(getExercise('ohp')!, p, prefs).ok, false, 'жим стоя не назначается');
+  assert.equal(checkAllowed(getExercise('back_squat')!, p, prefs).ok, false, 'глубокий присед не назначается');
+  const plan = generatePlan(p);
+  const ids = plan.templates.flatMap((t) => t.exercises.map((e) => e.exerciseId));
+  assert.ok(!ids.includes('ohp') && !ids.includes('back_squat'), ids.join(','));
+  assert.ok(plan.templates.every((t) => t.exercises.every((e) => e.targetRir >= 2)), 'гипертония: запас ≥2 повтора');
+  assert.ok(plan.notes?.some((n) => /давлени/.test(n)));
+  assert.equal(healthTraining(p).minRir, 2);
+  // производные ограничения не записываются в сохранённые предпочтения
+  assert.equal(withPrefs(p, { setStyle: 2 }).training!.limitations.length, 0);
+});
+
+test('Здоровье влияет на питание: аллергены и непереносимости не попадают в подбор', () => {
+  const p = { ...base, likedFoods: ['Творог'], health: { injuries: '', chronic: '', painfulMovements: '', medical: '', allergies: ['Творог'], intolerances: ['Лактоза'], forbiddenFoods: [], other: '' } };
+  const fa = foodAvoidance(p);
+  assert.ok(fa.restrictions.includes('lactose'));
+  const r = suggestMeals({ remaining: { kcal: 900, protein: 60, fat: 25, carbs: 90 }, profile: p, todayEntries: [], recentProducts: [] });
+  const names = r.options.flatMap((o) => o.items.map((i) => i.product.name.toLowerCase()));
+  assert.ok(names.length > 0);
+  assert.ok(!names.some((x) => /творог|молок|кефир|йогурт|скир/.test(x)), names.join(', '));
+});
+
+test('Подходы: новое упражнение — 2 подхода, пять подходов не назначаются', () => {
+  const l = setLimits('auto', 'intermediate');
+  assert.equal(l.start('main'), 2);
+  assert.ok(l.max('main') <= 4 && l.softMax('main') <= 4);
+  for (const lvl of ['beginner', 'intermediate', 'advanced'] as const) {
+    const plan = generatePlan({ ...base, level: lvl });
+    const max = Math.max(...plan.templates.flatMap((t) => t.exercises.map((e) => e.sets)));
+    assert.ok(max <= 4, `${lvl}: максимум ${max} подходов`);
+  }
+});
+
+test('Калории тренировки: оценка по MET без псевдоточности; часы — приоритет', () => {
+  const t0 = new Date(`${today()}T18:00:00`).getTime();
+  const mk = (min: number, feel?: 'hard' | 'ok') => ({ id: `s${min}`, weight: 80, reps: 8, done: true, completedAt: t0 + min * 60000, feel });
+  const s: WorkoutSession = {
+    id: 'w1', date: today(), name: 'Тест', focus: '', source: 'custom', startedAt: t0, finishedAt: t0 + 50 * 60000, volumeFactor: 1, status: 'completed',
+    exercises: [
+      { id: 'a', exerciseId: 'back_squat', plannedSets: 3, repMin: 6, repMax: 10, targetRir: 2, restSec: 180, sets: [mk(5, 'hard'), mk(10, 'hard'), mk(15, 'hard')] },
+      { id: 'b', exerciseId: 'lateral_raise', plannedSets: 3, repMin: 12, repMax: 20, targetRir: 1, restSec: 60, sets: [mk(30), mk(32), mk(34)] },
+    ],
+  };
+  const e = sessionEnergy(s, 80, {});
+  assert.equal(e.source, 'estimate');
+  assert.ok(e.kcal >= 150 && e.kcal <= 400, `оценка ${e.kcal}`);
+  assert.equal(e.kcal % 5, 0, 'округлено');
+  assert.ok(e.perExercise.back_squat > e.perExercise.lateral_raise, 'тяжёлый присед дороже махов');
+  const h: Record<string, HealthDay> = { [today()]: { date: today(), workouts: [{ start: t0 + 60000, minutes: 49, kcal: 312, strength: true }] } };
+  const m = sessionEnergy(s, 80, h);
+  assert.equal(m.source, 'health');
+  assert.equal(m.kcal, 310);
+  assert.equal(roundKcal(137.42), 135);
+});
+
+test('Прогресс: сравнение периодов и вывод без причинности', () => {
+  const weights: WeightEntry[] = [];
+  for (let i = 60; i >= 0; i--) weights.push({ id: `w${i}`, date: addDays(today(), -i), kg: 80 + (i % 3) * 0.05, createdAt: 0 });
+  const metrics = [
+    { id: 'm1', date: addDays(today(), -40), kind: 'waist' as const, value: 86 },
+    { id: 'm2', date: addDays(today(), -2), kind: 'waist' as const, value: 84.5 },
+  ];
+  const sess = (d: number, w: number): WorkoutSession => ({ id: `s${d}`, date: addDays(today(), -d), name: 'A', focus: '', source: 'plan', startedAt: Date.now() - d * 86400000, finishedAt: Date.now() - d * 86400000 + 3600000, volumeFactor: 1, status: 'completed', exercises: [{ id: 'x', exerciseId: 'bench_press', plannedSets: 2, repMin: 6, repMax: 10, targetRir: 2, restSec: 120, sets: [set(w, 8), set(w, 8)] }, { id: 'y', exerciseId: 'back_squat', plannedSets: 2, repMin: 6, repMax: 10, targetRir: 2, restSec: 120, sets: [set(w + 20, 8)] }] });
+  const sessions = [sess(45, 80), sess(38, 80), sess(10, 85), sess(3, 87.5)];
+  const c = comparePeriods({ days: 30, weights, metrics, sessions, entries: [] });
+  assert.ok(c.weight && Math.abs(c.weight.delta) < 0.3);
+  assert.equal(c.waist?.delta, -1.5);
+  assert.ok((c.strengthPct ?? 0) > 2);
+  const text = progressNarrative(c)!;
+  assert.match(text, /вес почти не изменился, но талия уменьшилась на 1,5 см, а силовые выросли/);
+  assert.ok(!/(потому|из-за|благодаря)/.test(text), 'без причинно-следственных слов');
+});
+
+test('Адаптация программы: пропуски → предложение с объяснением, не применяется само', () => {
+  const plan = generatePlan({ ...base, daysPerWeek: 5 });
+  const sessions: WorkoutSession[] = [];
+  for (let w = 0; w < 4; w++) for (const d of [1, 3]) sessions.push({ id: `s${w}${d}`, date: addDays(today(), -(w * 7 + d)), name: 'A', focus: '', source: 'plan', startedAt: Date.now() - (w * 7 + d) * 86400000, finishedAt: Date.now(), volumeFactor: 1, status: 'completed', exercises: [] });
+  const props = analyzeProgram({ profile: { ...base, daysPerWeek: 5 }, plan, sessions, checkins: {} });
+  assert.ok(props.length >= 1);
+  assert.equal(props[0].change.daysPerWeek, 2);
+  assert.ok(props[0].why[0].includes('3 недели'));
+  if (props[0].kind === 'split') assert.match(props[0].splitWhy ?? '', /Всё тело/);
+  assert.equal(analyzeProgram({ profile: base, plan, sessions: sessions.slice(0, 2), checkins: {} }).length, 0, 'мало истории — без выводов');
+});
+
+test('Тренер советует сам: белок ниже цели несколько дней, отказ от совета учитывается', () => {
+  const plan = generatePlan(base);
+  const target = computeNutritionTarget(base);
+  const entries = [1, 2, 3].map((i) => ({ id: `e${i}`, date: addDays(today(), -i), productId: 'local:rice_cooked', name: 'Рис', grams: 800, macros: { kcal: 1100, protein: 40, fat: 5, carbs: 230 }, meal: 'lunch' as const, createdAt: 0 }));
+  const args = { profile: base, todayW: resolveToday({ date: today(), plan, sessions: [] }), sessions: [], entries, target, weights: [], adjustments: [], plan, checkins: {}, hour: 10 };
+  const tips = localInsights(args);
+  const protein = tips.find((t) => t.key === 'protein_low_days');
+  assert.ok(protein && /белок ниже цели/.test(protein.text));
+  const after = localInsights({ ...args, advice: [{ key: 'protein_low_days', date: today(), text: '', status: 'dismissed', at: 0 }] });
+  assert.ok(!after.some((t) => t.key === 'protein_low_days'), 'сегодня отклонён — не повторяем');
+});
+
+test('Тренер: вопрос о программе — объяснение формата под пользователя', () => {
+  const plan = generatePlan(base);
+  const r = localCoach({ question: 'подходит ли мне мой сплит?', profile: base, target: computeNutritionTarget(base), entries: [], recentProducts: [], todayW: resolveToday({ date: today(), plan, sessions: [] }), insights: [], sessions: [], weights: [], adjustments: [], plan, checkins: {} });
+  assert.equal(r.intent, 'program');
+  assert.match(r.text, /Сейчас:/);
+});
+
+test('Техника: положение, амплитуда, дыхание и стабилизаторы для каждого упражнения', () => {
+  for (const ex of EXERCISES) {
+    const t = techniqueFor(ex);
+    assert.ok(t.setup.length && t.range && t.breathing && t.safety.length, ex.id);
+    assert.ok(!t.stabilizers.some((m) => ex.primary.includes(m) || ex.secondary.includes(m)), `${ex.id}: стабилизатор не дублирует рабочие мышцы`);
+  }
+  assert.ok(techniqueFor(getExercise('back_squat')!).stabilizers.includes('abs'));
+});
+
+test('Источники: у ключевых тем есть проверенные первоисточники', () => {
+  for (const id of ['protein', 'creatine', 'volume', 'sleep', 'vitamin_d']) {
+    assert.ok(KB_SOURCES[id]?.refs?.length, id);
+    for (const r of KB_SOURCES[id].refs!) assert.match(r.url, /^https:\/\//);
+  }
+  assert.ok(Object.keys(KB_SOURCES).every((id) => KB.some((e) => e.id === id)), 'источники привязаны к существующим статьям');
+});
+
+test('Прогресс к цели: целевой вес и честное «нет данных»', () => {
+  const ws: WeightEntry[] = [{ id: 'a', date: addDays(today(), -30), kg: 90, createdAt: 0 }, { id: 'b', date: today(), kg: 88, createdAt: 0 }];
+  const g = goalProgress({ ...base, goal: 'cut', targetWeightKg: 85 }, ws);
+  assert.ok(g.pct !== null && g.pct > 0 && g.pct < 1);
+  assert.match(g.headline, /→ 85,0 кг/);
+  assert.equal(goalProgress(base, []).pct, null);
+});
+
+test('Сложность подхода: «До отказа» считается тяжёлым для прогрессии', () => {
+  const ex = getExercise('bench_press')!;
+  const hist = [{ date: addDays(today(), -3), repMin: 6, repMax: 10, sets: [set(80, 10, { feel: 'max', rir: 0 }), set(80, 10, { feel: 'max', rir: 0 }), set(80, 10, { feel: 'max', rir: 0 })] }];
+  const r = recommend({ exercise: ex, plannedSets: 3, repMin: 6, repMax: 10, targetRir: 2, history: hist });
+  assert.equal(r.action, 'hold', 'до отказа на верхней границе — сначала закрепить вес');
 });

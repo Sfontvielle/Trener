@@ -7,6 +7,7 @@ import { getPrefs } from './engine/prefs';
 import { checkAllowed, pickForSlot, type SlotRole, type SlotSpec } from './engine/scoring';
 import { chooseSplit } from './engine/split';
 import { doneFineVolume, setLimits, weeklyTargets } from './engine/volume';
+import { healthTraining } from '@/features/profile/health';
 import { fineTargets, isSmallMuscle, VM_ACC, VM_LABEL } from './engine/muscles';
 import { orderExercises } from './engine/order';
 import { estimateMinutes } from './engine/time';
@@ -65,7 +66,7 @@ export function generateWorkout(args: {
   const customs = args.customs ?? [];
   const prefs = getPrefs(profile);
   const d = today();
-  const targets = weeklyTargets(profile, prefs, args.plan?.recovery?.factor ?? 1);
+  const targets = weeklyTargets(profile, prefs, (args.plan?.recovery?.factor ?? 1) * healthTraining(profile).volumeFactor);
   const week = doneFineVolume(sessions, addDays(d, -6), d, customs);
   const recent = recentLoad(sessions, customs);
   const limits = setLimits(prefs.setStyle, profile.level);
@@ -164,7 +165,7 @@ export function generateWorkout(args: {
       sets,
       repMin,
       repMax,
-      targetRir: rirFor(slot.role, profile.level) + rirDelta,
+      targetRir: rirFor(slot.role, profile.level, healthTraining(profile).minRir) + rirDelta,
       restSec: args.quick ? Math.min(rest, ex.mechanic === 'compound' ? 90 : 60) : rest,
       slot: `gen.${slot.key}`,
       why,

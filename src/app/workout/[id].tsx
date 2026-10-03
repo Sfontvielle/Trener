@@ -1,41 +1,88 @@
-import React, { useMemo } from 'react';
-import { View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, space } from '@/theme';
+import type { MuscleSlug } from '@/types';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, Divider, EmptyState, Icon, IconButton, Stat, T } from '@/components/ui';
-import { confirm } from '@/components/Dialog';
+import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { Field } from '@/components/inputs';
+import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
+import { useBody } from '@/stores/body';
+import { useHealth } from '@/stores/health';
 import { getExercise } from '@/data/exercises';
 import { sessionVolume } from '@/features/training/analytics';
 import { workoutDebrief } from '@/features/training/debrief';
-import { bestSet, historyFor, isPersonalRecord, workingSets } from '@/features/training/progression';
+import { sessionEnergy } from '@/features/training/energy';
+import { historyFor, workingSets } from '@/features/training/progression';
+import { latestTrendWeight } from '@/features/progress/weightTrend';
+import { Anatomy } from '@/features/exercises/Anatomy';
+import { EnergySheet } from '@/features/training/EnergySheet';
 import { formatDayLong } from '@/utils/date';
 import { fmtNum, fmtWeight } from '@/utils/format';
+import { haptic } from '@/services/haptics';
+import { BRAND } from '@/config/brand';
+
+/** Ответ «Как ощущалась тренировка?» → внутренняя шкала тяжести для адаптации нагрузки */
+const SESSION_FEEL: { label: string; rpe: number }[] = [
+  { label: 'Легко', rpe: 5 },
+  { label: 'Нормально', rpe: 7 },
+  { label: 'Тяжело', rpe: 8.5 },
+  { label: 'Очень тяжело', rpe: 10 },
+];
 
 export default function SessionDetail() {
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
   const sessions = useWorkouts((s) => s.sessions);
+  const customs = useWorkouts((s) => s.customExercises);
   const unit = useProfile((s) => s.settings.weightUnit);
+  const profileW = useProfile((s) => s.profile?.weightKg ?? 75);
+  const sex = useProfile((s) => s.profile?.sex);
+  const weights = useBody((s) => s.weights);
+  const healthDays = useHealth((s) => s.days);
   const s = sessions.find((x) => x.id === id);
+  const [energyOpen, setEnergyOpen] = useState(false);
+  const [note, setNote] = useState(s?.notes ?? '');
 
-  const prs = useMemo(() => {
-    if (!s) return [];
-    const before = sessions.filter((x) => x.id !== s.id && x.startedAt < s.startedAt);
-    const out: string[] = [];
+  const debrief = useMemo(() => (s ? workoutDebrief(s, sessions, customs) : null), [s, sessions, customs]);
+  const bodyW = latestTrendWeight(weights) ?? profileW;
+  // Если часы досинхронизировали тренировку — показываем измеренное, иначе сохранённую оценку
+  const energy = useMemo(() => (s ? sessionEnergy(s, bodyW, healthDays, customs) : null), [s, bodyW, healthDays, customs]);
+  const muscles = useMemo(() => {
+    if (!s) return { primary: [] as MuscleSlug[], secondary: [] as MuscleSlug[] };
+    const w = new Map<MuscleSlug, number>();
+    const sec = new Set<MuscleSlug>();
     for (const we of s.exercises) {
-      const ex = getExercise(we.exerciseId);
-      if (!ex) continue;
-      const hist = historyFor(ex.id, before, 20);
-      const b = bestSet(we.sets);
-      const set = workingSets(we.sets).find((x) => b && x.weight === b.weight && x.reps === b.reps);
-      if (set && isPersonalRecord(ex, set, hist)) out.push(`${ex.name}: ${set.weight ? `${fmtWeight(set.weight, unit)} × ${set.reps}` : `${set.reps} повт.`}`);
+      const ex = getExercise(we.exerciseId, customs);
+      const n = workingSets(we.sets).length;
+      if (!ex || !n) continue;
+      ex.primary.forEach((m) => w.set(m, (w.get(m) ?? 0) + n));
+      ex.secondary.forEach((m) => sec.add(m));
     }
-    return out;
-  }, [s, sessions, unit]);
+    const primary = [...w.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m).slice(0, 5);
+    return { primary, secondary: [...sec].filter((m) => !primary.includes(m)) };
+  }, [s, customs]);
+  const progress = useMemo(() => {
+    if (!s) return [];
+    const before = sessions.filter((x) => x.id !== s.id && x.status === 'completed' && (x.finishedAt ?? x.startedAt) < s.startedAt);
+    return s.exercises
+      .map((we) => {
+        const ex = getExercise(we.exerciseId, customs);
+        const ws = workingSets(we.sets);
+        const prev = historyFor(we.exerciseId, before, 1)[0];
+        if (!ex || !ws.length || !prev) return null;
+        const top = Math.max(...ws.map((x) => x.weight));
+        const prevTop = Math.max(...prev.sets.map((x) => x.weight));
+        const reps = ws.reduce((a, x) => a + x.reps, 0);
+        const prevReps = prev.sets.reduce((a, x) => a + x.reps, 0);
+        const text = top > prevTop ? `+${fmtWeight(top - prevTop, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : top === prevTop && reps > prevReps ? `+${reps - prevReps} повт.` : top < prevTop ? `−${fmtWeight(prevTop - top, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : '=';
+        return { name: ex.name, text, up: text.startsWith('+') };
+      })
+      .filter((x): x is { name: string; text: string; up: boolean } => !!x);
+  }, [s, sessions, customs, unit]);
 
-  if (!s) {
+  if (!s || !debrief || !energy) {
     return (
       <Screen>
         <Header title="Тренировка" />
@@ -44,14 +91,16 @@ export default function SessionDetail() {
     );
   }
   const v = sessionVolume(s);
-  const debrief = workoutDebrief(s, sessions);
   const planned = s.exercises.reduce((a, e) => a + e.plannedSets, 0);
+  const doneEx = s.exercises.filter((we) => workingSets(we.sets).length > 0).length;
+  const lifted = unit === 'lb' ? v.tonnage * 2.20462 : v.tonnage;
+  const feelIdx = s.sessionRpe !== undefined ? SESSION_FEEL.reduce((best, f, i) => (Math.abs(f.rpe - s.sessionRpe!) < Math.abs(SESSION_FEEL[best].rpe - s.sessionRpe!) ? i : best), 0) : -1;
 
   return (
-    <Screen>
+    <Screen keyboard>
       <Header
         title={fresh ? 'Тренировка завершена' : s.name}
-        subtitle={`${formatDayLong(s.date)} · ${s.focus}`}
+        subtitle={`${formatDayLong(s.date)}${s.focus ? ` · ${s.focus}` : ''}`}
         onBack={() => (fresh ? router.replace('/') : router.back())}
         right={
           <IconButton
@@ -61,43 +110,43 @@ export default function SessionDetail() {
           />
         }
       />
-      {fresh ? (
-        <Card tone="accent" style={{ alignItems: 'center', gap: 6, paddingVertical: space.xl }}>
-          <Icon name="trophy" size={40} color={colors.accent} />
-          <T v="h1">Тренировка завершена</T>
-          <T v="small" style={{ textAlign: 'center' }}>
-            {debrief.minutes} мин · {debrief.sets} рабочих подходов{debrief.volumeDeltaPct !== null ? ` · объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}%` : ''}{debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}
+
+      <View style={styles.hero}>
+        <Icon name="trophy" size={34} color={colors.accent} />
+        <T v="h1" style={{ textAlign: 'center' }}>
+          {s.name}
+        </T>
+        <T v="small" style={{ textAlign: 'center' }}>
+          {debrief.prs.length ? `Новых рекордов: ${debrief.prs.length}` : debrief.volumeDeltaPct !== null ? `Объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}% к прошлой такой же` : 'Тренировка записана'}
+        </T>
+      </View>
+
+      <View style={styles.grid}>
+        <Stat label="Время" value={`${v.durationMin}`} unit="мин" />
+        <Stat label="Упражнений" value={`${doneEx}`} unit={`из ${s.exercises.length}`} />
+        <Stat label="Подходов" value={`${v.sets}`} unit={planned ? `из ${planned}` : ''} />
+        <Stat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
+        <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={[styles.stat, { flexGrow: 2 }]}>
+          <T v="caption" style={{ fontSize: 10 }}>
+            Активные калории
           </T>
-        </Card>
-      ) : null}
-      {debrief.lines.length ? (
-        <Card style={{ marginTop: space.md, gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="sparkles" size={16} color={colors.accent} />
-            <T v="caption" color={colors.accent}>
-              FORM Coach
-            </T>
-          </View>
-          {debrief.lines.map((l) => (
-            <T key={l} v="body" color={colors.text}>
-              {l}
-            </T>
-          ))}
-          <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} />
-        </Card>
-      ) : null}
-      <Card style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.md }}>
-        <Stat label="Время" value={String(v.durationMin)} unit="мин" />
-        <Stat label="Подходы" value={`${v.sets}`} sub={planned ? `из ${planned}` : undefined} />
-        <Stat label="Тоннаж" value={fmtNum(unit === 'lb' ? v.tonnage * 2.20462 : v.tonnage)} unit={unit === 'lb' ? 'lb' : 'кг'} />
-        {s.sessionRpe ? <Stat label="RPE" value={String(s.sessionRpe)} /> : null}
-      </Card>
-      {prs.length ? (
+          <T v="num" style={{ fontSize: 22 }}>
+            {energy.source === 'health' ? '' : '≈ '}
+            {energy.kcal}
+            <T v="small"> ккал</T>
+          </T>
+          <T v="small" color={colors.accent} style={{ fontSize: 11, fontWeight: '800' }}>
+            {energy.source === 'health' ? 'Apple Health · как рассчитано?' : 'оценка · как рассчитано?'}
+          </T>
+        </Pressable>
+      </View>
+
+      {debrief.prs.length ? (
         <Card tone="accent" style={{ marginTop: space.md, gap: 6 }}>
           <T v="caption" color={colors.accent}>
-            Личные рекорды
+            Новые личные рекорды
           </T>
-          {prs.map((p) => (
+          {debrief.prs.map((p) => (
             <View key={p} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               <Icon name="trophy-outline" size={16} color={colors.accent} />
               <T v="body">{p}</T>
@@ -105,19 +154,94 @@ export default function SessionDetail() {
           ))}
         </Card>
       ) : null}
+
+      {progress.length ? (
+        <Card style={{ marginTop: space.md, gap: 6 }}>
+          <T v="caption">Относительно прошлого раза</T>
+          {progress.map((p) => (
+            <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <T v="body" style={{ flex: 1, fontSize: 14 }} numberOfLines={1}>
+                {p.name}
+              </T>
+              <T v="body" style={{ fontWeight: '800', fontSize: 14 }} color={p.up ? colors.accent : p.text === '=' ? colors.textDim : colors.warning}>
+                {p.text}
+              </T>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {muscles.primary.length ? (
+        <Card style={{ marginTop: space.md, gap: 8 }}>
+          <T v="caption">Основные мышцы</T>
+          <Anatomy primary={muscles.primary} secondary={muscles.secondary} sex={sex} scale={0.55} />
+        </Card>
+      ) : null}
+
+      {debrief.lines.length ? (
+        <Card style={{ marginTop: space.md, gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="sparkles" size={16} color={colors.accent} />
+            <T v="caption" color={colors.accent}>
+              Тренер {BRAND}
+            </T>
+          </View>
+          {debrief.lines.map((l) => (
+            <T key={l} v="body" color={colors.text}>
+              {l}
+            </T>
+          ))}
+          <Button title="Разобрать с тренером" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} />
+        </Card>
+      ) : null}
+
+      <Card style={{ marginTop: space.md, gap: 10 }}>
+        <T v="caption">Как ощущалась тренировка?</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {SESSION_FEEL.map((f, i) => (
+            <Pressable
+              key={f.label}
+              accessibilityRole="button"
+              accessibilityState={{ selected: feelIdx === i }}
+              onPress={() => {
+                haptic.tap();
+                useWorkouts.getState().updateSession(s.id, { sessionRpe: f.rpe });
+              }}
+              style={[styles.feel, feelIdx === i && { backgroundColor: i === 3 ? colors.warning : colors.accent, borderColor: 'transparent' }]}
+            >
+              <T v="small" style={{ fontWeight: '800', fontSize: 12, textAlign: 'center' }} color={feelIdx === i ? colors.onAccent : colors.text} numberOfLines={1} adjustsFontSizeToFit>
+                {f.label}
+              </T>
+            </Pressable>
+          ))}
+        </View>
+        <T v="small" style={{ fontSize: 11 }}>
+          Необязательно — {BRAND} учтёт это в восстановлении и нагрузке на следующих тренировках.
+        </T>
+        <Field placeholder="Заметка: самочувствие, техника, что заметил" value={note} onChangeText={setNote} multiline maxLength={400} onBlur={() => note.trim() !== (s.notes ?? '') && useWorkouts.getState().updateSession(s.id, { notes: note.trim() || undefined })} />
+      </Card>
+
       <Card style={{ marginTop: space.md, paddingVertical: 6 }}>
         {s.exercises.map((we, i) => {
-          const ex = getExercise(we.exerciseId);
+          const ex = getExercise(we.exerciseId, customs);
           const ws = workingSets(we.sets);
+          const kcal = energy.perExercise[we.exerciseId];
           return (
             <View key={we.id}>
               {i ? <Divider /> : null}
               <View style={{ paddingVertical: 10, gap: 2 }}>
-                <T v="body" style={{ fontWeight: '700' }}>
-                  {ex?.name ?? we.exerciseId}
-                </T>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <T v="body" style={{ fontWeight: '700', flex: 1 }}>
+                    {ex?.name ?? we.exerciseId}
+                  </T>
+                  {kcal ? (
+                    <T v="small" style={{ fontSize: 11 }}>
+                      ≈{kcal} ккал
+                    </T>
+                  ) : null}
+                </View>
                 <T v="small">
-                  {ws.length ? ws.map((x) => `${x.weight ? `${fmtWeight(x.weight, unit)}×` : ''}${x.reps}${x.feel === 'hard' ? '!' : ''}`).join('  ·  ') : 'не выполнено'}
+                  {ws.length ? ws.map((x) => `${x.weight ? `${fmtWeight(x.weight, unit)}×` : ''}${x.reps}${x.feel === 'max' ? '!' : ''}`).join('  ·  ') : 'не выполнено'}
                   {ws.length < we.plannedSets ? `  (план ${we.plannedSets})` : ''}
                 </T>
               </View>
@@ -125,15 +249,41 @@ export default function SessionDetail() {
           );
         })}
       </Card>
-      {s.notes ? (
-        <Card style={{ marginTop: space.md }}>
-          <T v="caption">Заметка</T>
-          <T v="body" style={{ marginTop: 4 }}>
-            {s.notes}
-          </T>
-        </Card>
+      {fresh ? (
+        <Button
+          title="Готово"
+          icon="checkmark"
+          size="lg"
+          onPress={() => {
+            if (note.trim() !== (s.notes ?? '')) useWorkouts.getState().updateSession(s.id, { notes: note.trim() || undefined });
+            toast('Тренировка сохранена');
+            router.replace('/');
+          }}
+          style={{ marginTop: space.lg }}
+        />
       ) : null}
-      {fresh ? <Button title="На главную" size="lg" onPress={() => router.replace('/')} style={{ marginTop: space.lg }} /> : null}
+      <EnergySheet visible={energyOpen} onClose={() => setEnergyOpen(false)} energy={energy} weightKg={bodyW} />
     </Screen>
   );
 }
+
+function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
+  return (
+    <View style={styles.stat}>
+      <T v="caption" style={{ fontSize: 10 }}>
+        {label}
+      </T>
+      <T v="num" style={{ fontSize: 22 }}>
+        {value}
+        {unit ? <T v="small"> {unit}</T> : null}
+      </T>
+    </View>
+  );
+}
+
+const styles = themed({
+  hero: { alignItems: 'center', gap: 4, paddingVertical: space.lg, paddingHorizontal: space.md, borderRadius: radius.xl, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: space.md },
+  stat: { flexGrow: 1, minWidth: '30%', padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  feel: { width: '48%', flexGrow: 1, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+});

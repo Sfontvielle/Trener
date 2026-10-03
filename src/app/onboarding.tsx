@@ -7,14 +7,15 @@ import { Screen } from '@/components/Screen';
 import { Button, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { Bar } from '@/components/charts';
-import { BodySection, FoodSection, GoalPicker, LifestyleSection, TrainingSection, defaultProfile } from '@/features/profile/forms';
+import { BodySection, FoodSection, GoalPicker, HealthSection, LifestyleSection, TrainingSection, defaultProfile } from '@/features/profile/forms';
 import { PlanOverview } from '@/features/profile/PlanSummary';
 import { computeNutritionTarget } from '@/features/nutrition/targets';
 import { generatePlan } from '@/features/training/planGenerator';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { haptic } from '@/services/haptics';
+import { BRAND } from '@/config/brand';
 
-const STEPS = ['Знакомство', 'Тело', 'Цель', 'Тренировки', 'Образ жизни', 'Питание', 'Твой план'];
+const STEPS = ['Знакомство', 'Тело', 'Цель', 'Тренировки', 'Здоровье', 'Образ жизни', 'Питание', 'Твой план'];
 
 export default function Onboarding() {
   const [step, setStep] = useState(0);
@@ -45,10 +46,10 @@ export default function Onboarding() {
       {step === 0 ? (
         <View style={{ gap: space.lg }}>
           <T v="caption" color={colors.accent} style={{ letterSpacing: 2 }}>
-            FORM / PERSONAL COACH
+            {BRAND} / PERSONAL COACH
           </T>
           <T v="display">Тренер, нутрициолог и восстановление — в одном приложении</T>
-          <T v="bodyDim">Ответь на несколько вопросов — FORM рассчитает калории, БЖУ, сплит и нагрузку. Все данные хранятся на твоём телефоне.</T>
+          <T v="bodyDim">Ответь на несколько вопросов — {BRAND} рассчитает калории, БЖУ, сплит и нагрузку. Все данные хранятся на твоём телефоне.</T>
           <Field label="Как тебя зовут?" placeholder="Имя" value={p.name} onChangeText={(t) => set({ name: t })} autoFocus returnKeyType="next" onSubmitEditing={() => canNext && setStep(1)} maxLength={40} />
         </View>
       ) : null}
@@ -68,16 +69,21 @@ export default function Onboarding() {
         </Section>
       ) : null}
       {step === 4 ? (
+        <Section title="Здоровье и особенности" sub={`Необязательно, но важно: ${BRAND} не назначит движения, которые могут навредить, и уберёт из подбора еды аллергены.`}>
+          <HealthSection p={p} set={set} />
+        </Section>
+      ) : null}
+      {step === 5 ? (
         <Section title="Активность вне зала" sub="Шаги и работа сильно влияют на расход калорий.">
           <LifestyleSection p={p} set={set} />
         </Section>
       ) : null}
-      {step === 5 ? (
-        <Section title="Питание" sub="FORM будет подбирать еду из того, что ты любишь.">
+      {step === 6 ? (
+        <Section title="Питание" sub={`${BRAND} будет подбирать еду из того, что ты любишь.`}>
           <FoodSection p={p} set={set} />
         </Section>
       ) : null}
-      {step === 6 && preview ? (
+      {step === 7 && preview ? (
         <Section title={`${p.name.trim()}, вот твой старт`} sub="Рассчитано автоматически. Всё можно изменить позже в профиле.">
           <PlanOverview plan={preview.plan} target={preview.target} />
         </Section>
@@ -87,7 +93,7 @@ export default function Onboarding() {
         {step < STEPS.length - 1 ? (
           <Button title="Далее" size="lg" disabled={!canNext} onPress={() => setStep(step + 1)} />
         ) : (
-          <Button title="Начать с FORM" icon="checkmark" size="lg" onPress={finish} />
+          <Button title={`Начать с ${BRAND}`} icon="checkmark" size="lg" onPress={finish} />
         )}
       </View>
     </Screen>

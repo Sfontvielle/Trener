@@ -1,5 +1,5 @@
-import React, { memo, useMemo } from 'react';
-import { View } from 'react-native';
+import React, { memo, useMemo, useState } from 'react';
+import { Pressable, View } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 import type { BodyPart } from 'react-native-body-highlighter';
 import { bodyFront } from 'react-native-body-highlighter/dist/assets/bodyFront';
@@ -18,15 +18,64 @@ const BACK_ONLY: MuscleSlug[] = ['upper-back', 'lower-back', 'gluteal', 'hamstri
  * Анатомическая карта: фигура спереди и сзади.
  * Основные мышцы — ярко-зелёные, вспомогательные — оранжевые, остальные — тёмно-серые.
  */
-export const Anatomy = memo(function Anatomy({ primary, secondary, sex = 'male', scale = 0.62, showLegend = true }: { primary: MuscleSlug[]; secondary: MuscleSlug[]; sex?: Sex; scale?: number; showLegend?: boolean }) {
+export const Anatomy = memo(function Anatomy({
+  primary,
+  secondary,
+  stabilizers = [],
+  sex = 'male',
+  scale = 0.62,
+  showLegend = true,
+  large = false,
+}: {
+  primary: MuscleSlug[];
+  secondary: MuscleSlug[];
+  stabilizers?: MuscleSlug[];
+  sex?: Sex;
+  scale?: number;
+  showLegend?: boolean;
+  /** Крупный план одной стороны с переключателем «Спереди / Сзади» */
+  large?: boolean;
+}) {
   const fillOf = useMemo(() => {
     const m = new Map<string, string>();
+    stabilizers.forEach((s) => m.set(s, colors.stabilizerMuscle));
     secondary.forEach((s) => m.set(s, colors.secondaryMuscle));
     primary.forEach((s) => m.set(s, colors.accent));
     return m;
-  }, [primary, secondary]);
+  }, [primary, secondary, stabilizers]);
+  // Какая сторона показывает основные мышцы — её открываем первой
+  const primaryFront = primary.some((m) => !BACK_ONLY.includes(m));
+  const primaryBack = primary.some((m) => !FRONT_ONLY.includes(m));
+  const [side, setSide] = useState<'front' | 'back'>(primaryFront || !primaryBack ? 'front' : 'back');
   const hasFront = [...primary, ...secondary].some((m) => !BACK_ONLY.includes(m));
   const hasBack = [...primary, ...secondary].some((m) => !FRONT_ONLY.includes(m));
+  const legend = showLegend ? (
+    <View style={{ gap: 8, marginTop: 12 }}>
+      <LegendRow color={colors.accent} title="Основные" items={primary.map((m) => MUSCLE_LABEL[m])} />
+      {secondary.filter((s) => !primary.includes(s)).length ? <LegendRow color={colors.secondaryMuscle} title="Вспомогательные" items={secondary.filter((s) => !primary.includes(s)).map((m) => MUSCLE_LABEL[m])} /> : null}
+      {stabilizers.length ? <LegendRow color={colors.stabilizerMuscle} title="Стабилизаторы" items={stabilizers.map((m) => MUSCLE_LABEL[m])} /> : null}
+    </View>
+  ) : null;
+  if (large) {
+    return (
+      <View>
+        <View style={[styles.row, { flexDirection: 'column', alignItems: 'center', paddingVertical: 14 }]}>
+          <Figure side={side} sex={sex} scale={1.15} fillOf={fillOf} />
+          <View style={styles.toggle}>
+            {(['front', 'back'] as const).map((sd) => (
+              <Pressable key={sd} accessibilityRole="button" accessibilityState={{ selected: side === sd }} onPress={() => setSide(sd)} style={[styles.toggleItem, side === sd && { backgroundColor: colors.accent }]}>
+                <T v="small" color={side === sd ? colors.onAccent : colors.textDim} style={{ fontWeight: '800' }}>
+                  {sd === 'front' ? 'Спереди' : 'Сзади'}
+                  {(sd === 'front' ? hasFront : hasBack) ? ' •' : ''}
+                </T>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        {legend}
+      </View>
+    );
+  }
   return (
     <View>
       <View style={styles.row}>
@@ -43,12 +92,7 @@ export const Anatomy = memo(function Anatomy({ primary, secondary, sex = 'male',
           </T>
         </View>
       </View>
-      {showLegend ? (
-        <View style={{ gap: 8, marginTop: 12 }}>
-          <LegendRow color={colors.accent} title="Основные" items={primary.map((m) => MUSCLE_LABEL[m])} />
-          {secondary.length ? <LegendRow color={colors.secondaryMuscle} title="Вспомогательные" items={secondary.filter((s) => !primary.includes(s)).map((m) => MUSCLE_LABEL[m])} /> : null}
-        </View>
-      ) : null}
+      {legend}
     </View>
   );
 });
@@ -93,4 +137,6 @@ const styles = themed({
   row: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.surface2, borderRadius: radius.lg, paddingVertical: 12 },
   side: { alignItems: 'center' },
   label: { marginTop: 4, color: colors.textDim },
+  toggle: { flexDirection: 'row', gap: 4, padding: 3, borderRadius: radius.pill, backgroundColor: colors.surface3, marginTop: 10 },
+  toggleItem: { paddingHorizontal: 16, height: 32, borderRadius: radius.pill, justifyContent: 'center' },
 });

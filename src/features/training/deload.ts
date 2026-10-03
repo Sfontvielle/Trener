@@ -70,7 +70,7 @@ export function checkDeload(args: {
   const last5 = [...done].sort((a, b) => b.startedAt - a.startedAt).slice(0, 5);
   const hardRpe = last5.filter((s) => (s.sessionRpe ?? 0) >= 9).length;
   const sets5 = last5.flatMap((s) => s.exercises.flatMap((we) => we.sets.filter((x) => x.done && !x.warmup)));
-  const grind = sets5.length >= 20 && sets5.filter((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0)).length / sets5.length >= 0.5;
+  const grind = sets5.length >= 20 && sets5.filter((x) => x.feel === 'hard' || x.feel === 'max' || (x.rir !== undefined && x.rir <= 0)).length / sets5.length >= 0.5;
   const strained = hardRpe >= 3 || grind;
 
   const reasons: string[] = [];

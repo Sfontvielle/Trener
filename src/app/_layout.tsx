@@ -9,12 +9,13 @@ import { useHydrated } from '@/stores/hydration';
 import { useProfile } from '@/stores/profile';
 import { DialogHost, useDialog } from '@/components/Dialog';
 import { ErrorBoundaryView } from '@/components/ErrorBoundaryView';
-import { configureNotifications, syncReminders } from '@/services/notifications';
+import { configureNotifications, onNotificationOpen, syncReminders } from '@/services/notifications';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useThemeKey } from '@/hooks/useThemeKey';
 import { consumePendingNavState } from '@/features/settings/themeNav';
 import { maybeAutoSync } from '@/features/health/sync';
+import { maybeAutoBackup } from '@/services/backup';
 
 export { ErrorBoundaryView as ErrorBoundary };
 
@@ -31,7 +32,7 @@ function Gate() {
   const plan = usePlan((s) => s.plan);
 
   // Напоминания всегда соответствуют текущему плану (смена расписания → перепланирование)
-  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, plan?.schedule, plan?.templates.map((t) => t.name)]);
+  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, settings.weeklyReview, plan?.schedule, plan?.templates.map((t) => t.name)]);
   const hasProfile = !!profile;
   useEffect(() => {
     if (hydrated && hasProfile) void syncReminders(useProfile.getState().settings, usePlan.getState().plan);
@@ -62,10 +63,17 @@ function Gate() {
     restore();
   }, [hydrated, nav]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    return onNotificationOpen((url) => router.push(url as never));
+  }, [hydrated]);
+
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)
   useEffect(() => {
     if (!hydrated) return;
     maybeAutoSync();
+    // Тихая автокопия данных (раз в несколько дней) — пользователю ничего не нужно делать
+    setTimeout(() => maybeAutoBackup(), 4000);
     const sub = AppState.addEventListener('change', (st) => st === 'active' && maybeAutoSync());
     return () => sub.remove();
   }, [hydrated]);
@@ -107,6 +115,8 @@ function Gate() {
       <Stack.Screen name="food/add" options={{ presentation: 'modal' }} />
       <Stack.Screen name="food/scan" options={{ presentation: 'fullScreenModal' }} />
       <Stack.Screen name="workout/active" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="weekly-review" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="measurements" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

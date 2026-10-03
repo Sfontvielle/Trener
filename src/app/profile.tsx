@@ -7,23 +7,20 @@ import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
-import { confirm, toast } from '@/components/Dialog';
+import { toast } from '@/components/Dialog';
 import { useProfile } from '@/stores/profile';
 import { useCoach } from '@/stores/coach';
 import { useHealth } from '@/stores/health';
-import { resetAllStores } from '@/stores/hydration';
-import { clearAllData } from '@/storage/persist';
 import { applyProfile } from '@/features/profile/applyProfile';
-import { BodySection, FoodSection, GoalPicker, LifestyleSection, TrainingSection } from '@/features/profile/forms';
+import { BodySection, FoodSection, GoalPicker, HealthSection, LifestyleSection, TrainingSection } from '@/features/profile/forms';
+import { hasHealthInfo, healthOf, healthTraining } from '@/features/profile/health';
 import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
-import { seedDemoData } from '@/features/profile/demo';
-import { coachBaseUrl } from '@/services/coachApi';
 import { ensurePermission } from '@/services/notifications';
-import { backupStats, exportBackup, pickBackup, restoreBackup } from '@/services/backup';
 import { relativeDay, toISODate } from '@/utils/date';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
+import { BRAND } from '@/config/brand';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -34,12 +31,23 @@ function prefsSummary(p: UserProfile): string {
   return parts.join(' · ');
 }
 
+function healthLine(p: UserProfile): string {
+  const h = healthOf(p);
+  if (!hasHealthInfo(h)) return 'Травмы, ограничения, аллергии — не указаны';
+  const r = healthTraining(p);
+  const parts: string[] = [];
+  if (r.limitations.length) parts.push(`ограничений движений: ${r.limitations.length}`);
+  if (h.allergies.length + h.intolerances.length) parts.push(`аллергии/непереносимости: ${h.allergies.length + h.intolerances.length}`);
+  if (r.minRir >= 2) parts.push('без отказа');
+  return parts.join(' · ') || 'Учтено в плане и питании';
+}
+
 const MORNING_TIMES = [[6, 30], [7, 0], [7, 30], [8, 0], [9, 0]] as const;
 const TRAINING_TIMES = [[7, 0], [12, 0], [17, 0], [18, 0], [19, 0]] as const;
 const hm = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`;
 
-type Section = 'goal' | 'body' | 'training' | 'life' | 'food' | null;
-const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', life: 'Активность', food: 'Питание и предпочтения' };
+type Section = 'goal' | 'body' | 'training' | 'health' | 'life' | 'food' | null;
+const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', health: 'Здоровье и особенности', life: 'Активность', food: 'Питание и предпочтения' };
 
 export default function Profile() {
   const profile = useProfile((s) => s.profile);
@@ -51,47 +59,17 @@ export default function Profile() {
   const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
   const [section, setSection] = useState<Section>(null);
   const [draft, setDraft] = useState<UserProfile | null>(null);
-  const [url, setUrl] = useState(settings.coachApiUrl);
-  const [ping, setPing] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
-  const [backupBusy, setBackupBusy] = useState(false);
 
-  const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify', v: boolean) => {
+  const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify' | 'weeklyReview', v: boolean) => {
     if (v && Platform.OS !== 'web') {
       const ok = await ensurePermission();
       setNotifDenied(!ok);
       if (!ok) return;
     }
     updateSettings({ [key]: v });
-  };
-
-  const doExport = async () => {
-    setBackupBusy(true);
-    try {
-      const r = await exportBackup();
-      updateSettings({ lastBackupAt: Date.now() });
-      toast(r === 'downloaded' ? 'Файл копии скачан' : 'Копия готова — сохрани в «Файлы» или iCloud');
-    } catch (e: any) {
-      toast(e?.message ?? 'Не удалось создать копию', 'alert-circle');
-    } finally {
-      setBackupBusy(false);
-    }
-  };
-
-  const doImport = async () => {
-    try {
-      const b = await pickBackup();
-      if (!b) return;
-      confirm('Восстановить из копии?', `${backupStats(b)}, от ${b.exportedAt.slice(0, 10)}. Текущие данные на этом устройстве будут заменены.`, 'Восстановить', () => {
-        restoreBackup(b);
-        toast('Данные восстановлены');
-        router.replace('/');
-      }, true);
-    } catch (e: any) {
-      toast(e?.message ?? 'Не удалось прочитать файл', 'alert-circle');
-    }
   };
 
   if (!profile) return null;
@@ -106,22 +84,6 @@ export default function Profile() {
     toast(r.planRebuilt ? 'План тренировок и питание пересчитаны' : r.targetChanged ? 'КБЖУ пересчитаны' : 'Сохранено');
   };
   const set = (patch: Partial<UserProfile>) => setDraft((d) => (d ? { ...d, ...patch } : d));
-
-  const testServer = async () => {
-    updateSettings({ coachApiUrl: url.trim() });
-    const base = (url.trim() || coachBaseUrl()).replace(/\/+$/, '');
-    if (!base) return setPing('fail');
-    setPing('busy');
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(`${base}/health`, { signal: ctrl.signal });
-      clearTimeout(t);
-      setPing(r.ok ? 'ok' : 'fail');
-    } catch {
-      setPing('fail');
-    }
-  };
 
   return (
     <Screen keyboard>
@@ -150,6 +112,8 @@ export default function Profile() {
         <Divider />
         <Row label="Тренировки" value={`${profile.daysPerWeek}×/нед · ${profile.sessionMinutes} мин · ${profile.location === 'gym' ? 'зал' : 'дом'}`} onPress={() => open('training')} />
         <Divider />
+        <Row label="Здоровье и особенности" value={healthLine(profile)} onPress={() => open('health')} />
+        <Divider />
         <Row label="Предпочтения и ограничения" value={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
         <Divider />
         <Row label="Активность" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа`} onPress={() => open('life')} />
@@ -163,6 +127,8 @@ export default function Profile() {
         <Row label="Оформление" value={`${settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Системная' : 'Тёмная'} тема`} onPress={() => router.push('/appearance')} />
         <Divider />
         <Row label="Apple Health" value={healthSummary} onPress={() => router.push('/health')} />
+        <Divider />
+        <Row label="Данные и конфиденциальность" value={settings.lastBackupAt ? `Всё на устройстве · копия ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Всё хранится на устройстве · экспорт и перенос'} onPress={() => router.push('/data')} />
       </Card>
       <Card style={{ gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52 }}>
@@ -182,7 +148,7 @@ export default function Profile() {
       <SectionTitle title="Напоминания" />
       <Card style={{ gap: 6 }}>
         {Platform.OS === 'web' ? <Banner text="Уведомления работают на iPhone (в web-превью недоступны)." /> : null}
-        {notifDenied ? <Banner tone="warning" icon="notifications-off-outline" text="Уведомления запрещены. Разреши их в Настройках iPhone → FORM." /> : null}
+        {notifDenied ? <Banner tone="warning" icon="notifications-off-outline" text={`Уведомления запрещены. Разреши их в Настройках iPhone → ${BRAND}.`} /> : null}
         <Toggle value={settings.restNotify} onChange={(v) => toggleReminder('restNotify', v)} label="Конец отдыха" sub="Уведомление, если приложение свёрнуто во время отдыха" />
         <Toggle value={settings.morningReminder} onChange={(v) => toggleReminder('morningReminder', v)} label="Утренний чек-ин" sub="Каждый день: самочувствие + вес" />
         {settings.morningReminder ? (
@@ -192,6 +158,7 @@ export default function Profile() {
             ))}
           </View>
         ) : null}
+        <Toggle value={!!settings.weeklyReview} onChange={(v) => toggleReminder('weeklyReview', v)} label="Отчёт недели" sub="По понедельникам: итоги и что изменить" />
         <Toggle value={settings.trainingReminder} onChange={(v) => toggleReminder('trainingReminder', v)} label="Тренировка по плану" sub="Только в дни тренировок, следует за расписанием" />
         {settings.trainingReminder ? (
           <View style={styles.times}>
@@ -202,15 +169,7 @@ export default function Profile() {
         ) : null}
       </Card>
 
-      <SectionTitle title="Внешний сервер тренера · необязательно" />
-      <Card style={{ gap: 10 }}>
-        <Field label="Адрес сервера" placeholder="https://… или http://192.168.1.10:8787" value={url} onChangeText={(t) => { setUrl(t); setPing('idle'); }} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="Тренер FORM уже работает на устройстве без настройки. Сервер (папка server/) нужен только для свободных ответов большой модели." />
-        <Button title="Сохранить и проверить" size="sm" variant="secondary" loading={ping === 'busy'} onPress={testServer} />
-        {ping === 'ok' ? <Banner tone="accent" icon="checkmark-circle" text="Сервер отвечает — внешний тренер подключён." /> : null}
-        {ping === 'fail' ? <Banner tone="warning" icon="alert-circle" text="Сервер не отвечает. Проверь адрес, что сервер запущен и телефон в той же сети." /> : null}
-      </Card>
-
-      <SectionTitle title={`Что FORM знает обо мне · ${memory.length}`} />
+      <SectionTitle title={`Что ${BRAND} знает обо мне · ${memory.length}`} />
       <Card style={{ gap: 8 }}>
         {memory.length === 0 ? <T v="small">Тренер запоминает устойчивые факты: что ты не любишь, как реагируют суставы, когда удобно тренироваться.</T> : null}
         {memory.map((m) =>
@@ -242,43 +201,15 @@ export default function Profile() {
         </View>
       </Card>
 
-      <SectionTitle title="Данные на устройстве" />
-      <Card style={{ gap: 10 }}>
-        <T v="small">Все данные хранятся локально на iPhone. На внешний сервер (если подключён) уходит только сводка, нужная для ответа.</T>
-        <T v="small" color={settings.lastBackupAt ? colors.textDim : colors.warning}>
-          {settings.lastBackupAt ? `Последняя копия: ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Резервной копии ещё нет — при потере телефона история пропадёт.'}
-        </T>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button title="Сохранить копию" icon="cloud-upload-outline" size="sm" loading={backupBusy} onPress={doExport} style={{ flex: 1 }} />
-          <Button title="Восстановить" icon="cloud-download-outline" size="sm" variant="secondary" onPress={doImport} style={{ flex: 1 }} />
-        </View>
-        <Button
-          title="Заполнить демо-историей (для проверки)"
-          size="sm"
-          variant="outline"
-          onPress={() => confirm('Добавить демо-данные?', 'Будут добавлены ВЫМЫШЛЕННЫЕ 4 недели тренировок, веса, чек-инов и питания — чтобы посмотреть, как работает Прогресс. Реальные данные не удаляются, но смешаются с демо.', 'Добавить демо', () => { seedDemoData(); toast('Демо-данные добавлены'); })}
-        />
-        <Button
-          title="Удалить все данные"
-          size="sm"
-          variant="danger"
-          onPress={() =>
-            confirm('Удалить все данные?', 'Профиль, план, тренировки, питание и память тренера будут удалены без возможности восстановления.', 'Удалить всё', async () => {
-              await resetAllStores();
-              await clearAllData();
-              router.replace('/onboarding');
-            }, true)
-          }
-        />
-      </Card>
       <T v="small" style={{ textAlign: 'center', marginTop: space.lg, fontSize: 12 }}>
-        FORM — фитнес-помощник и не ставит медицинских диагнозов.
+        {BRAND} — фитнес-помощник и не ставит медицинских диагнозов.
       </T>
 
       <Sheet visible={!!section} onClose={() => setSection(null)} title={section ? TITLES[section] : ''} footer={<Button title="Сохранить и пересчитать" icon="checkmark" size="lg" onPress={save} />}>
         {draft && section === 'goal' ? <GoalPicker p={draft} set={set} /> : null}
         {draft && section === 'body' ? <BodySection p={draft} set={set} /> : null}
         {draft && section === 'training' ? <TrainingSection p={draft} set={set} /> : null}
+        {draft && section === 'health' ? <HealthSection p={draft} set={set} /> : null}
         {draft && section === 'life' ? <LifestyleSection p={draft} set={set} /> : null}
         {draft && section === 'food' ? (
           <View style={{ gap: space.md }}>

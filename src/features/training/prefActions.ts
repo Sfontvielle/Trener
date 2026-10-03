@@ -1,4 +1,7 @@
-import type { BodyArea } from '@/types';
+import type { BodyArea, Exercise } from '@/types';
+import { useDialog } from '@/components/Dialog';
+import { checkAllowed } from './engine/scoring';
+import { substitutesFor } from './engine/substitute';
 import { useProfile } from '@/stores/profile';
 import { useCoach } from '@/stores/coach';
 import { applyProfile } from '@/features/profile/applyProfile';
@@ -65,4 +68,28 @@ export function prefDiscomfort(id: string, area?: BodyArea, note?: string): stri
   applyProfile(markDiscomfort(p, id, area, note));
   useCoach.getState().addMemory(`${today()}: дискомфорт${area ? ` (${AREA_LABEL[area].toLowerCase()})` : ''} в упражнении «${nameOf(id)}»${note ? ` — ${note}` : ''}`, 'injury', 'user');
   return 'Упражнение исключено из автоподбора';
+}
+
+/**
+ * Ручной выбор упражнения (конструктор, добавление/замена в тренировке, «Тренировать сейчас»).
+ * Если оно конфликтует с ограничением из профиля — не добавляем молча: объясняем причину и
+ * предлагаем безопасную альтернативу. Пользователь может осознанно оставить своё.
+ */
+export function guardExercise(ex: Exercise, apply: (e: Exercise) => void, customs: Exercise[] = []) {
+  const p = profile();
+  if (!p) return apply(ex);
+  const prefs = getPrefs(p);
+  const r = checkAllowed(ex, p, prefs);
+  // Нет оборудования / «не предлагать» — это выбор пользователя, а не риск: не мешаем
+  if (r.ok || r.reason === 'нет оборудования' || r.reason === 'в списке «Не предлагать»') return apply(ex);
+  const alt = substitutesFor(ex.id, p, prefs, customs, 1)[0];
+  const buttons: { text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }[] = [];
+  if (alt) buttons.push({ text: `Взять «${alt.name}»`, onPress: () => apply(alt) });
+  buttons.push({ text: 'Всё равно добавить', style: 'destructive', onPress: () => apply(ex) });
+  buttons.push({ text: 'Отмена', style: 'cancel' });
+  useDialog.getState().show(
+    `«${ex.name}» конфликтует с ограничением`,
+    `${r.reason[0].toUpperCase()}${r.reason.slice(1)}.${alt ? ` Безопаснее для этой же мышцы — «${alt.name}».` : ''} Если упражнение вызывает боль — не выполняй его; при сохраняющейся боли обратись к врачу или физиотерапевту.`,
+    buttons,
+  );
 }

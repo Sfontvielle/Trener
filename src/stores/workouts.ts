@@ -39,6 +39,7 @@ interface WorkoutState {
   finish: (patch: Partial<WorkoutSession>) => WorkoutSession | null;
   discard: () => void;
   deleteSession: (id: string) => void;
+  updateSession: (id: string, patch: Partial<WorkoutSession>) => void;
   startRest: (duration: number, label: string) => void;
   adjustRest: (deltaSec: number) => void;
   stopRest: () => void;
@@ -106,6 +107,7 @@ export const useWorkouts = create<WorkoutState>()(
         void cancelRestEnd();
       },
       deleteSession: (id) => set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) })),
+      updateSession: (id, patch) => set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)) })),
       startRest: (duration, label) => {
         const now = Date.now();
         set({ rest: { startedAt: now, endsAt: now + duration * 1000, duration, label } });

@@ -10,6 +10,8 @@ import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
 import { useNutrition, mealForHour, MEAL_LABEL } from '@/stores/nutrition';
 import { usePlan } from '@/stores/plan';
+import { useProfile } from '@/stores/profile';
+import { allergenIn, foodAvoidance, healthOf } from '@/features/profile/health';
 import { searchLocalFoods, LOCAL_FOODS } from '@/data/foods';
 import { foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
 import { macrosFor, remaining, sumMacros } from '@/features/nutrition/status';
@@ -18,15 +20,18 @@ import { today } from '@/utils/date';
 import { parseDecimal } from '@/utils/format';
 import { uid } from '@/utils/id';
 import { haptic } from '@/services/haptics';
+import { BRAND } from '@/config/brand';
 
-type FoodTab = 'frequent' | 'recent' | 'mine' | 'base';
+type FoodTab = 'fav' | 'frequent' | 'recent' | 'mine' | 'base';
 const TABS: { key: FoodTab; label: string }[] = [
+  { key: 'fav', label: '★' },
   { key: 'frequent', label: 'Частые' },
   { key: 'recent', label: 'Недавние' },
   { key: 'mine', label: 'Мои' },
   { key: 'base', label: 'Базовые' },
 ];
 const TAB_HINT: Record<FoodTab, string> = {
+  fav: 'Избранное — звёздочка в карточке продукта',
   frequent: 'Ешь регулярно — порция как в прошлый раз',
   recent: 'Недавние',
   mine: 'Мои продукты и блюда',
@@ -34,7 +39,7 @@ const TAB_HINT: Record<FoodTab, string> = {
 };
 
 export default function AddFood() {
-  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot; manual?: string; barcode?: string }>();
+  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string }>();
   const date = params.date || today();
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
@@ -59,8 +64,10 @@ export default function AddFood() {
   // Частые продукты определяются автоматически по дневнику (2+ раза за 3 недели)
   const frequent = useMemo(() => frequentProducts(entries, products, lastGrams, date, 30).map((f) => f.product), [entries, products, lastGrams, date]);
   const mine = useMemo(() => Object.values(products).filter((p) => p.source === 'custom'), [products]);
+  const favIds = useNutrition((s) => s.favorites);
+  const favs = useMemo(() => favIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [favIds, products]);
   const [tabPick, setTab] = useState<FoodTab | null>(null);
-  const tab: FoodTab = tabPick ?? (frequent.length ? 'frequent' : recent.length ? 'recent' : 'base');
+  const tab: FoodTab = tabPick ?? (favs.length ? 'fav' : frequent.length ? 'frequent' : recent.length ? 'recent' : 'base');
 
   const query = q.trim();
   const online = query.length >= 3;
@@ -85,7 +92,7 @@ export default function AddFood() {
 
   const sections: { key: string; title: string; data: FoodProduct[] }[] = [];
   if (q.trim().length < 2) {
-    const data = tab === 'frequent' ? frequent : tab === 'recent' ? recent.slice(0, 30) : tab === 'mine' ? mine : LOCAL_FOODS.slice(0, 40);
+    const data = tab === 'fav' ? favs : tab === 'frequent' ? frequent : tab === 'recent' ? recent.slice(0, 30) : tab === 'mine' ? mine : LOCAL_FOODS.slice(0, 40);
     sections.push({ key: tab, title: TAB_HINT[tab], data });
   } else {
     const seen = new Set<string>();
@@ -106,7 +113,7 @@ export default function AddFood() {
       <Header title="Добавить еду" subtitle={date === today() ? 'Сегодня' : date} />
       <View style={styles.search}>
         <Icon name="search" size={18} color={colors.muted} />
-        <TextInput value={q} onChangeText={setQ} placeholder="Название, бренд или штрихкод" placeholderTextColor={colors.muted} style={styles.input} autoFocus={Platform.OS !== 'web'} returnKeyType="search" selectionColor={colors.accent} clearButtonMode="while-editing" />
+        <TextInput value={q} onChangeText={setQ} placeholder="Название, бренд или штрихкод" placeholderTextColor={colors.muted} style={styles.input} autoFocus={Platform.OS !== 'web' && !params.productId && params.manual !== '1'} returnKeyType="search" selectionColor={colors.accent} clearButtonMode="while-editing" />
         {q ? (
           <Pressable onPress={() => setQ('')} hitSlop={10} accessibilityLabel="Очистить">
             <Icon name="close-circle" size={18} color={colors.muted} />
@@ -114,7 +121,7 @@ export default function AddFood() {
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-        <Button title="Штрихкод" icon="barcode-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => (Platform.OS === 'web' ? setBarcodeOpen(true) : router.push({ pathname: '/food/scan', params: { date } }))} />
+        <Button title="Штрихкод" icon="barcode-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => (Platform.OS === 'web' ? setBarcodeOpen(true) : router.push({ pathname: '/food/scan', params: { date, meal: params.meal ?? '' } }))} />
         <Button title="Свой продукт" icon="create-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => setCustomOpen(true)} />
       </View>
       {q.trim().length < 2 ? <Segmented items={TABS} value={tab} onChange={setTab} style={{ marginTop: 10 }} /> : null}
@@ -144,7 +151,7 @@ export default function AddFood() {
           q.trim().length < 2 && !sections[0]?.data.length ? (
             <View style={{ alignItems: 'center', gap: 8, marginTop: 20 }}>
               <T v="small" style={{ textAlign: 'center' }}>
-                {tab === 'frequent' ? 'Здесь появятся продукты, которые ты ешь чаще всего — FORM запомнит их сам.' : tab === 'mine' ? 'Добавь свой продукт или блюдо с КБЖУ на 100 г — оно будет здесь.' : 'Пока пусто.'}
+                {tab === 'frequent' ? `Здесь появятся продукты, которые ты ешь чаще всего — ${BRAND} запомнит их сам.` : tab === 'mine' ? 'Добавь свой продукт или блюдо с КБЖУ на 100 г — оно будет здесь.' : 'Пока пусто.'}
               </T>
               {tab === 'mine' ? <Button title="Свой продукт" size="sm" variant="secondary" onPress={() => setCustomOpen(true)} /> : null}
             </View>
@@ -165,7 +172,7 @@ export default function AddFood() {
           ) : null
         }
       />
-      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
+      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal || undefined} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
       <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); setTimeout(() => setSelected(p), 250); }} />
       <CustomProductSheet visible={customOpen} initialName={q} barcode={params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); setTimeout(() => setSelected(p), 250); }} />
     </Screen>
@@ -199,15 +206,22 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
   const lastGrams = useNutrition((s) => s.lastGrams);
   const entries = useNutrition((s) => s.entries);
   const target = usePlan((s) => s.target);
+  const profile = useProfile((s) => s.profile);
   const [g, setG] = useState(() => (product ? lastGrams[product.id] ?? product.serving?.grams ?? 100 : 100));
   const [meal, setMeal] = useState<MealSlot>(() => initialMeal ?? mealForHour(new Date().getHours()));
   if (!product) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
   const m = macrosFor(product.per100, g);
   const rem = target ? remaining(target, sumMacros(entries.filter((e) => e.date === date))) : null;
   const presets = [...new Set([product.serving?.grams, 50, 100, 150, 200, 250, 350].filter((x): x is number => !!x && x > 0))].slice(0, 7);
+  const avoid = profile ? foodAvoidance(profile) : null;
+  const allergen = avoid ? allergenIn(`${product.name} ${product.brand ?? ''}`, avoid.allergyWords) : undefined;
+  const forbidden = !allergen && profile ? allergenIn(product.name, healthOf(profile).forbiddenFoods) : undefined;
   return (
     <Sheet visible={!!product} onClose={onClose} title={product.name} subtitle={product.brand ?? (product.source === 'local' ? 'Базовый продукт' : product.source === 'custom' ? 'Свой продукт' : 'Open Food Facts')}>
       <View style={{ gap: space.md }}>
+        <FavStar id={product.id} />
+        {allergen ? <Banner tone="danger" icon="warning-outline" text={`В профиле указано: «${allergen}». Проверь состав на упаковке — название может не отражать все ингредиенты.`} /> : null}
+        {forbidden ? <Banner tone="warning" icon="ban-outline" text={`«${forbidden}» в списке запрещённых продуктов профиля.`} /> : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {presets.map((x) => (
             <Chip key={x} label={product.serving && x === product.serving.grams ? `${product.serving.label} · ${x} г` : `${x} г`} active={g === x} onPress={() => setG(x)} />
@@ -238,6 +252,18 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
         />
       </View>
     </Sheet>
+  );
+}
+
+function FavStar({ id }: { id: string }) {
+  const fav = useNutrition((s) => s.favorites.includes(id));
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={fav ? 'Убрать из избранного' : 'В избранное'} onPress={() => { haptic.tap(); useNutrition.getState().toggleFavorite(id); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }} hitSlop={8}>
+      <Icon name={fav ? 'star' : 'star-outline'} size={18} color={fav ? colors.fat : colors.textDim} />
+      <T v="small" style={{ fontWeight: '700' }} color={fav ? colors.text : colors.textDim}>
+        {fav ? 'В избранном' : 'В избранное'}
+      </T>
+    </Pressable>
   );
 }
 

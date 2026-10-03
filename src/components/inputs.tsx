@@ -4,8 +4,10 @@ import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from './ui';
 import { haptic } from '@/services/haptics';
 import { parseDecimal } from '@/utils/format';
+import { useEnsureVisible } from './keyboard';
 
 export function Field({ label, hint, error, style, ...rest }: TextInputProps & { label?: string; hint?: string; error?: string; style?: StyleProp<ViewStyle> }) {
+  const ensure = useEnsureVisible();
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <T v="caption">{label}</T> : null}
@@ -14,7 +16,16 @@ export function Field({ label, hint, error, style, ...rest }: TextInputProps & {
         selectionColor={colors.accent}
         accessibilityLabel={label ?? rest.placeholder}
         {...rest}
-        style={[styles.input, !!error && { borderColor: colors.danger }, rest.multiline && { height: 88, paddingTop: 12, textAlignVertical: 'top' }]}
+        onFocus={(e) => {
+          rest.onFocus?.(e);
+          ensure();
+        }}
+        // Многострочное поле растёт вместе с текстом — и остаётся над клавиатурой
+        onContentSizeChange={(e) => {
+          rest.onContentSizeChange?.(e);
+          if (rest.multiline) ensure();
+        }}
+        style={[styles.input, !!error && { borderColor: colors.danger }, rest.multiline && { minHeight: 88, height: undefined, maxHeight: 180, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' }]}
       />
       {error ? (
         <T v="small" color={colors.danger}>
@@ -59,6 +70,7 @@ export function NumberStepper({
   const fmt = (v: number) => (Number.isFinite(v) ? (decimals ? String(Math.round(v * 10 ** decimals) / 10 ** decimals).replace('.', ',') : String(Math.round(v))) : '');
   const [text, setText] = useState(fmt(value));
   const [focused, setFocused] = useState(false);
+  const ensure = useEnsureVisible();
   // Внешнее изменение значения (±, пресеты) обновляет текст, если поле не редактируется
   const [prevValue, setPrevValue] = useState(value);
   if (value !== prevValue) {
@@ -86,7 +98,10 @@ export function NumberStepper({
               const n = parseDecimal(t);
               if (Number.isFinite(n)) onChange(clamp(n));
             }}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+              setFocused(true);
+              ensure();
+            }}
             onBlur={() => {
               setFocused(false);
               setText(fmt(value));

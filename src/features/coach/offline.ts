@@ -10,6 +10,7 @@ import { suggestMeals } from '@/features/nutrition/suggest';
 import type { LocalInsight } from './insights';
 import { uid } from '@/utils/id';
 import { today } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 /**
  * Офлайн-ответ: когда AI недоступен, FORM всё равно отвечает по своим расчётам.
@@ -56,7 +57,7 @@ export function offlineAnswer(args: {
       lines.push(`«${ex.name}» → «${sub.name}».`);
       actions.push({ id: uid('act_'), type: 'replace_exercise', label: `Заменить на ${sub.name}`.slice(0, 40), params: { exerciseId: ex.id, toExerciseId: sub.id, scope: 'today', reason: area ? `Меньше нагрузки на ${AREA_LABEL[area].toLowerCase()}` : 'Та же мышца и движение' } });
     }
-    if (area) lines.push('Если дискомфорт повторяется — отметь его в тренировке (••• → Дискомфорт), и FORM перестанет ставить это упражнение.');
+    if (area) lines.push(`Если дискомфорт повторяется — отметь его в тренировке (••• → Дискомфорт), и ${BRAND} перестанет ставить это упражнение.`);
     return { text: lines.join(' '), actions };
   }
 

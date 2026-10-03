@@ -1,6 +1,7 @@
 import type { FoodEntry, FoodProduct, Macros, UserProfile } from '@/types';
 import { LOCAL_FOODS } from '@/data/foods';
 import { macrosFor } from './status';
+import { allergenIn, foodAvoidance } from '@/features/profile/health';
 
 export interface SuggestionItem {
   product: FoodProduct;
@@ -30,11 +31,13 @@ function matchesAny(name: string, words: string[]): boolean {
 }
 
 function allowed(p: FoodProduct, profile: UserProfile): boolean {
-  if (matchesAny(p.name, profile.dislikedFoods)) return false;
-  const r = profile.dietRestrictions;
+  // Не любит + аллергии + непереносимости + запрещённые продукты из профиля здоровья
+  const avoid = foodAvoidance(profile);
+  if (matchesAny(p.name, avoid.words) || allergenIn(p.name, avoid.allergyWords)) return false;
+  const r = avoid.restrictions;
   const tags = p.tags ?? [];
   // «Не люблю рыбу/мясо/молочку» — исключаем всю категорию, а не только слово в названии
-  const dis = profile.dislikedFoods.join(' ').toLowerCase();
+  const dis = avoid.words.join(' ').toLowerCase();
   if (/рыб|морепрод/.test(dis) && (tags.includes('fish') || matchesAny(p.name, FISH_WORDS))) return false;
   if (/мяс/.test(dis) && tags.includes('meat')) return false;
   if (/молок|молоч/.test(dis) && tags.includes('dairy')) return false;

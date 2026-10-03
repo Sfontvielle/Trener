@@ -7,7 +7,7 @@ import { useProfile } from '@/stores/profile';
 import { useHealth } from '@/stores/health';
 import { readinessFor } from '@/features/recovery/derive';
 import { resolveToday } from './today';
-import { buildSession } from './session';
+import { buildSession, DEFAULT_SETS } from './session';
 import { generateWorkout, type GenFocus } from './generator';
 import { confirm } from '@/components/Dialog';
 import { today } from '@/utils/date';
@@ -15,6 +15,7 @@ import { uid } from '@/utils/id';
 import { getExercise } from '@/data/exercises';
 import { haptic } from '@/services/haptics';
 import { ensurePermission } from '@/services/notifications';
+import { healthTraining } from '@/features/profile/health';
 
 /** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
 function askRestPermission() {
@@ -86,15 +87,17 @@ export function startDraft(draft: WorkoutDraft) {
 /** Тренировка из выбранных упражнений (от тренера или «Тренировать сейчас» на карточке упражнения) */
 export function startExercises(exerciseIds: string[], o: { name?: string; sets?: number; repMin?: number; repMax?: number } = {}) {
   const customs = useWorkouts.getState().customExercises;
+  const profile = useProfile.getState().profile;
+  const minRir = profile ? healthTraining(profile).minRir : 0;
   const planned = exerciseIds
     .map((id) => getExercise(id, customs))
     .filter((ex): ex is NonNullable<typeof ex> => !!ex)
     .map((ex) => ({
       exerciseId: ex.id,
-      sets: o.sets ?? (ex.mechanic === 'compound' ? 3 : 3),
+      sets: o.sets ?? DEFAULT_SETS,
       repMin: o.repMin ?? ex.defaultReps[0],
       repMax: o.repMax ?? ex.defaultReps[1],
-      targetRir: ex.mechanic === 'compound' ? 2 : 1,
+      targetRir: Math.max(minRir, ex.mechanic === 'compound' ? 2 : 1),
       restSec: ex.mechanic === 'compound' ? 120 : 75,
     }));
   if (!planned.length) return;

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { AppSettings, WorkoutPlan } from '@/types';
+import { BRAND } from '@/config/brand';
 
 /**
  * Локальные уведомления (без сервера): конец отдыха в фоне, утренний чек-ин, тренировка по плану.
@@ -18,6 +19,16 @@ export function configureNotifications() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
   });
+}
+
+/** Тап по уведомлению с адресом экрана (например, «Отчёт недели») — открыть этот экран */
+export function onNotificationOpen(open: (url: string) => void): () => void {
+  if (!native) return () => undefined;
+  const sub = Notifications.addNotificationResponseReceivedListener((r) => {
+    const url = r.notification.request.content.data?.url;
+    if (typeof url === 'string') open(url);
+  });
+  return () => sub.remove();
 }
 
 export async function ensurePermission(): Promise<boolean> {
@@ -69,19 +80,29 @@ export function toExpoWeekday(i: number): number {
 }
 
 /** Пересоздаёт расписание напоминаний под текущие настройки и план */
+const REVIEW_ID = 'weekly-review';
+
 export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | null): Promise<void> {
   if (!native) return;
   await cancel(MORNING_ID);
+  await cancel(REVIEW_ID);
   for (let i = 0; i < 7; i++) await cancel(`${TRAIN_PREFIX}${i}`);
-  if (!settings.morningReminder && !settings.trainingReminder) return;
+  if (!settings.morningReminder && !settings.trainingReminder && !settings.weeklyReview) return;
   const perm = await Notifications.getPermissionsAsync().catch(() => null);
   if (!perm?.granted) return;
   try {
     if (settings.morningReminder) {
       await Notifications.scheduleNotificationAsync({
         identifier: MORNING_ID,
-        content: { title: 'Доброе утро 👋', body: 'Чек-ин за 30 секунд и взвешивание — FORM подстроит тренировку под твоё состояние.' },
+        content: { title: 'Доброе утро 👋', body: `Чек-ин за 30 секунд и взвешивание — ${BRAND} подстроит тренировку под твоё состояние.` },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: settings.morningTime.hour, minute: settings.morningTime.minute },
+      });
+    }
+    if (settings.weeklyReview) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: REVIEW_ID,
+        content: { title: 'Отчёт недели готов', body: 'Вес, тренировки, питание, сон — и что изменить на этой неделе.', data: { url: '/weekly-review' } },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: toExpoWeekday(0), hour: 9, minute: 5 },
       });
     }
     if (settings.trainingReminder && plan) {
@@ -90,7 +111,7 @@ export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | n
         if (!t) continue;
         await Notifications.scheduleNotificationAsync({
           identifier: `${TRAIN_PREFIX}${i}`,
-          content: { title: 'Сегодня тренировка', body: `По плану: ${t.name} · ${t.focus}. Открой FORM — веса уже подобраны.` },
+          content: { title: 'Сегодня тренировка', body: `По плану: ${t.name} · ${t.focus}. Открой ${BRAND} — веса уже подобраны.` },
           trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: toExpoWeekday(i), hour: settings.trainingTime.hour, minute: settings.trainingTime.minute },
         });
       }

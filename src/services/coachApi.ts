@@ -1,6 +1,5 @@
-import { useProfile } from '@/stores/profile';
-
 import type { CoachActionType, VolumeMuscle } from '@/types';
+import { BRAND } from '@/config/brand';
 
 /** Действие, как его возвращает модель: параметры необязательны (приложение валидирует) */
 export interface CoachApiAction {
@@ -43,10 +42,12 @@ export class CoachApiError extends Error {
   }
 }
 
+/**
+ * Тренер встроен в приложение и работает на устройстве. Внешняя большая модель — только опция сборки
+ * (переменная окружения разработчика), пользователь ничего не настраивает.
+ */
 export function coachBaseUrl(): string {
-  const fromSettings = useProfile.getState().settings.coachApiUrl?.trim();
-  const fromEnv = process.env.EXPO_PUBLIC_COACH_API_URL?.trim();
-  return (fromSettings || fromEnv || '').replace(/\/+$/, '');
+  return (process.env.EXPO_PUBLIC_COACH_API_URL?.trim() || '').replace(/\/+$/, '');
 }
 
 async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
@@ -97,11 +98,11 @@ export async function summarizeConversation(messages: { role: string; text: stri
 
 export function coachErrorText(e: unknown): string {
   if (e instanceof CoachApiError) {
-    if (e.kind === 'not_configured') return 'AI-сервер не подключён (Профиль → AI Coach). Ниже — ответ по расчётам FORM.';
-    if (e.kind === 'offline') return 'Нет связи с AI. Ниже — ответ по расчётам FORM без AI.';
-    if (e.kind === 'timeout') return 'AI долго не отвечает. Ниже — ответ по расчётам FORM.';
+    if (e.kind === 'not_configured') return `Внешний AI не настроен. Ниже — ответ тренера ${BRAND}.`;
+    if (e.kind === 'offline') return `Нет связи с AI. Ниже — ответ по расчётам ${BRAND} без AI.`;
+    if (e.kind === 'timeout') return `AI долго не отвечает. Ниже — ответ по расчётам ${BRAND}.`;
     if (e.kind === 'rate_limited') return e.message;
-    return 'AI временно недоступен. Ниже — ответ по расчётам FORM.';
+    return `AI временно недоступен. Ниже — ответ по расчётам ${BRAND}.`;
   }
   return 'AI временно недоступен.';
 }

@@ -70,10 +70,11 @@ export function setLimits(style: TrainingPreferences['setStyle'], level: UserPro
   if (style === 2) return { start: () => 2, min: 2, max: () => 2, softMax: (r) => (r === 'main' ? 3 : 2) };
   if (style === 3) return { start: () => 3, min: 2, max: () => 3, softMax: (r) => (r === 'main' ? 4 : 3) };
   return {
-    start: (r) => (r === 'accessory' ? 2 : 3),
+    // Новое упражнение начинается с 2 подходов; больше — только если этого требует недельная цель мышцы
+    start: () => 2,
     min: 2,
-    // Новичку 5 подходов в одном упражнении не нужны — лучше ещё одно упражнение
-    max: (r) => (level === 'beginner' ? (r === 'main' ? 4 : 3) : r === 'main' ? 5 : 4),
-    softMax: (r) => (level === 'beginner' ? (r === 'main' ? 4 : 3) : r === 'main' ? 5 : 4),
+    // Пять подходов в одном упражнении не нужны: недостающий объём лучше добрать ещё одним упражнением
+    max: (r) => (level === 'beginner' ? 3 : r === 'main' ? 4 : 3),
+    softMax: (r) => (level === 'beginner' ? (r === 'main' ? 4 : 3) : r === 'main' ? 4 : 3),
   };
 }

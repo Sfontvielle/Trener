@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space } from '@/theme';
 import { Screen } from '@/components/Screen';
@@ -27,13 +27,20 @@ import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { estimateMinutes } from '@/features/training/engine/time';
 import { toast } from '@/components/Dialog';
 import { getExercise } from '@/data/exercises';
+import { comparePeriods, e1rmSeries, metricSeries, progressNarrative, topLifts, weeklySeries } from '@/features/progress/series';
+import { METRIC_META } from '@/features/progress/metrics';
+import { BRAND } from '@/config/brand';
 
 type Range = '7' | '30' | '90' | 'all';
 
 export default function Progress() {
   const [range, setRange] = useState<Range>('30');
   const [allPrs, setAllPrs] = useState(false);
+  const [cmpDays, setCmpDays] = useState<'7' | '30' | '90'>('30');
+  const [lift, setLift] = useState<string | null>(null);
   const weights = useBody((s) => s.weights);
+  const metrics = useBody((s) => s.metrics);
+  const photos = useBody((s) => s.photos);
   const sessions = useWorkouts((s) => s.sessions);
   const plan = usePlan((s) => s.plan);
   const target = usePlan((s) => s.target);
@@ -90,6 +97,21 @@ export default function Progress() {
   const avgSleep = sleep.length ? sleep.reduce((a, c) => a + c.sleepHours, 0) / sleep.length : null;
 
   const week = useMemo(() => lastWeekSummary({ sessions, plan, entries, target, weights, checkins }), [sessions, plan, entries, target, weights, checkins]);
+  const cmp = useMemo(() => comparePeriods({ days: Number(cmpDays), weights, metrics, sessions, entries }), [cmpDays, weights, metrics, sessions, entries]);
+  const story = progressNarrative(cmp);
+  const series = useMemo(() => weeklySeries(sessions, entries, 8), [sessions, entries]);
+  const lifts = useMemo(() => topLifts(sessions), [sessions]);
+  const liftId = lift ?? lifts[0] ?? null;
+  const liftPts = useMemo(() => (liftId ? e1rmSeries(liftId, sessions) : []), [liftId, sessions]);
+  const waist = useMemo(() => metricSeries(metrics, 'waist'), [metrics]);
+  const latestMetrics = useMemo(() => {
+    const m: Partial<Record<string, { value: number; first: number }>> = {};
+    for (const k of Object.keys(METRIC_META)) {
+      const list = metricSeries(metrics, k as keyof typeof METRIC_META);
+      if (list.length) m[k] = { value: list[list.length - 1].value, first: list[0].value };
+    }
+    return m;
+  }, [metrics]);
 
   return (
     <Screen tabBar>
@@ -97,27 +119,45 @@ export default function Progress() {
         Прогресс
       </T>
 
-      {week ? (
-        <Card tone="accent" style={{ marginBottom: space.md, gap: 10 }}>
-          <T v="caption">
-            Итоги недели · {formatDayShort(week.from)} – {formatDayShort(week.to)}
+      <Card tone="accent" onPress={() => router.push('/weekly-review')} style={{ marginBottom: space.md, gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Icon name="newspaper-outline" size={18} color={colors.accent} />
+          <T v="h3" style={{ flex: 1 }}>
+            Отчёт недели
           </T>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Stat label="Тренировки" value={`${week.workouts}/${week.planned || week.workouts}`} color={week.planned && week.workouts >= week.planned ? colors.accent : colors.text} />
-            <Stat label="Подходов" value={String(week.sets)} />
-            <Stat label="Ккал, ср." value={week.avgKcal ? String(week.avgKcal) : '—'} sub={target && week.avgKcal ? `цель ${target.kcal}` : undefined} />
-            <Stat label="Вес" value={week.weightDelta === null ? '—' : `${week.weightDelta >= 0 ? '+' : ''}${week.weightDelta.toFixed(1)}`} unit={week.weightDelta === null ? undefined : 'кг'} />
-          </View>
-          <T v="small" style={{ fontSize: 12 }}>
-            {week.loggedDays ? `Белок в норме ${week.proteinDays} из ${week.loggedDays} дней с записями. ` : 'Питание не записывалось. '}
-            {week.avgSleep ? `Сон в среднем ${formatHours(week.avgSleep)}.` : ''}
+          <Icon name="chevron-forward" size={18} color={colors.muted} />
+        </View>
+        <T v="small">{week ? `${formatDayShort(week.from)} – ${formatDayShort(week.to)}: ${week.headline}` : 'Вес, замеры, тренировки, питание, сон и вывод тренера — раз в неделю'}</T>
+      </Card>
+
+      <Card style={{ marginBottom: space.md, gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <T v="caption" style={{ flex: 1 }}>
+            Что изменилось
           </T>
-        </Card>
-      ) : null}
+        </View>
+        <Segmented items={[{ key: '7', label: '7 дн' }, { key: '30', label: '30 дн' }, { key: '90', label: '90 дн' }]} value={cmpDays} onChange={setCmpDays} />
+        {story ? (
+          <T v="body" style={{ fontSize: 15 }} color={colors.text}>
+            {story}
+          </T>
+        ) : (
+          <T v="small">Пока мало данных за этот период — записывай вес, замеры и тренировки.</T>
+        )}
+        <View style={{ gap: 6 }}>
+          <CmpRow label="Тренировки" cur={cmp.workouts.cur} prev={cmp.workouts.prev} />
+          <CmpRow label="Рабочие подходы" cur={cmp.sets.cur} prev={cmp.sets.prev} />
+          {cmp.kcal.cur !== null ? <CmpRow label="Ккал в день, ср." cur={cmp.kcal.cur} prev={cmp.kcal.prev} /> : null}
+          {cmp.protein.cur !== null ? <CmpRow label="Белок в день, ср." cur={cmp.protein.cur} prev={cmp.protein.prev} unit="г" /> : null}
+        </View>
+        <T v="small" style={{ fontSize: 11 }}>
+          Сравнение с предыдущими {cmpDays} днями. Это сопоставление данных, а не вывод о причинах.
+        </T>
+      </Card>
 
       {proposals.filter((p) => !doneProposals.includes(p.id)).length ? (
         <Card style={{ marginBottom: space.md, gap: 10 }}>
-          <T v="caption">Предложение FORM на неделю</T>
+          <T v="caption">Предложение {BRAND} на неделю</T>
           {proposals
             .filter((p) => !doneProposals.includes(p.id))
             .map((p) => (
@@ -167,7 +207,7 @@ export default function Progress() {
               <TrendChart points={points} labels={shown.length ? [formatDayShort(shown[0].date), formatDayShort(shown[shown.length - 1].date)] : undefined} />
             </View>
             <T v="small" style={{ fontSize: 12 }}>
-              Линия — сглаженный тренд, точки — взвешивания. Решения по калориям FORM принимает по тренду.
+              Линия — сглаженный тренд, точки — взвешивания. Решения по калориям {BRAND} принимает по тренду.
             </T>
           </>
         ) : (
@@ -199,6 +239,99 @@ export default function Progress() {
           </T>
         </Card>
       </View>
+
+      <SectionTitle title="Тело: замеры и фото" action="Записать" onAction={() => router.push('/measurements')} />
+      <Card style={{ gap: 10 }}>
+        {waist.length >= 2 ? (
+          <>
+            <T v="caption">Талия, см</T>
+            <TrendChart points={waist.map((p) => ({ x: daysBetween(waist[0].date, p.date), y: p.value, raw: p.value }))} unit="см" labels={[formatDayShort(waist[0].date), formatDayShort(waist[waist.length - 1].date)]} height={140} />
+          </>
+        ) : null}
+        {Object.keys(latestMetrics).length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(latestMetrics).map(([k, v]) => {
+              const meta = METRIC_META[k as keyof typeof METRIC_META];
+              const d = v ? Math.round((v.value - v.first) * 10) / 10 : 0;
+              return (
+                <View key={k} style={{ minWidth: '30%', flexGrow: 1, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
+                  <T v="caption" style={{ fontSize: 10 }}>
+                    {meta.label}
+                  </T>
+                  <T v="num" style={{ fontSize: 18 }}>
+                    {String(v?.value).replace('.', ',')}
+                    <T v="small"> {meta.unit}</T>
+                  </T>
+                  {d ? (
+                    <T v="small" style={{ fontSize: 11 }}>
+                      {d > 0 ? '+' : '−'}
+                      {String(Math.abs(d)).replace('.', ',')} с первого замера
+                    </T>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <T v="small">Талия и другие замеры показывают изменения тела точнее весов. Записывай раз в 1–2 недели.</T>
+        )}
+        {photos.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            {(photos.length > 1 ? [photos[0], ...photos.slice(-5).filter((x) => x !== photos[0])] : photos).map((ph, i) => (
+              <View key={ph.id} style={{ width: 92, height: 122, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.surface2 }}>
+                <Image source={{ uri: ph.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <View style={{ position: 'absolute', left: 4, bottom: 4, paddingHorizontal: 5, borderRadius: 5, backgroundColor: 'rgba(0,0,0,0.55)' }}>
+                  <T v="small" color="#fff" style={{ fontSize: 10 }}>
+                    {i === 0 && photos.length > 1 ? 'старт · ' : ''}
+                    {formatDayShort(ph.date)}
+                  </T>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+        <Button title="Записать замеры и фото" icon="body-outline" variant="secondary" size="sm" onPress={() => router.push('/measurements')} />
+      </Card>
+
+      <SectionTitle title="Сила · расчётный максимум" />
+      <Card style={{ gap: 10 }}>
+        {lifts.length ? (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {lifts.map((id) => (
+                <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: id === liftId }} onPress={() => setLift(id)} style={{ paddingHorizontal: 12, height: 32, borderRadius: radius.pill, justifyContent: 'center', backgroundColor: id === liftId ? colors.accent : colors.surface2 }}>
+                  <T v="small" color={id === liftId ? colors.onAccent : colors.text} style={{ fontWeight: '700' }} numberOfLines={1}>
+                    {getExercise(id, customs)?.name ?? id}
+                  </T>
+                </Pressable>
+              ))}
+            </ScrollView>
+            {liftPts.length >= 2 ? (
+              <TrendChart points={liftPts.map((p) => ({ x: daysBetween(liftPts[0].date, p.date), y: p.value, raw: p.value }))} labels={[formatDayShort(liftPts[0].date), formatDayShort(liftPts[liftPts.length - 1].date)]} height={150} />
+            ) : (
+              <T v="small">Нужно минимум 2 тренировки с весом в этом упражнении.</T>
+            )}
+            <T v="small" style={{ fontSize: 11 }}>
+              Расчётный 1ПМ по лучшему подходу (формула Эпли) — показывает рост силы даже при разных повторах.
+            </T>
+          </>
+        ) : (
+          <T v="small">После 2+ тренировок с одним упражнением появится график силы.</T>
+        )}
+      </Card>
+
+      <SectionTitle title="Тренировки и питание · 8 недель" />
+      <Card style={{ gap: 12 }}>
+        <WeekBars title="Тренировок в неделю" values={series.map((w) => w.workouts)} max={Math.max(plan?.daysPerWeek ?? 4, ...series.map((w) => w.workouts))} last={`${series[series.length - 1].workouts}`} />
+        <WeekBars title="Рабочих подходов" values={series.map((w) => w.sets)} last={`${series[series.length - 1].sets}`} />
+        <WeekBars title="Поднято за неделю, т" values={series.map((w) => Math.round(w.tonnage / 100) / 10)} last={`${(series[series.length - 1].tonnage / 1000).toFixed(1).replace('.', ',')}`} />
+        {series.some((w) => w.avgKcal !== null) ? (
+          <>
+            <WeekBars title={`Ккал в день, ср.${target ? ` · цель ${target.kcal}` : ''}`} values={series.map((w) => w.avgKcal ?? 0)} max={Math.max(target?.kcal ?? 0, ...series.map((w) => w.avgKcal ?? 0))} last={series[series.length - 1].avgKcal !== null ? `${series[series.length - 1].avgKcal}` : '—'} color={colors.carbs} />
+            <WeekBars title={`Белок в день, ср.${target ? ` · цель ${target.protein} г` : ''}`} values={series.map((w) => w.avgProtein ?? 0)} max={Math.max(target?.protein ?? 0, ...series.map((w) => w.avgProtein ?? 0))} last={series[series.length - 1].avgProtein !== null ? `${series[series.length - 1].avgProtein} г` : '—'} color={colors.protein} />
+          </>
+        ) : null}
+      </Card>
 
       <SectionTitle title="Объём за 7 дней · цель" />
       {volume.some((v) => v.cur > 0 || v.prev > 0) ? (
@@ -255,7 +388,7 @@ export default function Progress() {
         </View>
       ) : (
         <Card>
-          <T v="small">Заверши несколько тренировок — FORM покажет рост рабочих весов и расчётный 1ПМ.</T>
+          <T v="small">Заверши несколько тренировок — {BRAND} покажет рост рабочих весов и расчётный 1ПМ.</T>
         </Card>
       )}
 
@@ -270,6 +403,40 @@ export default function Progress() {
         {!sleep.length ? <Button title="Пройти чек-ин" size="sm" variant="secondary" style={{ marginTop: 10 }} onPress={() => router.push('/checkin')} /> : null}
       </Card>
     </Screen>
+  );
+}
+
+function CmpRow({ label, cur, prev, unit }: { label: string; cur: number; prev: number | null; unit?: string }) {
+  const d = prev === null ? null : cur - prev;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <T v="small" style={{ flex: 1 }} color={colors.text}>
+        {label}
+      </T>
+      <T v="small" style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }} color={colors.text}>
+        {cur}
+        {unit ? ` ${unit}` : ''}
+      </T>
+      <T v="small" style={{ width: 96, textAlign: 'right', fontSize: 11, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+        {d === null || prev === null ? '' : d === 0 ? 'как раньше' : `было ${prev}`}
+      </T>
+    </View>
+  );
+}
+
+function WeekBars({ title, values, max, last, color }: { title: string; values: number[]; max?: number; last: string; color?: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row' }}>
+        <T v="small" style={{ flex: 1, fontSize: 12 }}>
+          {title}
+        </T>
+        <T v="small" color={colors.text} style={{ fontWeight: '800', fontSize: 12 }}>
+          {last}
+        </T>
+      </View>
+      <MiniBars values={values} max={max} height={34} color={color} />
+    </View>
   );
 }
 

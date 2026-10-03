@@ -51,7 +51,7 @@ function effortOk(sets: ExerciseSet[], targetRir: number): boolean {
     const avg = withRir.reduce((a, s) => a + (s.rir ?? 0), 0) / withRir.length;
     return avg >= Math.max(0.5, targetRir - 1);
   }
-  const hard = sets.filter((s) => s.feel === 'hard').length;
+  const hard = sets.filter((s) => s.feel === 'hard' || s.feel === 'max').length;
   return hard <= Math.floor(sets.length / 3);
 }
 

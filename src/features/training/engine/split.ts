@@ -3,6 +3,7 @@ import { addDays, today } from '@/utils/date';
 import { VM_ACC, VOLUME_MUSCLES } from './muscles';
 import { weeklyTargets } from './volume';
 import type { RecoveryEstimate } from './recovery';
+import { BRAND } from '@/config/brand';
 
 export const SPLIT_LABEL: Record<SplitType, string> = {
   fullbody: 'Всё тело',
@@ -16,7 +17,7 @@ export const SPLIT_LABEL: Record<SplitType, string> = {
 };
 
 export const SPLIT_PREF_LABEL: Record<SplitPreference, string> = {
-  auto: 'Пусть FORM выбирает',
+  auto: `Пусть ${BRAND} выбирает`,
   fullbody: 'Всё тело',
   upper_lower: 'Верх / Низ',
   torso_limbs: 'Торс / Конечности',

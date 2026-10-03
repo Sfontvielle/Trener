@@ -1,6 +1,7 @@
 import { useHealth } from '@/stores/health';
 import { useBody } from '@/stores/body';
 import { fetchHealthDays, healthAvailability, requestHealthAccess } from '@/services/health';
+import { BRAND } from '@/config/brand';
 
 /**
  * Синхронизация Apple Health → FORM. Вызывается при подключении, по кнопке и автоматически при
@@ -8,7 +9,7 @@ import { fetchHealthDays, healthAvailability, requestHealthAccess } from '@/serv
  */
 export async function syncHealth(): Promise<{ ok: boolean; days: number; message: string }> {
   const av = healthAvailability();
-  if (av !== 'available') return { ok: false, days: 0, message: av === 'needs_dev_build' ? 'Apple Health доступен в сборке FORM, не в Expo Go' : 'Apple Health недоступен на этом устройстве' };
+  if (av !== 'available') return { ok: false, days: 0, message: av === 'needs_dev_build' ? `Apple Health доступен в сборке ${BRAND}, не в Expo Go` : 'Apple Health недоступен на этом устройстве' };
   try {
     const days = await fetchHealthDays(21);
     const at = Date.now();
@@ -29,9 +30,9 @@ export async function syncHealth(): Promise<{ ok: boolean; days: number; message
 
 export async function connectHealth(): Promise<{ ok: boolean; message: string }> {
   const av = healthAvailability();
-  if (av !== 'available') return { ok: false, message: av === 'needs_dev_build' ? 'Нужна сборка FORM (EAS development build): в Expo Go Apple Health недоступен' : 'Apple Health доступен только на iPhone' };
+  if (av !== 'available') return { ok: false, message: av === 'needs_dev_build' ? `Нужна сборка ${BRAND} (EAS development build): в Expo Go Apple Health недоступен` : 'Apple Health доступен только на iPhone' };
   const granted = await requestHealthAccess();
-  if (!granted) return { ok: false, message: 'Доступ не выдан. FORM продолжит работать с ручным чек-ином' };
+  if (!granted) return { ok: false, message: `Доступ не выдан. ${BRAND} продолжит работать с ручным чек-ином` };
   useHealth.getState().setEnabled(true);
   const r = await syncHealth();
   return { ok: r.ok, message: r.message };

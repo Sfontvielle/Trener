@@ -23,6 +23,8 @@ import { fineTargets, isSmallMuscle, VM_ACC, VM_LABEL, VOLUME_MUSCLES } from './
 import { orderExercises } from './engine/order';
 import { estimateMinutes } from './engine/time';
 import { substitutesFor } from './engine/substitute';
+import { healthTraining } from '@/features/profile/health';
+import { BRAND } from '@/config/brand';
 
 export { estimateMinutes };
 
@@ -130,9 +132,10 @@ export function restFor(ex: Exercise, role: SlotRole): number {
   return 75;
 }
 
-export function rirFor(role: SlotRole, level: UserProfile['level']): number {
-  if (level === 'beginner') return role === 'accessory' ? 2 : 3;
-  return role === 'main' ? 2 : 1;
+/** Запас повторов до отказа; minRir — из профиля здоровья (давление, сердце, грыжа: без работы до отказа) */
+export function rirFor(role: SlotRole, level: UserProfile['level'], minRir = 0): number {
+  const base = level === 'beginner' ? (role === 'accessory' ? 2 : 3) : role === 'main' ? 2 : 1;
+  return Math.max(base, minRir);
 }
 
 /** Совместимость: недельные подходы по крупным группам (основная = 1, вторичная = 0.5) */
@@ -188,7 +191,10 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
   const occPerTemplate = days.length / nTemplates;
   const notes: string[] = [];
   const limits = setLimits(prefs.setStyle, p.level);
-  const targets = weeklyTargets(p, prefs, recovery.factor);
+  const health = healthTraining(p);
+  const targets = weeklyTargets(p, prefs, recovery.factor * health.volumeFactor);
+  notes.push(...health.notes);
+  if (health.clearance) notes.push('Есть особенности здоровья, которые стоит обсудить с врачом: согласуй с ним интенсивность — план составлен консервативно');
 
   const usedThisWeek = new Set<string>();
   const meta: Meta[] = [];
@@ -219,7 +225,7 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
     }
     const ex = picked.ex;
     const [repMin, repMax] = repRange(ex, slot.role, p.goal, prefs.repStyle);
-    const pe: PlannedExercise = { exerciseId: ex.id, sets: limits.start(slot.role), repMin, repMax, targetRir: rirFor(slot.role, p.level), restSec: restFor(ex, slot.role), slot: `${t.key}.${key}` };
+    const pe: PlannedExercise = { exerciseId: ex.id, sets: limits.start(slot.role), repMin, repMax, targetRir: rirFor(slot.role, p.level, health.minRir), restSec: restFor(ex, slot.role), slot: `${t.key}.${key}` };
     t.exercises.push(pe);
     usedThisWeek.add(ex.id);
     const m: Meta = { t, pe, role: slot.role, muscle, reasons: picked.reasons };
@@ -385,8 +391,9 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
     { label: 'Сплит', value: SPLIT_LABEL[choice.split], note: choice.reasons.join('; ') },
     { label: 'Объём', value: `~${targets.chest} подх./нед на грудь, ~${targets.quads} на квадрицепс`, note: `цели по каждой группе — от уровня (${LEVEL_LABEL[p.level]}) и цели${prefs.priorityMuscles.length ? '; приоритетные группы +30%' : ''}` },
     { label: 'Восстановление', value: recovery.factor === 1 ? 'стандартный объём' : `объём ×${String(recovery.factor).replace('.', ',')}`, note: recovery.reasons.join('; ') || 'по фактическим данным' },
-    { label: 'Подходы', value: prefs.setStyle === 'auto' ? 'FORM решает' : `обычно ${prefs.setStyle}`, note: 'недельная цель группы ÷ число упражнений на неё в неделю' },
-    { label: 'Интенсивность', value: p.level === 'beginner' ? 'запас 2–3 повт.' : 'запас 1–2 повт.', note: 'запас повторов до отказа в рабочих подходах' },
+    { label: 'Подходы', value: prefs.setStyle === 'auto' ? `${BRAND} решает` : `обычно ${prefs.setStyle}`, note: 'недельная цель группы ÷ число упражнений на неё в неделю' },
+    { label: 'Интенсивность', value: health.minRir >= 2 ? `запас ${health.minRir}+ повт.` : p.level === 'beginner' ? 'запас 2–3 повт.' : 'запас 1–2 повт.', note: health.minRir >= 2 ? 'с учётом профиля здоровья: без отказа и натуживания' : 'запас повторов до отказа в рабочих подходах' },
+    ...(health.limitations.length || health.flags.length ? [{ label: 'Здоровье', value: health.limitations.length ? `ограничений: ${health.limitations.length}` : 'учтено', note: health.notes.join('; ') }] : []),
     { label: 'Прогрессия', value: 'Двойная', note: 'сначала повторы до верха диапазона, потом +вес' },
     { label: 'Объём по группам', value: volume.filter((v) => v.target > 0).map((v) => `${VM_LABEL[v.muscle]} ${v.planned}/${v.target}`).join(' · ') },
   ];

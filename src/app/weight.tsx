@@ -12,6 +12,7 @@ import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { relativeDay, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
+import { BRAND } from '@/config/brand';
 
 export default function WeightScreen() {
   const weights = useBody((s) => s.weights);
@@ -42,7 +43,7 @@ export default function WeightScreen() {
         />
       </Card>
       {trend ? (
-        <Banner tone="accent" icon="trending-up" text={`Тренд: ${fmtWeight(trend)} кг. FORM ориентируется на тренд, а не на разовое значение — колебания ±1 кг от воды это норма.`} />
+        <Banner tone="accent" icon="trending-up" text={`Тренд: ${fmtWeight(trend)} кг. ${BRAND} ориентируется на тренд, а не на разовое значение — колебания ±1 кг от воды это норма.`} />
       ) : null}
       <T v="caption" style={{ marginTop: space.xl, marginBottom: space.sm }}>
         История

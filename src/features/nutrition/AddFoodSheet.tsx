@@ -12,8 +12,9 @@ import { frequentProducts } from './quick';
 import { macrosFor } from './status';
 import { haptic } from '@/services/haptics';
 import { fmtNum } from '@/utils/format';
+import { BRAND } from '@/config/brand';
 
-type View_ = 'menu' | 'frequent' | 'recent' | 'meals';
+type View_ = 'menu' | 'favorites' | 'frequent' | 'recent' | 'meals';
 
 /**
  * «+ Добавить еду»: один лист со всеми способами — без лишних переходов.
@@ -26,6 +27,15 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
   const lastGrams = useNutrition((s) => s.lastGrams);
   const recentIds = useNutrition((s) => s.recent);
   const meals = useNutrition((s) => s.meals);
+  const favIds = useNutrition((s) => s.favorites);
+  const favorites = useMemo(
+    () =>
+      favIds
+        .map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id))
+        .filter((p): p is FoodProduct => !!p)
+        .map((p) => ({ product: p, grams: lastGrams[p.id] ?? p.serving?.grams ?? 100 })),
+    [favIds, products, lastGrams],
+  );
   const frequent = useMemo(() => frequentProducts(entries, products, lastGrams, date, 20), [entries, products, lastGrams, date]);
   const recent = useMemo(
     () =>
@@ -52,7 +62,7 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
     toast(`${p.name} — ${grams} г · ${MEAL_LABEL[meal].toLowerCase()}`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntry(e.id) });
   };
 
-  const title = view === 'menu' ? 'Добавить еду' : view === 'frequent' ? 'Частые продукты' : view === 'recent' ? 'Недавние' : 'Мои блюда';
+  const title = view === 'menu' ? 'Добавить еду' : view === 'favorites' ? 'Избранное' : view === 'frequent' ? 'Частые продукты' : view === 'recent' ? 'Недавние' : 'Мои блюда';
   return (
     <Sheet visible={visible} onClose={close} title={title} subtitle={`${MEAL_LABEL[meal]} · порция как в прошлый раз, изменить — тап по записи`}>
       {view !== 'menu' ? (
@@ -67,22 +77,23 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
       {view === 'menu' ? (
         <View style={{ gap: 8 }}>
           <Row icon="search" title="Поиск продукта" sub="База продуктов + твои" onPress={() => go(() => router.push({ pathname: '/food/add', params: { date, meal } }))} />
-          <Row icon="barcode-outline" title="Сканировать штрихкод" sub="Камера iPhone" onPress={() => go(() => router.push({ pathname: '/food/scan', params: { date } }))} />
-          <Row icon="star-outline" title="Частые продукты" sub={frequent.length ? frequent.slice(0, 3).map((f) => f.product.name).join(', ') : 'Появятся сами, когда что-то будешь есть регулярно'} badge={frequent.length || undefined} onPress={() => setView('frequent')} />
+          <Row icon="barcode-outline" title="Сканировать штрихкод" sub="Камера iPhone" onPress={() => go(() => router.push({ pathname: '/food/scan', params: { date, meal } }))} />
+          {favorites.length ? <Row icon="star" title="Избранное" sub={favorites.slice(0, 3).map((f) => f.product.name).join(', ')} badge={favorites.length} onPress={() => setView('favorites')} /> : null}
+          <Row icon="flash-outline" title="Частые продукты" sub={frequent.length ? frequent.slice(0, 3).map((f) => f.product.name).join(', ') : 'Появятся сами, когда что-то будешь есть регулярно'} badge={frequent.length || undefined} onPress={() => setView('frequent')} />
           <Row icon="time-outline" title="Недавние" sub={recent.length ? recent.slice(0, 3).map((f) => f.product.name).join(', ') : 'Пока пусто'} onPress={() => setView('recent')} />
           <Row icon="restaurant-outline" title="Мои блюда" sub={meals.length ? meals.slice(0, 3).map((m) => m.name).join(', ') : 'Сохрани приём пищи как блюдо — добавляй одним тапом'} badge={meals.length || undefined} onPress={() => setView('meals')} />
           <Row icon="create-outline" title="Ввести вручную" sub="КБЖУ на 100 г с этикетки" onPress={() => go(() => router.push({ pathname: '/food/add', params: { date, meal, manual: '1' } }))} />
         </View>
       ) : null}
 
-      {view === 'frequent' || view === 'recent' ? (
+      {view === 'frequent' || view === 'recent' || view === 'favorites' ? (
         <View style={{ gap: 6 }}>
-          {(view === 'frequent' ? frequent : recent).map((f) => (
+          {(view === 'frequent' ? frequent : view === 'favorites' ? favorites : recent).map((f) => (
             <ProductRow key={f.product.id} p={f.product} grams={f.grams} onAdd={() => quickAdd(f.product, f.grams)} onOpen={() => go(() => router.push({ pathname: '/food/add', params: { date, meal, productId: f.product.id } }))} />
           ))}
-          {(view === 'frequent' ? frequent : recent).length === 0 ? (
+          {(view === 'frequent' ? frequent : view === 'favorites' ? favorites : recent).length === 0 ? (
             <T v="small" style={{ textAlign: 'center', marginVertical: space.lg }}>
-              {view === 'frequent' ? 'FORM сам запомнит продукты, которые ты добавляешь 2+ раза за 3 недели.' : 'Здесь будут последние добавленные продукты.'}
+              {view === 'frequent' ? `${BRAND} сам запомнит продукты, которые ты добавляешь 2+ раза за 3 недели.` : 'Здесь будут последние добавленные продукты.'}
             </T>
           ) : null}
         </View>

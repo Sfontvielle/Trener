@@ -12,6 +12,7 @@ import { FOCUS_LABEL, type GenFocus } from './generator';
 import { openCustomBuilder, openGenerated, resumeActive, startTodayPlanned } from './actions';
 import { useProfile } from '@/stores/profile';
 import { formatDayShort } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 const MINUTES = [30, 45, 60, 75, 90];
 
@@ -102,7 +103,7 @@ export function TrainingHub() {
         {genOpen ? (
           <View style={styles.gen}>
             <T v="h3">Сгенерировать тренировку</T>
-            <T v="small">FORM учтёт сплит, готовность, недавно нагруженные мышцы, остаток недельного объёма, ограничения и оборудование.</T>
+            <T v="small">{BRAND} учтёт сплит, готовность, недавно нагруженные мышцы, остаток недельного объёма, ограничения и оборудование.</T>
             <T v="caption" style={{ marginTop: space.sm }}>
               Время
             </T>

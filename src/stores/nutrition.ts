@@ -25,6 +25,14 @@ interface NutritionState {
   /** Добавить блюдо целиком; возвращает id созданных записей (для «Отменить») */
   addSavedMeal: (mealId: string, slot: MealSlot, date: ISODate) => string[];
   removeEntries: (ids: string[]) => void;
+  /** Вода за день, мл */
+  water: Record<ISODate, number>;
+  addWater: (date: ISODate, ml: number) => void;
+  /** Избранные продукты — всегда сверху при добавлении */
+  favorites: string[];
+  toggleFavorite: (productId: string) => void;
+  /** Скопировать приём пищи или весь день с другой даты */
+  copyEntries: (fromDate: ISODate, toDate: ISODate, meal?: MealSlot) => string[];
   reset: () => void;
 }
 
@@ -37,6 +45,12 @@ export interface SavedMeal {
 }
 
 export const MEAL_LABEL: Record<MealSlot, string> = { breakfast: 'Завтрак', lunch: 'Обед', dinner: 'Ужин', snack: 'Перекусы' };
+
+/** Ориентир воды: ~33 мл/кг (1,5–4 л) + 0,5 л в день тренировки. Ориентир, а не медицинская норма */
+export function waterTarget(weightKg: number, trainingDay: boolean): number {
+  const base = Math.min(3500, Math.max(1500, Math.round((weightKg * 33) / 250) * 250));
+  return base + (trainingDay ? 500 : 0);
+}
 
 export function mealForHour(h: number): MealSlot {
   if (h < 11) return 'breakfast';
@@ -95,8 +109,19 @@ export const useNutrition = create<NutritionState>()(
         return ids;
       },
       removeEntries: (ids) => set((s) => ({ entries: s.entries.filter((e) => !ids.includes(e.id)) })),
-      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {}, meals: [] }),
+      water: {},
+      addWater: (date, ml) => set((s) => ({ water: { ...s.water, [date]: Math.max(0, Math.min(8000, (s.water[date] ?? 0) + ml)) } })),
+      favorites: [],
+      toggleFavorite: (id) => set((s) => ({ favorites: s.favorites.includes(id) ? s.favorites.filter((x) => x !== id) : [id, ...s.favorites].slice(0, 100) })),
+      copyEntries: (fromDate, toDate, meal) => {
+        const src = get().entries.filter((e) => e.date === fromDate && (!meal || e.meal === meal));
+        const now = Date.now();
+        const copies: FoodEntry[] = src.map((e, i) => ({ ...e, id: uid('f_'), date: toDate, createdAt: now + i }));
+        set((s) => ({ entries: [...s.entries, ...copies] }));
+        return copies.map((c) => c.id);
+      },
+      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {}, meals: [], water: {}, favorites: [] }),
     }),
-    persistOptions<NutritionState>('nutrition', 1, (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams, meals: s.meals }) as NutritionState),
+    persistOptions<NutritionState>('nutrition', 1, (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams, meals: s.meals, water: s.water, favorites: s.favorites }) as NutritionState),
   ),
 );

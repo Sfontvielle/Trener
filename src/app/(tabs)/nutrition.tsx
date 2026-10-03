@@ -10,7 +10,7 @@ import { Sheet } from '@/components/Sheet';
 import { Field, NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
 import { useDayNutrition } from '@/hooks/useToday';
-import { useNutrition, mealForHour, MEAL_LABEL } from '@/stores/nutrition';
+import { useNutrition, mealForHour, MEAL_LABEL, waterTarget } from '@/stores/nutrition';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useBody } from '@/stores/body';
@@ -27,6 +27,8 @@ import { haptic } from '@/services/haptics';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
 import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday } from '@/features/nutrition/quick';
+import { MealIcon } from '@/features/nutrition/MealIcon';
+import { BRAND } from '@/config/brand';
 
 export default function Nutrition() {
   // Дата считается от «сегодня», которое само переключается после полуночи
@@ -54,6 +56,12 @@ export default function Nutrition() {
   const frequent = useMemo(() => frequentProducts(allEntries, products, lastGrams, date), [allEntries, products, lastGrams, date]);
   const target = nut.target;
   const dp = isToday ? dayProgress() : 1;
+  const prevDay = useMemo(() => allEntries.filter((e) => e.date === addDays(date, -1)), [allEntries, date]);
+  const copyFrom = (from: string, meal?: MealSlot) => {
+    const ids = useNutrition.getState().copyEntries(from, date, meal);
+    haptic.success();
+    toast(meal ? `${MEAL_LABEL[meal]} скопирован` : `Скопировано продуктов: ${ids.length}`, 'copy-outline', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
+  };
 
   const suggestions = useMemo(() => {
     if (!profile || !nut.remaining || !isToday) return null;
@@ -63,7 +71,7 @@ export default function Nutrition() {
 
   const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal }) : null), [profile, target, weights, allEntries, adjustments]);
 
-  if (!profile || !target) return <Screen tabBar><EmptyState icon="nutrition-outline" title="Нет плана питания" text="Заполни профиль — FORM рассчитает КБЖУ." /></Screen>;
+  if (!profile || !target) return <Screen tabBar><EmptyState icon="nutrition-outline" title="Нет плана питания" text={`Заполни профиль — ${BRAND} рассчитает КБЖУ.`} /></Screen>;
 
   const kState = macroState('kcal', nut.eaten.kcal, target.kcal, dp);
   const left = Math.round(target.kcal - nut.eaten.kcal);
@@ -116,6 +124,20 @@ export default function Nutrition() {
       </Card>
 
       <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.md, marginBottom: space.sm }} onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
+      {!nut.entries.length && prevDay.length ? (
+        <Pressable accessibilityRole="button" onPress={() => copyFrom(addDays(date, -1))} style={styles.copyDay}>
+          <Icon name="copy-outline" size={18} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <T v="body" style={{ fontWeight: '700', fontSize: 15 }}>
+              Скопировать весь вчерашний день
+            </T>
+            <T v="small" style={{ fontSize: 12 }}>
+              {prevDay.length} продуктов · {fmtNum(prevDay.reduce((a, e) => a + e.macros.kcal, 0))} ккал — потом поправишь граммовку
+            </T>
+          </View>
+        </Pressable>
+      ) : null}
+      <WaterRow date={date} />
       {isToday && (repeat.length || frequent.length) ? (
         <>
           
@@ -180,19 +202,30 @@ export default function Nutrition() {
           const kcal = list.reduce((a, e) => a + e.macros.kcal, 0);
           return (
             <Card key={m} style={{ paddingVertical: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <T v="caption" style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <MealIcon meal={m} />
+                <T v="h3" style={{ flex: 1, fontSize: 16 }}>
                   {MEAL_LABEL[m]}
                 </T>
-                {list.length ? <T v="small">{fmtNum(kcal)} ккал</T> : null}
+                {list.length ? <T v="small" color={colors.text} style={{ fontWeight: '700' }}>{fmtNum(kcal)} ккал</T> : null}
                 <Pressable accessibilityRole="button" accessibilityLabel={`Добавить в «${MEAL_LABEL[m]}»`} hitSlop={8} onPress={() => setAddFor(m)} style={styles.mealAdd}>
                   <Icon name="add" size={18} color={colors.accent} />
                 </Pressable>
               </View>
               {list.length === 0 ? (
-                <T v="small" style={{ fontSize: 12, marginTop: 2 }}>
-                  Пусто
-                </T>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 12 }}>
+                  <T v="small" style={{ fontSize: 12, flex: 1 }}>
+                    Пусто
+                  </T>
+                  {prevDay.some((e) => e.meal === m) ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Скопировать ${MEAL_LABEL[m].toLowerCase()} со вчера`} hitSlop={8} onPress={() => copyFrom(addDays(date, -1), m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Icon name="copy-outline" size={14} color={colors.accent} />
+                      <T v="small" color={colors.accent} style={{ fontWeight: '700', fontSize: 12 }}>
+                        Как вчера · {fmtNum(prevDay.filter((e) => e.meal === m).reduce((a, e) => a + e.macros.kcal, 0))} ккал
+                      </T>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
               {list.map((e) => (
                 <Pressable key={e.id} onPress={() => setEdit(e)} style={styles.entry} accessibilityRole="button" accessibilityLabel={`${e.name}, изменить`}>
@@ -280,6 +313,34 @@ export default function Nutrition() {
   );
 }
 
+/** Вода за день: +250 / +500 одним тапом, ориентир — от веса и тренировки */
+function WaterRow({ date }: { date: string }) {
+  const ml = useNutrition((s) => s.water[date] ?? 0);
+  const w = useProfile((s) => s.profile?.weightKg ?? 75);
+  const goal = waterTarget(w, false);
+  const add = (x: number) => {
+    useNutrition.getState().addWater(date, x);
+    haptic.light();
+  };
+  return (
+    <View style={styles.water}>
+      <Icon name="water-outline" size={20} color={colors.protein} />
+      <View style={{ flex: 1, gap: 4 }}>
+        <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+          Вода {ml >= 1000 ? `${String(Math.round(ml / 50) / 20).replace('.', ',')} л` : `${ml} мл`} <T v="small">из ~{String(goal / 1000).replace('.', ',')} л</T>
+        </T>
+        <Bar progress={ml / goal} color={colors.protein} height={4} />
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Минус 250 мл воды" disabled={!ml} onPress={() => add(-250)} style={[styles.waterBtn, !ml && { opacity: 0.4 }]} hitSlop={4}>
+        <Icon name="remove" size={18} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Плюс 250 мл воды" onPress={() => add(250)} style={styles.waterBtn} hitSlop={4}>
+        <T v="small" style={{ fontWeight: '800' }}>+250</T>
+      </Pressable>
+    </View>
+  );
+}
+
 /** Остаток макроса: крупно «+49 г» (сколько ещё), полоса — сколько уже съедено */
 function MacroLeft({ label, eaten, target, state, base }: { label: string; eaten: number; target: number; state: MacroState; base: string }) {
   const c = state === 'progress' ? base : stateColor(state);
@@ -348,6 +409,15 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
       {entry && m ? (
         <View style={{ gap: space.md }}>
           <NumberStepper value={g} onChange={setG} step={10} min={1} max={3000} unit="г" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {[['½', g / 2], ['−50', g - 50], ['+50', g + 50], ['×2', g * 2], ...(p?.serving ? [[p.serving.label, p.serving.grams]] : [])].map(([label, v]) => (
+              <Pressable key={String(label)} accessibilityRole="button" accessibilityLabel={`Порция ${label}`} onPress={() => setG(Math.max(1, Math.min(3000, Math.round(Number(v)))))} style={styles.gramChip}>
+                <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
+                  {label}
+                </T>
+              </Pressable>
+            ))}
+          </View>
           <T v="small">
             {m.kcal} ккал · Б {Math.round(m.protein)} · Ж {Math.round(m.fat)} · У {Math.round(m.carbs)}
           </T>
@@ -372,6 +442,10 @@ const styles = themed({
   legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
   quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
   macroLeft: { flex: 1, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 3 },
+  gramChip: { paddingHorizontal: 12, height: 34, borderRadius: 17, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
+  copyDay: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim },
+  water: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  waterBtn: { minWidth: 44, height: 36, paddingHorizontal: 8, borderRadius: 18, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   mealAdd: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, minHeight: 48, borderRadius: radius.sm },
 });

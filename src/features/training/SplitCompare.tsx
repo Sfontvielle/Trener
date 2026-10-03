@@ -5,6 +5,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { SPLIT_LABEL } from './engine/split';
+import { BRAND } from '@/config/brand';
 
 /**
  * «Сравнить с другими вариантами» / «Почему не Full Body?».
@@ -41,7 +42,7 @@ function Item({ c, chosen }: { c: NonNullable<WorkoutPlan['splitChoice']>['candi
         {chosen ? (
           <View style={styles.badge}>
             <T v="small" color={colors.onAccent} style={{ fontWeight: '800', fontSize: 11 }}>
-              Выбран FORM
+              Выбран {BRAND}
             </T>
           </View>
         ) : (

@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
-import type { Equipment, GoalType, UserProfile } from '@/types';
+import type { Equipment, GoalType, HealthProfile, UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Chip, Icon, T } from '@/components/ui';
+import { Banner, Chip, Icon, T } from '@/components/ui';
 import { Field, NumberStepper } from '@/components/inputs';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
 import { GOAL_LABEL, defaultRate } from '@/features/nutrition/targets';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
+import { useEnsureVisible } from '@/components/keyboard';
+import { EMPTY_HEALTH, healthOf, healthTraining } from './health';
+import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
+import { BRAND } from '@/config/brand';
 
 export const GOAL_DESC: Record<GoalType, string> = {
   bulk: 'Профицит калорий, упор на прогрессию весов',
@@ -35,6 +39,7 @@ export function defaultProfile(): UserProfile {
     location: 'gym',
     equipment: GYM_EQUIPMENT,
     limitations: '',
+    health: { ...EMPTY_HEALTH },
     avoidExerciseIds: [],
     likedFoods: [],
     dislikedFoods: [],
@@ -155,7 +160,7 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           ))}
         </View>
         <T v="small" style={{ fontSize: 12 }} color={p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? colors.warning : colors.textDim}>
-          {p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? `Выбрано ${p.preferredDays.length}, нужно ${p.daysPerWeek} — иначе FORM расставит дни сам.` : 'Если не выбрать — FORM равномерно распределит тренировки.'}
+          {p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? `Выбрано ${p.preferredDays.length}, нужно ${p.daysPerWeek} — иначе ${BRAND} расставит дни сам.` : `Если не выбрать — ${BRAND} равномерно распределит тренировки.`}
         </T>
       </View>
       <View style={{ gap: 6 }}>
@@ -177,7 +182,6 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           ))}
         </View>
       </View>
-      <Field label="Ограничения и травмы" placeholder="Например: правое плечо не любит жим над головой" value={p.limitations} onChangeText={(t) => set({ limitations: t })} multiline hint="Учитывается тренером FORM. Структурированные ограничения (зона, движения) и исключения — в Профиль → Предпочтения и ограничения." />
     </View>
   );
 }
@@ -215,6 +219,53 @@ export function LifestyleSection({ p, set }: { p: UserProfile; set: Setter }) {
   );
 }
 
+/**
+ * Здоровье и особенности: пишутся обычными словами, а приложение превращает их в правила
+ * (какие движения не назначать, без отказа, что исключить из еды) и показывает это сразу.
+ */
+export function HealthSection({ p, set }: { p: UserProfile; set: Setter }) {
+  const h = healthOf(p);
+  const upd = (patch: Partial<HealthProfile>) => {
+    const next = { ...h, ...patch };
+    // Старое поле остаётся синхронным (резервные копии и прежние версии читают его)
+    set({ health: next, limitations: next.injuries });
+  };
+  const rules = healthTraining({ health: h, limitations: h.injuries });
+  return (
+    <View style={{ gap: space.md }}>
+      <Field label="Травмы" placeholder="Например: правое плечо — больно в жиме над головой" value={h.injuries} onChangeText={(t) => upd({ injuries: t })} multiline maxLength={400} />
+      <Field label="Хронические ограничения" placeholder="Например: протрузия L5, гипертония" value={h.chronic} onChangeText={(t) => upd({ chronic: t })} multiline maxLength={400} />
+      <Field label="Движения, вызывающие боль" placeholder="Например: глубокий присед, выпады" value={h.painfulMovements} onChangeText={(t) => upd({ painfulMovements: t })} multiline maxLength={300} />
+      <Field label="Ограничения от врача или физиотерапевта" placeholder="Например: без осевой нагрузки 3 месяца" value={h.medical} onChangeText={(t) => upd({ medical: t })} multiline maxLength={300} hint="Соблюдаются строго — такие движения не назначаются совсем." />
+      <TagInput label="Аллергии" values={h.allergies} onChange={(v) => upd({ allergies: v })} suggestions={['Орехи', 'Арахис', 'Морепродукты', 'Яйца', 'Мёд']} placeholder="Добавить аллерген" />
+      <TagInput label="Непереносимости" values={h.intolerances} onChange={(v) => upd({ intolerances: v })} suggestions={['Лактоза', 'Глютен', 'Фруктоза']} placeholder="Добавить" />
+      <TagInput label="Запрещённые продукты" values={h.forbiddenFoods} onChange={(v) => upd({ forbiddenFoods: v })} suggestions={['Сахар', 'Алкоголь', 'Кофе']} placeholder="Добавить продукт" />
+      <Field label="Другие важные особенности" placeholder="Например: астма, после операции на колене в 2022" value={h.other} onChangeText={(t) => upd({ other: t })} multiline maxLength={300} />
+      {rules.limitations.length || rules.notes.length ? (
+        <View style={styles.rules}>
+          <T v="caption" color={colors.accent}>
+            Что будет учтено
+          </T>
+          {rules.limitations.map((l) => (
+            <T key={l.id} v="small" color={colors.text}>
+              • {AREA_LABEL[l.area]}{l.source === 'doctor' ? ' (врач)' : ''}: {l.severity === 'severe' ? 'исключить все упражнения на эту зону' : `не назначать — ${l.movements.map((m) => RESTRICTION_LABEL[m].toLowerCase()).join(', ')}`}
+            </T>
+          ))}
+          {rules.notes.filter((x) => !x.startsWith('Ограничения из профиля')).map((x) => (
+            <T key={x} v="small" color={colors.text}>
+              • {x}
+            </T>
+          ))}
+          <T v="small" style={{ fontSize: 11 }}>
+            Это правила подбора движений, а не диагноз. Конфликтующие упражнения заменяются безопасными аналогами с объяснением.
+          </T>
+        </View>
+      ) : null}
+      {rules.clearance ? <Banner tone="warning" icon="medkit-outline" text="Согласуй интенсивность тренировок с врачом. При боли, головокружении или одышке во время нагрузки — остановись." /> : null}
+    </View>
+  );
+}
+
 const LIKE_SUGGEST = ['Курица', 'Творог', 'Рис', 'Гречка', 'Яйца', 'Овсянка', 'Говядина', 'Индейка', 'Лосось', 'Скир', 'Бананы', 'Картофель', 'Макароны', 'Орехи'];
 const RESTRICTIONS: { v: string; label: string }[] = [
   { v: 'vegetarian', label: 'Вегетарианство' },
@@ -242,6 +293,7 @@ export function FoodSection({ p, set }: { p: UserProfile; set: Setter }) {
 
 export function TagInput({ label, values, onChange, suggestions = [], placeholder }: { label: string; values: string[]; onChange: (v: string[]) => void; suggestions?: string[]; placeholder?: string }) {
   const [text, setText] = useState('');
+  const ensure = useEnsureVisible();
   const add = (v: string) => {
     const t = v.trim();
     if (!t || values.some((x) => x.toLowerCase() === t.toLowerCase())) return;
@@ -271,6 +323,8 @@ export function TagInput({ label, values, onChange, suggestions = [], placeholde
           placeholder={placeholder}
           placeholderTextColor={colors.muted}
           onSubmitEditing={() => add(text)}
+          onFocus={ensure}
+          blurOnSubmit={false}
           returnKeyType="done"
           style={styles.tagInput}
           selectionColor={colors.accent}
@@ -299,4 +353,5 @@ const styles = themed({
   tagInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   tagInput: { flex: 1, minWidth: 0, height: 48, color: colors.text, fontSize: 16, paddingHorizontal: space.md },
   tagAdd: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  rules: { gap: 4, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
 });

@@ -3,6 +3,7 @@ import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
 import { targetWeeklyChangeKg } from './targets';
 import { addDays, daysBetween, today } from '@/utils/date';
 import { clamp } from '@/utils/format';
+import { BRAND } from '@/config/brand';
 
 export interface CalorieReview {
   status: 'insufficient_data' | 'on_track' | 'adjust';
@@ -50,7 +51,7 @@ export function reviewCalories(args: {
       targetKgPerWeek: target,
       deltaKcal: 0,
       headline: 'Мало данных о весе',
-      detail: n === 0 ? 'Взвешивайся утром 3–4 раза в неделю — через 2 недели FORM сверит калории с реальным трендом.' : `Есть ${n} ${n === 1 ? 'замер' : 'замера(ов)'}. Нужно ≥5 взвешиваний за 10+ дней, чтобы увидеть тренд.`,
+      detail: n === 0 ? `Взвешивайся утром 3–4 раза в неделю — через 2 недели ${BRAND} сверит калории с реальным трендом.` : `Есть ${n} ${n === 1 ? 'замер' : 'замера(ов)'}. Нужно ≥5 взвешиваний за 10+ дней, чтобы увидеть тренд.`,
       loggingCoverage: coverage,
     };
   }

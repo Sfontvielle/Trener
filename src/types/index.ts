@@ -37,6 +37,8 @@ export interface UserProfile {
   heightCm: number;
   weightKg: number; // стартовый/последний ручной вес; актуальный — из тренда веса
   goal: GoalType;
+  /** Целевой вес (необязательно) — для «прогресса к цели» на главной */
+  targetWeightKg?: number;
   /** Желаемый темп, % массы тела в неделю (0.25–1.0). Для maintain/recomp игнорируется. */
   ratePctPerWeek: number;
   level: ExperienceLevel;
@@ -45,7 +47,9 @@ export interface UserProfile {
   sessionMinutes: number; // 30–120
   location: TrainingLocation;
   equipment: Equipment[];
-  limitations: string; // свободный текст: «правое плечо, вертикальный жим»
+  limitations: string; // свободный текст: «правое плечо, вертикальный жим» (v1; в v3 — health.injuries)
+  /** Здоровье и особенности (v3). Свободный текст разбирается в ограничения движений и пищевые запреты */
+  health?: HealthProfile;
   /** @deprecated старое поле (v1): читается как excluded c reason='user'. Новые данные — в training */
   avoidExerciseIds: ID[];
   /** Структурированные тренировочные предпочтения и ограничения (v2) */
@@ -63,6 +67,21 @@ export interface UserProfile {
   updatedAt: number;
 }
 
+export interface HealthProfile {
+  /** Травмы (текущие и перенесённые) */
+  injuries: string;
+  /** Хронические ограничения: «протрузия L5», «гипертония» */
+  chronic: string;
+  /** Движения, вызывающие боль: «жим над головой», «глубокий присед» */
+  painfulMovements: string;
+  /** Ограничения от врача/физиотерапевта — всегда строгий запрет */
+  medical: string;
+  allergies: string[];
+  intolerances: string[];
+  forbiddenFoods: string[];
+  other: string;
+}
+
 export interface AppSettings {
   weightUnit: WeightUnit;
   restTimerAuto: boolean;
@@ -78,6 +97,10 @@ export interface AppSettings {
   trainingReminder: boolean;
   trainingTime: { hour: number; minute: number };
   lastBackupAt?: number;
+  /** Автокопия в папке приложения (тихо, раз в несколько дней) */
+  lastAutoBackupAt?: number;
+  /** Еженедельный отчёт по понедельникам */
+  weeklyReview?: boolean;
   /** Оформление: системная / тёмная / светлая и цвет акцента */
   theme: 'system' | 'dark' | 'light';
   accent: 'lime' | 'blue' | 'orange';
@@ -431,7 +454,8 @@ export interface Exercise {
 
 // ─── Workouts ───────────────────────────────────────────────────────────────
 
-export type SetFeel = 'easy' | 'ok' | 'hard';
+/** Как прошёл подход — понятными словами; внутри переводится в запас повторов (RIR) */
+export type SetFeel = 'easy' | 'ok' | 'hard' | 'max';
 
 export interface ExerciseSet {
   id: ID;
@@ -484,7 +508,9 @@ export interface WorkoutSession {
   /** Фактор объёма из readiness на момент старта */
   volumeFactor: number;
   readinessScore?: number;
-  sessionRpe?: number; // общая тяжесть 1–10
+  sessionRpe?: number; // общая тяжесть 1–10 (внутренне; пользователь отвечает «Легко … Очень тяжело»)
+  /** Энергозатраты на момент завершения (оценка или измерено часами) */
+  energy?: { kcal: number; source: 'health' | 'estimate' };
   notes?: string;
   status: 'active' | 'completed' | 'discarded';
   /** Активная тренировка: какое упражнение открыто (сохраняется — восстанавливается после перезапуска) */
@@ -619,6 +645,14 @@ export interface CoachAction {
   invalid?: string;
 }
 
+/** Источник рекомендации: позиция профессионального общества, обзор, руководство */
+export interface KnowledgeSource {
+  title: string;
+  org: string;
+  url: string;
+  year?: string;
+}
+
 export interface CoachMessage {
   id: ID;
   role: 'user' | 'assistant';
@@ -629,6 +663,8 @@ export interface CoachMessage {
   offline?: boolean;
   safety?: boolean;
   error?: boolean;
+  /** Откуда рекомендация (проверенные первоисточники + свежие обзоры PubMed) */
+  sources?: KnowledgeSource[];
 }
 
 export interface CoachMemoryItem {
