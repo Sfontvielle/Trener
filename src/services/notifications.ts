@@ -9,6 +9,7 @@ import { BRAND } from '@/config/brand';
  */
 const native = Platform.OS === 'ios' || Platform.OS === 'android';
 const REST_ID = 'form-rest';
+const REST_WARN_ID = 'form-rest-warn';
 const MORNING_ID = 'form-morning';
 const TRAIN_PREFIX = 'form-train-';
 
@@ -56,6 +57,7 @@ async function cancel(id: string) {
 export async function scheduleRestEnd(seconds: number, label: string) {
   if (!native) return;
   await cancel(REST_ID);
+  await cancel(REST_WARN_ID);
   if (seconds < 5) return;
   try {
     const perm = await Notifications.getPermissionsAsync();
@@ -65,13 +67,24 @@ export async function scheduleRestEnd(seconds: number, label: string) {
       content: { title: 'Отдых закончен', body: `Следующий подход: ${label}`, sound: true },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.round(seconds) },
     });
+    // Предупреждение за ~10 с до конца (если отдых длиннее 25 с), без звука
+    if (seconds > 25) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: REST_WARN_ID,
+        content: { title: 'Через 10 секунд — подход', body: label, sound: false },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.round(seconds - 10) },
+      });
+    }
   } catch {
     /* уведомления недоступны — таймер на экране всё равно работает */
   }
 }
 
 export async function cancelRestEnd() {
-  if (native) await cancel(REST_ID);
+  if (native) {
+    await cancel(REST_ID);
+    await cancel(REST_WARN_ID);
+  }
 }
 
 /** 0 = Пн … 6 = Вс (FORM) → 1 = Вс … 7 = Сб (iOS/expo) */

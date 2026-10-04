@@ -2,7 +2,7 @@ import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise } from '@/types';
+import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise, WorkoutSession } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
@@ -27,7 +27,9 @@ import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { currentIndexOf, isExerciseDone, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress } from '@/features/training/workoutNav';
 import { RestTimerBar } from '@/features/training/RestTimer';
 import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, prefFavorite } from '@/features/training/prefActions';
-import { platesPerSide, usesBarbell, warmupSets } from '@/features/training/warmup';
+import { warmupPlan } from '@/features/training/warmup';
+import { DEFAULT_GYM, equipmentStep, loadKind, plateLayout } from '@/features/training/equipment';
+import { autoregulate } from '@/features/training/autoreg';
 import { formatDuration, today } from '@/utils/date';
 import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
@@ -38,9 +40,6 @@ let swipeGo: ((dir: 1 | -1) => void) | null = null;
 const swipeNav = (dir: 1 | -1) => swipeGo?.(dir);
 
 /** Как прошёл подход — понятными словами; внутри переводится в запас повторов (RIR) для прогрессии */
-const FEEL_RIR: Record<SetFeel, number> = { easy: 3, ok: 2, hard: 1, max: 0 };
-const FEEL_LABEL: Record<SetFeel, string> = { easy: 'Легко', ok: 'Нормально', hard: 'Тяжело', max: 'До отказа' };
-const FEELS: SetFeel[] = ['easy', 'ok', 'hard', 'max'];
 const PAIN_AREAS: { label: string; area?: BodyArea }[] = [
   { label: 'Плечо', area: 'shoulder' },
   { label: 'Спина / поясница', area: 'lower_back' },
@@ -61,6 +60,7 @@ export default function ActiveWorkout() {
   const weights = useBody((s) => s.weights);
   const healthDays = useHealth((s) => s.days);
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; weId: string } | null>(null);
+  const [swapFor, setSwapFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [painFor, setPainFor] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
@@ -210,7 +210,6 @@ export default function ActiveWorkout() {
     ]);
   };
 
-  const exEnergy = we && energy ? energy.perExercise[we.exerciseId] : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -253,11 +252,8 @@ export default function ActiveWorkout() {
                 nextName={nextI >= 0 ? getExercise(active.exercises[nextI].exerciseId, customs)?.name : undefined}
                 isLast={nextI < 0}
                 allDone={allDone}
-                kcal={exEnergy}
-                totalKcal={energy?.kcal}
-                energySource={energy?.source}
-                onEnergy={() => setEnergyOpen(true)}
                 onMenu={() => setMenuFor(we.id)}
+                onSwap={() => setSwapFor(we.id)}
                 onPr={(text) => setPr({ text, n: (pr?.n ?? 0) + 1 })}
               />
             ) : (
@@ -363,6 +359,19 @@ export default function ActiveWorkout() {
         ) : null}
       </Sheet>
 
+      <Sheet visible={!!swapFor} onClose={() => setSwapFor(null)} title="Заменить упражнение" subtitle="Подберём альтернативу на те же мышцы и движение">
+        {swapFor ? (
+          <View style={{ gap: 8 }}>
+            <MenuRow icon="time-outline" label="Тренажёр занят" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
+            <MenuRow icon="construct-outline" label="Нет нужного оборудования" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
+            <MenuRow icon="medkit-outline" label="Дискомфорт или боль" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPainFor(id), 250); }} />
+            <T v="small" style={{ fontSize: 12, marginTop: 4 }}>
+              При боли прекрати это движение и выбери более комфортную альтернативу. {BRAND} не ставит диагнозов.
+            </T>
+          </View>
+        ) : null}
+      </Sheet>
+
       <Sheet visible={!!painWe} onClose={() => setPainFor(null)} title="Где дискомфорт?" subtitle="Упражнение не будет назначаться автоматически, пока ты сам его не вернёшь">
         {painWe ? (
           <View style={{ gap: 8 }}>
@@ -427,7 +436,7 @@ function completeSetFor({ we, set, index, unit, onPr }: { we: WorkoutExercise; s
   const i = we.sets.findIndex((x) => x.id === set.id);
   const next = we.sets[i + 1];
   if (next && !next.done && next.weight !== set.weight && next.weight === (rec?.weight ?? 0)) st.updateSet(we.id, next.id, { weight: set.weight });
-  if (isPersonalRecord(ex, { ...set, done: true }, history)) {
+  if (!set.warmup && isPersonalRecord(ex, { ...set, done: true }, history)) {
     haptic.record();
     onPr(`${ex.name} · ${set.weight ? `${fmtWeight(set.weight)} × ${set.reps}` : `${set.reps} повт.`}`);
   }
@@ -438,7 +447,8 @@ function completeSetFor({ we, set, index, unit, onPr }: { we: WorkoutExercise; s
   if (workoutComplete) st.stopRest?.();
   if (settings.restTimerAuto && a && !workoutComplete) {
     const label = nextSetLabel(a, index, (w) => `${fmtWeight(w, unit)}`, (id) => getExercise(id, customs)?.name ?? '');
-    st.startRest(we.restSec || settings.defaultRestSec, label);
+    // Отдых по программе: тяжёлые базовые — дольше, изоляция — короче (задано в плане); после разминки — 45 с
+    st.startRest(set.warmup ? 45 : we.restSec || settings.defaultRestSec, label);
     haptic.timerStart();
   }
 }
@@ -565,10 +575,7 @@ function ExerciseFocus({
   nextName,
   isLast,
   allDone,
-  kcal,
-  totalKcal,
-  energySource,
-  onEnergy,
+  onSwap,
   onPr,
 }: {
   we: WorkoutExercise;
@@ -579,10 +586,7 @@ function ExerciseFocus({
   nextName?: string;
   isLast: boolean;
   allDone: boolean;
-  kcal?: number;
-  totalKcal?: number;
-  energySource?: 'health' | 'estimate';
-  onEnergy: () => void;
+  onSwap: () => void;
   onPr: (text: string) => void;
 }) {
   const customs = useWorkouts((s) => s.customExercises);
@@ -591,15 +595,18 @@ function ExerciseFocus({
   const ex = getExercise(we.exerciseId, customs);
   const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 6) : []), [ex, sessions]);
   // Тот же шаг, что и в рекомендации: реальный шаг весов этого зала (по истории)
-  const step = ex ? effectiveIncrement(ex.increment || 2.5, history) : 2.5;
+  const gym = useProfile((s) => s.settings.gym) ?? DEFAULT_GYM;
+  const level = useProfile((s) => s.profile?.level);
+  const active = useWorkouts((s) => s.active);
+  const step = ex ? effectiveIncrement(loadKind(ex) === 'none' ? ex.increment || 2.5 : Math.max(equipmentStep(ex, gym), loadKind(ex) === 'machine' ? ex.increment : 0), history) : 2.5;
   const [whyOpen, setWhyOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+  const [platesOpen, setPlatesOpen] = useState(false);
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
   const isBw = ex.bodyweight;
   const nextSet = we.sets.find((s) => !s.done);
-  const setNo = nextSet ? we.sets.indexOf(nextSet) + 1 : we.sets.length;
   const doneCount = we.sets.filter((s) => s.done).length;
   const lastDone = [...we.sets].reverse().find((s) => s.done);
 
@@ -607,7 +614,19 @@ function ExerciseFocus({
 
   const primary = ex.groups.primary.map((g) => GROUP_LABEL[g]);
   const secondary = ex.groups.secondary.map((g) => GROUP_LABEL[g]);
-  const prevSame = last?.sets[setNo - 1] ?? last?.sets[last.sets.length - 1];
+
+  // Разминка: только перед первым рабочим подходом и если её ещё не добавили
+  const work = we.sets.find((x) => !x.done && !x.warmup)?.weight ?? rec?.weight ?? 0;
+  const hasWarmups = we.sets.some((x) => x.warmup);
+  const started = we.sets.some((x) => x.done);
+  const warmedSimilar = !!active && active.exercises.slice(0, index).some((o) => {
+    const oe = getExercise(o.exerciseId, customs);
+    return !!oe && oe.pattern === ex.pattern && o.sets.filter((x) => x.done && !x.warmup).length >= 2;
+  });
+  const prevWarm = lastWarmupCount(ex.id, sessions);
+  const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
+  const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
+  const lastTxt = last ? last.sets.map((x) => (x.weight ? `${fmtWeight(x.weight, unit)}×${x.reps}` : `${x.reps}`)).join(' · ') : '';
 
   return (
     <View style={{ gap: 10 }}>
@@ -619,9 +638,6 @@ function ExerciseFocus({
           <T v="h2" numberOfLines={2} style={{ fontSize: 22, lineHeight: 26 }}>
             {ex.name}
           </T>
-          <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
-            {[...primary, ...secondary].slice(0, 3).join(' · ')}
-          </T>
         </View>
         {/* Техника — отдельно, в листе: на основном экране только то, что нужно для подхода */}
         <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => setTechOpen(true)} style={({ pressed }) => [styles.techBtn, pressed && { opacity: 0.7 }]} hitSlop={6}>
@@ -630,76 +646,66 @@ function ExerciseFocus({
             Техника
           </T>
         </Pressable>
+        <IconButton name="swap-horizontal" label="Заменить упражнение" onPress={onSwap} size={18} style={{ width: 40, height: 40 }} />
         <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 40, height: 40 }} />
       </View>
 
-      {/* Текущий подход: что сделать сейчас */}
-      <View style={styles.setCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <T v="caption" color={colors.accent}>
-            {nextSet ? `Подход ${setNo} из ${we.sets.length}` : `Выполнено ${doneCount} из ${we.sets.length}`}
-          </T>
-          {kcal ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Как рассчитаны калории" onPress={onEnergy} hitSlop={8} style={{ marginLeft: 'auto' }}>
-              <T v="small" style={{ fontSize: 12 }}>
-                {energySource === 'health' ? '' : '≈'}
-                {kcal} ккал · {energySource === 'health' ? '' : '≈'}
-                {totalKcal ?? 0} всего <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '800' }}>?</T>
-              </T>
-            </Pressable>
-          ) : null}
-        </View>
-        {rec ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Рекомендация, почему" onPress={() => setWhyOpen(!whyOpen)} style={{ gap: 2 }} testID="rec">
-            <T v="small" style={{ fontSize: 11 }}>
-              {BRAND} рекомендует
-            </T>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-              <T v="num" style={{ fontSize: 20 }}>
+      {rec ? (
+        <View style={styles.recCard} testID="rec">
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={layout ? 'Раскладка блинов' : 'Рекомендация'} disabled={!layout} onPress={() => setPlatesOpen(true)} hitSlop={4}>
+              <T v="num" style={{ fontSize: 22, textDecorationLine: layout ? 'underline' : 'none', textDecorationStyle: 'dotted' }}>
                 {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {rec.repMin}–{rec.repMax}
               </T>
-              {rec.delta && rec.action !== 'new' ? (
-                <T v="body" style={{ fontWeight: '800', fontSize: 14 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim}>
-                  · {rec.delta}
-                </T>
-              ) : null}
-              <T v="small" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: '700' }} color={colors.accent}>
-                {whyOpen ? 'Скрыть' : 'Почему?'}
-              </T>
-            </View>
-            {whyOpen ? (
-              <T v="small" style={{ fontSize: 12 }}>
-                {rec.rationale}
-                {we.why ? `\n${we.why}` : ''}
+            </Pressable>
+            {rec.delta && rec.action !== 'new' ? (
+              <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim}>
+                {rec.delta}
               </T>
             ) : null}
+            <Pressable accessibilityRole="button" accessibilityLabel="Рекомендация, почему" onPress={() => setWhyOpen(!whyOpen)} hitSlop={8} style={{ marginLeft: 'auto' }}>
+              <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={colors.accent}>
+                {whyOpen ? 'Скрыть' : 'Почему?'}
+              </T>
+            </Pressable>
+          </View>
+          {whyOpen ? (
+            <T v="small" style={{ fontSize: 12 }}>
+              {rec.rationale}
+              {lastTxt ? `\nПрошлый раз: ${lastTxt}` : ''}
+              {we.why ? `\n${we.why}` : ''}
+            </T>
+          ) : null}
+        </View>
+      ) : null}
+
+      {warm.length ? (
+        <View style={styles.warm}>
+          <Icon name="flame-outline" size={15} color={colors.textDim} />
+          <T v="small" style={{ flex: 1, fontSize: 12 }} numberOfLines={2}>
+            Разминка: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}</T>
+          </T>
+          <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={8}>
+            <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
+              + Добавить
+            </T>
           </Pressable>
-        ) : null}
-        {prevSame ? (
-          <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
-            Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontVariant: ['tabular-nums'] }}>{last!.sets.map((x) => (x.weight ? `${fmtWeight(x.weight, unit)}×${x.reps}` : `${x.reps}`)).join(' · ')}</T>
-          </T>
-        ) : (
-          <T v="small" style={{ fontSize: 12 }}>
-            Первый раз — начни с веса, который даёт запас 2–3 повтора.
-          </T>
-        )}
-        {nextSet ? <QuickAdjust we={we} step={step} unit={unit} bodyweight={isBw} /> : null}
-      </View>
+        </View>
+      ) : null}
 
-      {lastDone && !lastDone.feel ? <FeelPicker weId={we.id} set={lastDone} /> : null}
-
-      <WarmupHint ex={ex} we={we} unit={unit} />
+      {lastDone && lastDone.rir === undefined && !lastDone.warmup ? <RirPicker weId={we.id} set={lastDone} /> : null}
+      <AutoregTip we={we} step={step} unit={unit} />
 
       <View style={styles.block}>
         <View style={styles.headRow}>
           <T v="caption" style={{ width: 28 }}>#</T>
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{isBw ? `+${unitLabel(unit)}` : unitLabel(unit)}</T>
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>Повт</T>
+          <T v="caption" style={{ width: 40, textAlign: 'center' }}>RIR</T>
           <View style={{ width: 48 }} />
         </View>
         {we.sets.map((x, i) => (
-          <SetRow key={x.id} weId={we.id} set={x} idx={i} unit={unit} onComplete={completeSet} current={x === nextSet} />
+          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={completeSet} current={x === nextSet} />
         ))}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
           <Button title="Добавить подход" icon="add" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ flex: 1 }} />
@@ -708,7 +714,6 @@ function ExerciseFocus({
           ) : null}
         </View>
       </View>
-      <SetTip we={we} step={step} unit={unit} />
 
       {!nextSet ? (
         <View style={styles.doneCard}>
@@ -726,6 +731,25 @@ function ExerciseFocus({
         </View>
       ) : null}
 
+      <Sheet visible={platesOpen} onClose={() => setPlatesOpen(false)} title={rec && rec.weight ? `Штанга ${fmtWeight(rec.weight)} кг` : 'Блины'} subtitle={layout ? `Гриф ${fmtWeight(layout.bar)} кг · на каждую сторону` : undefined}>
+        {layout ? (
+          <View style={{ gap: 8 }} testID="plates">
+            {layout.perSide.length ? (
+              layout.perSide.map((p, i) => (
+                <View key={i} style={styles.plate}>
+                  <T v="h3">{fmtWeight(p)} кг</T>
+                </View>
+              ))
+            ) : (
+              <T v="body">Только гриф</T>
+            )}
+            <T v="small" style={{ fontSize: 12 }}>
+              Диски и гриф настраиваются в Профиль → Оборудование зала.
+            </T>
+          </View>
+        ) : null}
+      </Sheet>
+
       <Sheet visible={techOpen} onClose={() => setTechOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
         <TechniqueView ex={ex} sex={sex} />
       </Sheet>
@@ -733,25 +757,29 @@ function ExerciseFocus({
   );
 }
 
-/** После подхода: как он прошёл — понятными словами (внутри → запас повторов для прогрессии) */
-function FeelPicker({ weId, set }: { weId: string; set: ExerciseSet }) {
-  const pick = (f: SetFeel) => {
+/**
+ * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймер отдыха уже идёт.
+ * RIR сохраняется в подход и маппится в «ощущение» для старых экранов (0 → до отказа, 1 → тяжело, 2 → нормально, 3+ → легко).
+ */
+const RIR_OPTS = [0, 1, 2, 3, 4] as const;
+export function feelForRir(rir: number): SetFeel {
+  return rir <= 0 ? 'max' : rir === 1 ? 'hard' : rir === 2 ? 'ok' : 'easy';
+}
+function RirPicker({ weId, set }: { weId: string; set: ExerciseSet }) {
+  const pick = (r: number) => {
     haptic.tap();
-    useWorkouts.getState().updateSet(weId, set.id, { feel: f, rir: FEEL_RIR[f] });
+    useWorkouts.getState().updateSet(weId, set.id, { rir: r, feel: feelForRir(r) });
   };
   return (
-    <View style={styles.feelCard}>
+    <View style={styles.feelCard} testID="rir-picker">
       <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-        Как прошёл подход?
+        Сколько повторений осталось в запасе?
       </T>
       <View style={{ flexDirection: 'row', gap: 6 }}>
-        {FEELS.map((f) => (
-          <Pressable key={f} accessibilityRole="button" accessibilityLabel={`Подход: ${FEEL_LABEL[f]}`} onPress={() => pick(f)} style={[styles.feel, { flex: 1 }]}>
-            <T v="small" style={{ fontSize: 12, fontWeight: '800', textAlign: 'center' }} color={f === 'max' ? colors.warning : colors.text} numberOfLines={1} adjustsFontSizeToFit>
-              {FEEL_LABEL[f]}
-            </T>
-            <T v="small" style={{ fontSize: 10, textAlign: 'center' }}>
-              {f === 'easy' ? 'запас 3+' : f === 'max' ? 'запас 0' : `запас ${FEEL_RIR[f]}`}
+        {RIR_OPTS.map((r) => (
+          <Pressable key={r} accessibilityRole="button" accessibilityLabel={`Запас ${r === 4 ? '4 и больше' : r}`} onPress={() => pick(r)} style={[styles.feel, { flex: 1 }]}>
+            <T v="h3" style={{ textAlign: 'center' }} color={r === 0 ? colors.warning : colors.text}>
+              {r === 4 ? '4+' : r}
             </T>
           </Pressable>
         ))}
@@ -760,123 +788,48 @@ function FeelPicker({ weId, set }: { weId: string; set: ExerciseSet }) {
   );
 }
 
-/**
- * Контекстная подсказка по ходу упражнения: два подхода подряд ниже диапазона → снизить вес,
- * два «легко» с повторами у верха диапазона → добавить. Меняются только оставшиеся подходы и только по кнопке.
- */
-function SetTip({ we, step, unit }: { we: WorkoutExercise; step: number; unit: 'kg' | 'lb' }) {
+/** Авторегуляция по первым подходам (features/training/autoreg) — меняет только оставшиеся подходы, по кнопке */
+function AutoregTip({ we, step, unit }: { we: WorkoutExercise; step: number; unit: 'kg' | 'lb' }) {
+  const doneN = we.sets.filter((x) => x.done).length;
   const [hiddenAt, setHiddenAt] = useState(-1);
-  const done = we.sets.filter((s) => s.done);
-  const todo = we.sets.filter((s) => !s.done);
-  if (done.length < 2 || !todo.length || hiddenAt === done.length) return null;
-  const [a, b] = done.slice(-2);
-  const w = todo[0].weight;
-  if (w <= 0) return null;
-  let tip: { text: string; weight: number } | null = null;
-  if (a.reps < we.repMin && b.reps < we.repMin) {
-    const nw = Math.max(0, Math.round((w * 0.93) / step) * step);
-    if (nw < w) tip = { text: `Два подхода ниже ${we.repMin} повт. — снизить вес оставшихся до ${fmtWeight(nw, unit)} ${unitLabel(unit)}?`, weight: nw };
-  } else if ((a.rir ?? 0) >= 3 && (b.rir ?? 0) >= 3 && a.reps >= we.repMax && b.reps >= we.repMax) {
-    tip = { text: `Легко и у верха диапазона — добавить до ${fmtWeight(w + step, unit)} ${unitLabel(unit)}?`, weight: w + step };
-  }
-  if (!tip) return null;
+  const tip = autoregulate(we, step);
+  if (!tip || hiddenAt === doneN) return null;
   const apply = () => {
+    if (tip.kind !== 'increase' && tip.kind !== 'decrease') return;
     const st = useWorkouts.getState();
-    todo.forEach((x) => st.updateSet(we.id, x.id, { weight: tip!.weight }));
+    we.sets.filter((x) => !x.done && !x.warmup).forEach((x) => st.updateSet(we.id, x.id, { weight: tip.weight }));
     haptic.success();
-    setHiddenAt(done.length);
+    setHiddenAt(doneN);
   };
   return (
-    <View style={styles.tip}>
-      <Icon name="sparkles-outline" size={15} color={colors.accent} />
+    <View style={styles.tip} testID="autoreg">
+      <Icon name={tip.kind === 'increase' ? 'trending-up' : tip.kind === 'decrease' ? 'trending-down' : 'remove'} size={15} color={tip.kind === 'decrease' ? colors.warning : colors.accent} />
       <T v="small" color={colors.text} style={{ flex: 1, fontSize: 12 }}>
         {tip.text}
       </T>
-      <Pressable accessibilityRole="button" hitSlop={6} onPress={apply}>
-        <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
-          Применить
-        </T>
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Скрыть подсказку" hitSlop={6} onPress={() => setHiddenAt(done.length)}>
+      {tip.kind !== 'keep' ? (
+        <Pressable accessibilityRole="button" hitSlop={6} onPress={apply}>
+          <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
+            {`${fmtWeight(tip.weight, unit)} ${unitLabel(unit)}`}
+          </T>
+        </Pressable>
+      ) : null}
+      <Pressable accessibilityRole="button" accessibilityLabel="Скрыть подсказку" hitSlop={6} onPress={() => setHiddenAt(doneN)}>
         <Icon name="close" size={14} color={colors.muted} />
       </Pressable>
     </View>
   );
 }
 
-/** Одна рука: быстрые ± для текущего (первого невыполненного) подхода, без клавиатуры */
-function QuickAdjust({ we, step, unit, bodyweight }: { we: WorkoutExercise; step: number; unit: 'kg' | 'lb'; bodyweight: boolean }) {
-  const cur = we.sets.find((s) => !s.done);
-  if (!cur) return null;
-  const upd = (patch: Partial<ExerciseSet>) => {
-    haptic.tap();
-    useWorkouts.getState().updateSet(we.id, cur.id, patch);
-  };
-  const stepTxt = String(step).replace('.', ',');
-  return (
-    <View style={styles.quick}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Минус ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.max(0, Math.round((cur.weight - step) * 100) / 100) })} style={styles.qBtn}>
-        <T v="small" style={{ fontWeight: '800' }}>−{stepTxt}</T>
-      </Pressable>
-      <View style={{ flex: 1, alignItems: 'center' }}>
-        <T v="num" style={{ fontSize: 22 }}>
-          {bodyweight && !cur.weight ? 'свой' : fmtWeight(cur.weight, unit)}
-        </T>
-        <T v="small" style={{ fontSize: 10 }}>
-          {unitLabel(unit)}
-        </T>
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Плюс ${stepTxt} ${unitLabel(unit)}`} onPress={() => upd({ weight: Math.round((cur.weight + step) * 100) / 100 })} style={styles.qBtn}>
-        <T v="small" style={{ fontWeight: '800' }}>+{stepTxt}</T>
-      </Pressable>
-      <View style={styles.qSep} />
-      <Pressable accessibilityRole="button" accessibilityLabel="Минус повтор" onPress={() => upd({ reps: Math.max(0, cur.reps - 1) })} style={styles.qBtn}>
-        <Icon name="remove" size={20} />
-      </Pressable>
-      <View style={{ flex: 0.8, alignItems: 'center' }}>
-        <T v="num" style={{ fontSize: 22 }}>
-          {cur.reps}
-        </T>
-        <T v="small" style={{ fontSize: 10 }}>
-          повт.
-        </T>
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Плюс повтор" onPress={() => upd({ reps: cur.reps + 1 })} style={styles.qBtn}>
-        <Icon name="add" size={20} />
-      </Pressable>
-    </View>
-  );
+/** Сколько разминочных подходов человек сделал в прошлый раз в этом упражнении */
+function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number | undefined {
+  const s = sessions.filter((x) => x.status === 'completed' && x.exercises.some((e) => e.exerciseId === exerciseId)).sort((a, b) => b.startedAt - a.startedAt)[0];
+  const we = s?.exercises.find((e) => e.exerciseId === exerciseId);
+  const n = we?.sets.filter((x) => x.warmup && x.done).length ?? 0;
+  return n > 0 ? n : undefined;
 }
 
-/** Разминка и раскладка блинов — подсказка, ничего не нужно вводить */
-function WarmupHint({ ex, we, unit }: { ex: Exercise; we: WorkoutExercise; unit: 'kg' | 'lb' }) {
-  const [open, setOpen] = useState(false);
-  const work = we.sets.find((s) => !s.done)?.weight ?? we.recommendation?.weight ?? 0;
-  const started = we.sets.some((s) => s.done);
-  const warm = started ? [] : warmupSets(ex, work);
-  const plates = usesBarbell(ex) && unit === 'kg' && work > 20 ? platesPerSide(work) : null;
-  if (!warm.length && !plates) return null;
-  return (
-    <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityLabel="Разминка и блины" style={styles.warm}>
-      <Icon name="flame-outline" size={15} color={colors.textDim} />
-      <View style={{ flex: 1, gap: 2 }}>
-        {warm.length ? (
-          <T v="small" style={{ fontSize: 12 }} numberOfLines={open ? undefined : 1}>
-            Разминка: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{warm.map((w) => `${fmtWeight(w.weight)}×${w.reps}`).join(' · ')}</T>
-          </T>
-        ) : null}
-        {plates && (open || !warm.length) ? (
-          <T v="small" style={{ fontSize: 12 }}>
-            {fmtWeight(work)} кг = гриф 20 + на сторону: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{plates.length ? plates.map((p) => fmtWeight(p)).join(' + ') : 'без блинов'}</T>
-          </T>
-        ) : null}
-      </View>
-      {plates && warm.length ? <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.muted} /> : null}
-    </Pressable>
-  );
-}
-
-const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, current }: { weId: string; set: ExerciseSet; idx: number; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean }) {
+const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean }) {
   const [pop] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!set.done) return;
@@ -901,16 +854,11 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, current 
   return (
     <View>
       <View style={[styles.setRow, set.done && { backgroundColor: colors.doneRow }, current && styles.setRowCurrent]}>
-        <Pressable style={{ width: 28 }} disabled={!set.done} onPress={() => { const i = set.feel ? FEELS.indexOf(set.feel) : -1; const n = FEELS[(i + 1) % FEELS.length]; haptic.tap(); upd({ feel: n, rir: FEEL_RIR[n] }); }} accessibilityLabel="Изменить ощущение подхода">
-          <T v="body" style={{ fontWeight: '800' }} color={set.done ? colors.accent : colors.textDim}>
-            {idx + 1}
+        <View style={{ width: 28 }}>
+          <T v="body" style={{ fontWeight: '800' }} color={set.warmup ? colors.muted : set.done ? colors.accent : colors.textDim}>
+            {no}
           </T>
-          {set.done && set.feel ? (
-            <T v="small" style={{ fontSize: 8.5, fontWeight: '800' }} color={set.feel === 'max' ? colors.warning : colors.textDim} numberOfLines={1}>
-              {set.feel === 'easy' ? 'легко' : set.feel === 'ok' ? 'норм' : set.feel === 'hard' ? 'тяжело' : 'отказ'}
-            </T>
-          ) : null}
-        </Pressable>
+        </View>
         <TextInput
           value={w}
           onChangeText={(t) => {
@@ -939,6 +887,22 @@ const SetRow = memo(function SetRow({ weId, set, idx, unit, onComplete, current 
           accessibilityLabel={`Повторы, подход ${idx + 1}`}
           style={[styles.input, set.done && styles.inputDone]}
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Запас повторов, подход ${idx + 1}`}
+          disabled={!set.done || !!set.warmup}
+          onPress={() => {
+            // Тап — следующее значение 4+ → 3 → 2 → 1 → 0 (поправить без клавиатуры)
+            const r = set.rir === undefined ? 2 : set.rir <= 0 ? 4 : set.rir - 1;
+            haptic.tap();
+            upd({ rir: r, feel: feelForRir(r) });
+          }}
+          style={{ width: 40, alignItems: 'center' }}
+        >
+          <T v="body" style={{ fontWeight: '800' }} color={set.rir === 0 ? colors.warning : set.done ? colors.text : colors.muted}>
+            {set.warmup ? '' : set.rir === undefined ? '–' : set.rir >= 4 ? '4+' : set.rir}
+          </T>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={set.done ? 'Отменить выполнение подхода' : 'Подход выполнен'}
@@ -1006,6 +970,8 @@ const styles = themed({
   quick: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: radius.lg, backgroundColor: colors.surface },
   qBtn: { width: 50, height: 48, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   qSep: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 2 },
+  recCard: { gap: 4, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accentLine },
+  plate: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center' },
   techBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim },
   setCard: { gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
   feelCard: { gap: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
