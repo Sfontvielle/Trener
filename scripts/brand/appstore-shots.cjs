@@ -43,6 +43,15 @@ const PROFILE = {
       mk('l2', b, [['hct', 'Гематокрит', 46.1, '%', 39, 49], ['hgb', 'Гемоглобин', 156, 'г/л', 132, 173], ['ldl', 'ЛПНП', 2.7, 'ммоль/л', undefined, 3.0], ['alt', 'АЛТ', 27, 'ед/л', undefined, 41], ['ferritin', 'Ферритин', 88, 'мкг/л', 30, 400], ['vitd', 'Витамин D', 38, 'нг/мл', 30, 100]]),
     ] }, version: 1 }));
   }, { a: iso(120), b: iso(6) });
+  const dismiss = async () => {
+    const d = page.getByText('У тебя есть незавершённая тренировка');
+    await d.waitFor({ timeout: 2500 }).catch(() => {});
+    if (await d.count()) {
+      await page.waitForTimeout(500);
+      await page.mouse.click(12, 12);
+      await d.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+    }
+  };
   const shot = async (name) => {
     await page.waitForTimeout(900);
     await page.screenshot({ path: path.join(OUT, `${name}.png`) });
@@ -61,16 +70,20 @@ const PROFILE = {
   await shot('3-workout');
   await page.goto(`${URL}/weekly-review`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
+  await dismiss();
   await shot('4-weekly');
   await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
+  await dismiss();
   await shot('5-labs');
   await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
+  await dismiss();
   await page.getByLabel('Почему такие КБЖУ?').click();
   await shot('6-nutrition');
   await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1800);
+  await dismiss();
   await shot('7-progress');
   await browser.close();
 })();
