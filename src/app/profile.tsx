@@ -7,7 +7,9 @@ import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
-import { toast } from '@/components/Dialog';
+import { confirm, toast } from '@/components/Dialog';
+import { resetAllStores } from '@/stores/hydration';
+import { clearAllData } from '@/storage/persist';
 import { useProfile } from '@/stores/profile';
 import { useCoach } from '@/stores/coach';
 import { useHealth } from '@/stores/health';
@@ -200,6 +202,21 @@ export default function Profile() {
           <Button title="Добавить" size="sm" disabled={!fact.trim()} onPress={() => { useCoach.getState().addMemory(fact, 'preference', 'user'); setFact(''); }} style={{ height: 50 }} />
         </View>
       </Card>
+
+      <Button
+        title="Удалить все данные"
+        icon="trash-outline"
+        size="sm"
+        variant="danger"
+        style={{ marginTop: space.xl }}
+        onPress={() =>
+          confirm('Удалить все данные?', 'Профиль, план, тренировки, питание, замеры и память тренера будут удалены с устройства без возможности восстановления (кроме ранее экспортированного файла).', 'Удалить всё', async () => {
+            await resetAllStores();
+            await clearAllData();
+            router.replace('/onboarding');
+          }, true)
+        }
+      />
 
       <T v="small" style={{ textAlign: 'center', marginTop: space.lg, fontSize: 12 }}>
         {BRAND} — фитнес-помощник и не ставит медицинских диагнозов.
