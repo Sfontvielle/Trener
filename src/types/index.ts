@@ -140,6 +140,9 @@ export interface NutritionTarget {
   source: 'formula' | 'adaptive';
   /** Смещение калорий, накопленное адаптивными корректировками */
   adjustmentKcal: number;
+  /** Персональный расход (дневник + тренд веса), если он участвовал в расчёте; в старых целях отсутствует */
+  observedTdee?: number;
+  observedConfidence?: 'medium' | 'high';
   steps: CalcStep[];
   computedAt: number;
 }
@@ -717,4 +720,63 @@ export interface ProgressSummary {
   adherencePct: number | null;
   volumeChange: { group: MuscleGroup; pct: number; sets: number }[];
   prs: { exerciseId: ID; from: string; to: string; e1rmFrom: number; e1rmTo: number }[];
+}
+
+// ─── Анализы (Biomarkers) ───────────────────────────────────────────────────
+
+/** Один показатель анализа. Исходные значения хранятся всегда; normalized — только при однозначном пересчёте */
+export interface LabResult {
+  id: ID;
+  /** Канонический показатель из каталога (если распознан) */
+  markerId?: string;
+  /** Название, как в бланке лаборатории */
+  name: string;
+  value: number;
+  /** Исходная запись значения («<0,1», «12,5») */
+  valueText?: string;
+  unit: string;
+  refLow?: number;
+  refHigh?: number;
+  /** Референс, как в бланке («< 41», «132 - 173») */
+  refText?: string;
+  /** Отметка лаборатории: H/L, ↑/↓ */
+  flag?: 'H' | 'L';
+  /** Пересчёт в каноническую единицу для графиков (исходное не меняется) */
+  normalized?: { value: number; unit: string; refLow?: number; refHigh?: number };
+}
+
+export interface LabReport {
+  id: ID;
+  /** Дата исследования (взятия биоматериала) */
+  date: ISODate;
+  lab?: string;
+  source: { kind: 'pdf' | 'image' | 'text' | 'manual'; files?: string[]; pages?: number };
+  results: LabResult[];
+  note?: string;
+  /** Пользователь проверил распознанные данные перед сохранением */
+  confirmed: true;
+  createdAt: number;
+}
+
+// ─── Enhanced / AAS: контекст для мониторинга здоровья (не рекомендации по препаратам) ───
+
+/** Пользовательская историческая запись. RYNJI её только хранит и показывает на шкале времени */
+export interface AasEntry {
+  id: ID;
+  substance: string;
+  startDate: ISODate;
+  endDate?: ISODate;
+  /** Доза — как её записал сам пользователь (свободный текст), RYNJI её не анализирует и не советует */
+  doseNote?: string;
+  note?: string;
+  createdAt: number;
+}
+
+export interface BloodPressureEntry {
+  id: ID;
+  date: ISODate;
+  systolic: number;
+  diastolic: number;
+  pulse?: number;
+  createdAt: number;
 }

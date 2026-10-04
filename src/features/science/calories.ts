@@ -13,7 +13,8 @@ import type { Basis } from './sources';
  *    зависит от состава ткани), поэтому используется только для перевода расхождения темпа в ккал.
  * Эвристики RYNJI (не из источников напрямую, а инженерные правила):
  *  • допуск темпа ±50% от цели (шум тренда при 3–4 взвешиваниях в неделю);
- *  • шаг корректировки обычно 150 ккал (200 — при большом расхождении, 100 — при неполном дневнике), не чаще раза в 14 дней;
+ *  • шаг корректировки 100–150 ккал: 100 — при небольшом расхождении темпа или неполном дневнике, 150 — при явном;
+ *    никогда не 500–700 ккал за раз; не чаще раза в 14 дней (эффект оценивается по тренду через 2 недели);
  *  • набор: вес стоит ≥3 недели при дневнике ≥70% → +150 ккал (даже если силовые растут);
  *  • талия ≥1 см на 1 кг набора за 3+ недели → набор замедляем, даже если вес «в плане»;
  *  • вес стоит, но силовые растут → сначала ждём ещё неделю (рекомпозиция/вода), а не добавляем еду.
@@ -51,10 +52,11 @@ export interface CalorieDecision {
 export const KCAL_PER_KG = 7700;
 const MIN_DAYS_BETWEEN = 14;
 /**
- * Шаг изменения: обычно 150 ккал; 200 — только при большом расхождении темпа (> 2 допусков); 100 — при неполном дневнике.
- * ЭВРИСТИКА RYNJI: маленькие объяснимые шаги, эффект оценивается через 2 недели.
+ * Шаг изменения: 150 ккал при явном расхождении темпа (> 1,5 допуска), 100 — при небольшом или неполном дневнике.
+ * ЭВРИСТИКА RYNJI: маленькие объяснимые шаги (+100…150 / 0 / −100…150), эффект оценивается через 2 недели.
  */
-const step = (kcal: number, big: boolean) => Math.sign(kcal) * (big ? 200 : 150);
+export const MAX_STEP_KCAL = 150;
+const step = (kcal: number, clear: boolean) => Math.sign(kcal) * (clear ? MAX_STEP_KCAL : 100);
 const kg = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(2).replace('.', ',')} кг/нед`;
 
 export function decideCalories(i: CalorieDecisionInput): CalorieDecision {
@@ -80,8 +82,8 @@ export function decideCalories(i: CalorieDecisionInput): CalorieDecision {
   /** fixed — шаг задан правилом (талия, плато) и не масштабируется расхождением темпа */
   const propose = (kcal: number, why: string, head: string, fixed = false): CalorieDecision => {
     if (wait) return { ...done('wait', 0, why, head), reasons: [...reasons, why, `Калории меняли ${i.daysSinceLastChange} дн. назад — ждём эффекта ещё ${MIN_DAYS_BETWEEN - i.daysSinceLastChange} дн.`] };
-    const big = Math.abs(t - r) > 2 * tol;
-    const d = lowData ? Math.sign(kcal) * 100 : fixed ? kcal : step(kcal, big);
+    const clear = Math.abs(t - r) > 1.5 * tol;
+    const d = lowData ? Math.sign(kcal) * 100 : fixed ? Math.sign(kcal) * Math.min(MAX_STEP_KCAL, Math.abs(kcal)) : step(kcal, clear);
     return done(d > 0 ? 'increase' : 'decrease', d, why, head);
   };
   const hold = (why: string, head: string) => done('hold', 0, why, head);

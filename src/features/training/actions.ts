@@ -16,6 +16,7 @@ import { getExercise } from '@/data/exercises';
 import { haptic } from '@/services/haptics';
 import { ensurePermission } from '@/services/notifications';
 import { healthTraining } from '@/features/profile/health';
+import { noIncreaseReason } from '@/features/health/current';
 
 /** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
 function askRestPermission() {
@@ -52,7 +53,7 @@ export function startTodayPlanned(templateOverride?: WorkoutTemplate) {
       source: 'plan',
       templateId: tpl.id,
       planned: tpl.exercises,
-      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: !templateOverride && tw.mode !== 'normal' && (!readiness || readiness.band === 'go') ? 'reduce' : readiness?.band, volumeFactor: templateOverride ? 1 : tw.volumeFactor, rirDelta: templateOverride ? 0 : tw.rirDelta, gym: useProfile.getState().settings.gym },
+      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: !templateOverride && tw.mode !== 'normal' && (!readiness || readiness.band === 'go') ? 'reduce' : readiness?.band, volumeFactor: templateOverride ? 1 : tw.volumeFactor, rirDelta: templateOverride ? 0 : tw.rirDelta, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() },
       readinessScore: readiness?.score,
     });
     useWorkouts.getState().start(s);
@@ -73,7 +74,7 @@ export function startDraft(draft: WorkoutDraft) {
       templateId: draft.templateId,
       planned: draft.exercises,
       // Сгенерированная тренировка уже учла готовность (объём/RIR) — не применяем повторно
-      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: readiness?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym },
+      ctx: { sessions: ws.sessions, customs: ws.customExercises, band: readiness?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() },
       readinessScore: readiness?.score,
     });
     useWorkouts.getState().start(s);

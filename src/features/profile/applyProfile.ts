@@ -11,7 +11,7 @@ import { useHealth } from '@/stores/health';
 import { estimateRecovery } from '@/features/training/engine/recovery';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { generatePlan } from '@/features/training/planGenerator';
-import { computeNutritionTarget, GOAL_LABEL } from '@/features/nutrition/targets';
+import { computeNutritionTarget, GOAL_LABEL, shiftTargetKcal } from '@/features/nutrition/targets';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { today } from '@/utils/date';
 
@@ -70,7 +70,8 @@ export function applyCalorieDelta(delta: number, reason: string, source: 'adapti
   const ps = usePlan.getState();
   if (!profile || !ps.target) return;
   const trendW = latestTrendWeight(useBody.getState().weights) ?? profile.weightKg;
-  const target = computeNutritionTarget(profile, { weightKg: trendW, adjustmentKcal: (ps.target.adjustmentKcal ?? 0) + delta });
+  // База расчёта (формула или персональный расход) сохраняется: итог ровно «было + delta», макросы пересчитаны
+  const target = shiftTargetKcal(profile, ps.target, trendW, delta, reason);
   ps.setTarget(target);
   ps.addAdjustment({ kind: 'calories', summary: `${delta > 0 ? '+' : ''}${delta} ккал/день: ${reason}`, source, deltaKcal: delta });
 }

@@ -5,6 +5,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { migrateCheckins, useCheckins } from '@/stores/checkins';
+import { useLabs } from '@/stores/labs';
+import { useEnhanced } from '@/stores/enhanced';
 import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
 import { useWorkouts } from '@/stores/workouts';
@@ -33,6 +35,9 @@ export interface BackupFile {
     workouts: { sessions: unknown; draft: unknown; customExercises: unknown };
     coach: { messages: unknown; summary: unknown; summarizedUntil: unknown; memory: unknown; advice?: unknown; knowledge?: unknown };
     journal?: { notes: unknown };
+    /** Анализы и режим Enhanced — в копиях с этой версии; старые копии восстанавливаются без них */
+    labs?: { reports: unknown };
+    enhanced?: { enabled: unknown; aas: unknown; bp: unknown };
   };
 }
 
@@ -57,6 +62,8 @@ export function buildBackup(): BackupFile {
       workouts: { sessions: w.sessions, draft: w.draft, customExercises: w.customExercises },
       coach: { messages: c.messages, summary: c.summary, summarizedUntil: c.summarizedUntil, memory: c.memory, advice: c.advice, knowledge: c.knowledge },
       journal: { notes: useJournal.getState().notes },
+      labs: { reports: useLabs.getState().reports },
+      enhanced: { enabled: useEnhanced.getState().enabled, aas: useEnhanced.getState().aas, bp: useEnhanced.getState().bp },
     },
   };
 }
@@ -174,6 +181,8 @@ export function restoreBackup(b: BackupFile): void {
   useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics), photos: arr(d.body?.photos) });
   useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams), meals: arr(d.nutrition?.meals), water: obj(d.nutrition?.water), favorites: arr(d.nutrition?.favorites) });
   useJournal.setState({ notes: arr(d.journal?.notes) });
+  useLabs.setState({ reports: arr(d.labs?.reports) });
+  useEnhanced.setState({ enabled: !!d.enhanced?.enabled, aas: arr(d.enhanced?.aas), bp: arr(d.enhanced?.bp) });
   useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null, rest: null });
   useCoach.setState({ messages: arr(d.coach?.messages), summary: d.coach?.summary ?? '', summarizedUntil: d.coach?.summarizedUntil ?? 0, memory: arr(d.coach?.memory), advice: arr(d.coach?.advice), knowledge: obj(d.coach?.knowledge), insight: null });
 }

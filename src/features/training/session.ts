@@ -18,6 +18,8 @@ export interface SessionContext {
   volumeFactor: number;
   rirDelta: number;
   gym?: GymSetup;
+  /** Сигналы здоровья: повышение нагрузки запрещено (причина) */
+  noIncrease?: string;
 }
 
 export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): WorkoutExercise | null {
@@ -35,6 +37,7 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
     band: ctx.band,
     volumeFactor: ctx.volumeFactor,
     gym: ctx.gym,
+    noIncrease: ctx.noIncrease,
   });
   // Вес, согласованный с тренером, главнее авто-прогрессии (пользователь подтвердил его явно)
   const rec = pe.targetWeight !== undefined ? { ...base, weight: pe.targetWeight, rationale: `Вес ${pe.targetWeight} кг согласован с тренером. ${base.rationale}` } : base;
