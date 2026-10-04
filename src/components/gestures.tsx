@@ -1,28 +1,37 @@
 import React from 'react';
-import { Platform, TurboModuleRegistry, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 /**
- * Безопасная обёртка над react-native-gesture-handler.
- *
- * Почему: жесты шторок нативные, но если в установленной сборке нет нативного модуля (старая dev-сборка)
- * или что-то пошло не так при подключении жеста — экран не должен падать с «Error».
- *  • модуль загружается только если нативная часть есть (на iPhone — проверка через TurboModuleRegistry);
- *  • GestureDetector обёрнут в границу ошибок: при сбое жест отключается, а содержимое работает как обычно
- *    (шторку можно закрыть крестиком или тапом по фону); причина пишется в журнал.
- * Все жесты в приложении создаются с runOnJS(true): обработчики выполняются в JS и не требуют Reanimated.
+ * Обёртка над react-native-gesture-handler.
+ *  • iPhone/Android: gesture-handler не используется (несовпадение версий JS и нативной части в Expo Go роняло
+ *    шторки), Sheet и SideDrawer работают на PanResponder;
+ *  • веб: gesture-handler (JS-реализация), GestureDetector обёрнут в границу ошибок.
+ * Все жесты создаются с runOnJS(true): обработчики в JS, Reanimated не нужен.
  */
 type RNGH = typeof import('react-native-gesture-handler');
 
-function loadGestureHandler(): RNGH | null {
+function forcedOff(): boolean {
+  // Только для проверки запасного режима в веб-тестах
   try {
-    if (Platform.OS !== 'web' && !TurboModuleRegistry.get('RNGestureHandlerModule')) {
-      console.warn('[RYNJI] react-native-gesture-handler: нативного модуля нет в этой сборке — свайпы шторок отключены');
-      return null;
-    }
+    return Platform.OS === 'web' && typeof localStorage !== 'undefined' && localStorage.getItem('rynji.noGH') === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * На iPhone gesture-handler НЕ используется: в Expo Go и старых dev-сборках нативная часть бывает другой версии,
+ * чем JS (модуль есть, а метода нет → «undefined is not a function» в микрозадаче, которую не ловит граница ошибок,
+ * и ошибка сыплется на каждый рендер). Шторки на телефоне работают на PanResponder — чистый JS, любая сборка.
+ * gesture-handler остаётся только в веб-версии (там его реализация целиком на JS).
+ */
+function loadGestureHandler(): RNGH | null {
+  if (Platform.OS !== 'web' || forcedOff()) return null;
+  try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('react-native-gesture-handler') as RNGH;
   } catch (e) {
-    console.warn('[RYNJI] react-native-gesture-handler не загрузился — свайпы шторок отключены', e);
+    console.warn('[RYNJI] react-native-gesture-handler не загрузился — шторки на PanResponder', e);
     return null;
   }
 }
