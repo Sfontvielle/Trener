@@ -270,7 +270,7 @@ export default function ActiveWorkout() {
           ) : resting ? (
             <RestTimerBar inline />
           ) : ctaSet ? (
-            <Button title={`Завершить подход ${we.sets.indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => completeSetFor({ we, set: ctaSet, index: idx, unit, onPr: (text) => setPr({ text, n: (pr?.n ?? 0) + 1 }) })} />
+            <Button title={ctaSet.warmup ? 'Разминка — готово' : `Завершить подход ${we.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => completeSetFor({ we, set: ctaSet, index: idx, unit, onPr: (text) => setPr({ text, n: (pr?.n ?? 0) + 1 }) })} />
           ) : nextI < 0 ? (
             <Button title="ЗАВЕРШИТЬ ТРЕНИРОВКУ" icon="flag" size="lg" onPress={askFinish} />
           ) : (

@@ -25,13 +25,13 @@ export function monthGrid(year: number, month: number): ISODate[] {
  * Маркеры: тренировка (заливка), рекорд (звезда), день отдыха по плану (приглушён), сегодня (обводка).
  * Тап по любому дню — onSelect(date) (история дня).
  */
-export function TrainingCalendar({ today: d, src, onSelect }: { today: ISODate; src: DaySources; onSelect: (date: ISODate) => void }) {
-  const [open, setOpen] = useState(false);
+export function TrainingCalendar({ today: d, src, onSelect, initiallyOpen = false }: { today: ISODate; src: DaySources; onSelect: (date: ISODate) => void; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const [cursor, setCursor] = useState(() => {
     const t = parseISODate(d);
     return { y: t.getFullYear(), m: t.getMonth() };
   });
-  const [anim] = useState(() => new Animated.Value(0));
+  const [anim] = useState(() => new Animated.Value(initiallyOpen ? 1 : 0));
   const week = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(d), i)), [d]);
   const grid = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
   const markers = useMemo(() => dayMarkers(open ? grid : week, src), [open, grid, week, src]);

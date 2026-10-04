@@ -9,7 +9,7 @@ import { addDays } from '@/utils/date';
 import { toast } from '@/components/Dialog';
 import { useNutrition, MEAL_LABEL } from '@/stores/nutrition';
 import { LOCAL_FOODS } from '@/data/foods';
-import { frequentProducts } from './quick';
+import { frequentProducts, usualMeal } from './quick';
 import { macrosFor } from './status';
 import { haptic } from '@/services/haptics';
 import { fmtNum } from '@/utils/format';
@@ -63,6 +63,7 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
     toast(`${p.name} — ${grams} г · ${MEAL_LABEL[meal].toLowerCase()}`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntry(e.id) });
   };
 
+  const usual = useMemo(() => usualMeal(entries, products, date, meal), [entries, products, date, meal]);
   const yesterday = useMemo(() => entries.filter((e) => e.date === addDays(date, -1) && e.meal === meal), [entries, date, meal]);
   const title = view === 'menu' ? `Добавить в ${MEAL_LABEL[meal]}` : view === 'favorites' ? 'Избранное' : view === 'frequent' ? 'Частые продукты' : view === 'recent' ? 'Недавние' : 'Мои блюда';
   return (
@@ -78,6 +79,20 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
 
       {view === 'menu' ? (
         <View style={{ gap: 8 }}>
+          {usual ? (
+            <Row
+              icon="sparkles-outline"
+              title={`Ваш обычный ${MEAL_LABEL[meal].toLowerCase()} · ${usual.kcal} ккал`}
+              sub={usual.items.map((it) => `${it.product.name} ${it.grams} г`).join(', ')}
+              onPress={() => {
+                const st = useNutrition.getState();
+                const ids = usual.items.map((it) => st.addEntry(it.product, it.grams, meal, date).id);
+                haptic.success();
+                close();
+                toast(`${MEAL_LABEL[meal]}: обычный добавлен`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
+              }}
+            />
+          ) : null}
           <Row icon="search" title="Поиск продукта" sub="База продуктов + твои" onPress={() => go(() => router.push({ pathname: '/food/add', params: { date, meal } }))} />
           <Row icon="barcode-outline" title="Сканировать штрихкод" sub="Камера iPhone" onPress={() => go(() => router.push({ pathname: '/food/scan', params: { date, meal } }))} />
           {favorites.length ? <Row icon="star" title="Избранное" sub={favorites.slice(0, 3).map((f) => f.product.name).join(', ')} badge={favorites.length} onPress={() => setView('favorites')} /> : null}

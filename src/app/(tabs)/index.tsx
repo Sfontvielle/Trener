@@ -47,6 +47,10 @@ import { dayInsights, readinessLabel } from '@/features/science/insights';
 import { sleepBaseline } from '@/features/science/recovery';
 import { BASIS_LABEL } from '@/features/science/sources';
 import { QuickMeasureSheet } from '@/features/progress/QuickMeasureSheet';
+import { measurementDue } from '@/features/progress/reminders';
+import { missedWorkoutProposal } from '@/features/training/schedule';
+import { TrainingCalendar } from '@/features/day/Calendar';
+import { DayDetailsSheet, useDaySources } from '@/features/day/DayDetails';
 
 const WEEKDAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 const KIND_ICON: Record<JournalKind, IconName> = {
@@ -96,6 +100,10 @@ export default function Home() {
   const [addFood, setAddFood] = useState(false);
   const [measureOpen, setMeasureOpen] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
+  const [diaryOpen, setDiaryOpen] = useState(false);
+  const [dayOpen, setDayOpen] = useState<string | null>(null);
+  const [shiftHidden, setShiftHidden] = useState(false);
+  const daySrc = useDaySources();
   const [noteOpen, setNoteOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
   const [proposal, setProposal] = useState<ProgramProposal | null>(null);
@@ -113,6 +121,9 @@ export default function Home() {
   // Наука: персональная цель шагов, тренд тела и выводы — детерминированно из данных
   const steps = useMemo(() => (profile ? stepGoal({ age: profile.age, profileSteps: profile.stepsPerDay, health: healthDays, ref: d }) : null), [profile, healthDays, d]);
   const body = useMemo(() => bodyTrend(weights, metrics, d), [weights, metrics, d]);
+  const due = useMemo(() => measurementDue(weights, metrics, d), [weights, metrics, d]);
+  const shiftRaw = useMemo(() => missedWorkoutProposal({ date: d, hour: new Date().getHours(), plan, sessions, overrides, customs }), [d, plan, sessions, overrides, customs]);
+  const shift = shiftHidden ? null : shiftRaw;
   const lastWaist = useMemo(() => [...metrics].reverse().find((m) => m.kind === 'waist'), [metrics]);
   const insights = useMemo(() => {
     if (!profile) return [];
@@ -191,9 +202,12 @@ export default function Home() {
             <T v="h2" numberOfLines={1} style={{ marginTop: 1 }}>
               {mode === 'evening' ? `Итог дня, ${firstName}` : `${greeting()}, ${firstName}`}
             </T>
-            <T v="small">
-              {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
-            </T>
+            <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setDiaryOpen(true)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <T v="small">
+                {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
+              </T>
+              <Icon name="calendar-outline" size={14} color={colors.accent} />
+            </Pressable>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel={`Тренер ${BRAND} — совет дня и чат`} onPress={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')} style={styles.coachBtn} hitSlop={4}>
             <Icon name="sparkles" size={20} color={colors.accent} />
@@ -211,6 +225,32 @@ export default function Home() {
           <QuickAction icon="body-outline" label="+ Замеры" onPress={() => setMeasureOpen(true)} />
           <QuickAction icon="sunny-outline" label="Check-in" onPress={() => router.push('/checkin')} done={!!checkin} />
         </View>
+
+        {shift ? (
+          <View style={styles.notice} testID="shift">
+            <Icon name="calendar-outline" size={16} color={colors.accent} />
+            <T v="small" color={colors.text} style={{ flex: 1, fontSize: 13 }}>
+              {shift.text}
+            </T>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={() => {
+                const ps = usePlan.getState();
+                shift.overrides.forEach((o) => ps.setOverride(o));
+                haptic.success();
+                toast(shift.kind === 'tomorrow' ? `«${shift.template.name}» — завтра` : `«${shift.template.name}» — сегодня`);
+              }}
+            >
+              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+                {shift.action}
+              </T>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Скрыть" hitSlop={6} onPress={() => setShiftHidden(true)}>
+              <Icon name="close" size={14} color={colors.muted} />
+            </Pressable>
+          </View>
+        ) : null}
 
         <Hero tw={tw} active={active} debrief={debrief} readiness={readiness} onWhy={() => setWhyOpen(true)} target={target} trend={trend} onAddFood={() => setAddFood(true)} />
 
@@ -244,6 +284,17 @@ export default function Home() {
           <Tile label={GOAL_LABEL[profile.goal]} value={goal?.headline ?? '—'} sub={goal?.detail ?? ''} progress={goal?.pct ?? undefined} icon="flag-outline" small onPress={() => router.push('/progress')} a11y="Прогресс к цели" />
         </View>
 
+        {due ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`${due.text}, добавить`} onPress={() => (due.kind === 'weight' ? router.push('/weight') : setMeasureOpen(true))} style={styles.notice} testID="measure-due">
+            <Icon name="body-outline" size={16} color={colors.accent} />
+            <T v="small" color={colors.text} style={{ flex: 1, fontSize: 13 }}>
+              {due.text}
+            </T>
+            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+              Добавить
+            </T>
+          </Pressable>
+        ) : null}
         <View style={styles.measure} testID="measure-card">
           <Pressable accessibilityRole="button" accessibilityLabel="Замеры: вес и талия, открыть тренд" onPress={() => router.push('/weight')} style={({ pressed }) => [{ flex: 1, gap: 4 }, pressed && { opacity: 0.8 }]}>
             <T v="caption">Замеры</T>
@@ -395,6 +446,10 @@ export default function Home() {
       </ScrollView>
 
       <AddFoodSheet visible={addFood} onClose={() => setAddFood(false)} date={d} meal={mealForHour(now.getHours())} />
+      <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">
+        <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); setTimeout(() => setDayOpen(x), 250); }} />
+      </Sheet>
+      <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
       <QuickMeasureSheet visible={measureOpen} onClose={() => setMeasureOpen(false)} date={d} />
       <Sheet visible={stepsOpen} onClose={() => setStepsOpen(false)} title="Шаги" subtitle={steps ? `Цель ${fmtNum(steps.target)} · ${BASIS_LABEL[steps.basis.kind]}` : undefined}>
         {steps ? (
@@ -809,6 +864,7 @@ function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () =
 
 const styles = themed({
   quickRow: { flexDirection: 'row', gap: 8 },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accentLine },
   quick: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   measure: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   insights: { gap: 8, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },

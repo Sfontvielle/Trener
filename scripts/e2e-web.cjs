@@ -375,13 +375,14 @@ const check = async (name, fn) => {
     const again = page.getByText('Начать новую', { exact: true });
     if (await again.count()) { await again.click(); await page.waitForTimeout(800); }
     await page.waitForTimeout(1200);
-    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 2/i);
+    const rows = () => page.getByLabel(/^Вес, подход \d+$/).count();
+    assert.equal(await rows(), 2);
     await page.getByText('Добавить подход').click();
     await page.waitForTimeout(300);
-    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 3/i);
+    assert.equal(await rows(), 3);
     await page.getByText('Убрать подход').click();
     await page.waitForTimeout(300);
-    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 2/i);
+    assert.equal(await rows(), 2);
   });
 
   await check('26. Последний подход → «Завершить тренировку» → подтверждение → итог с «Поднято, кг» и калориями', async () => {
@@ -562,6 +563,128 @@ const check = async (name, fn) => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     assert.match(await page.evaluate(() => document.body.innerText), /Клетчатка/i);
+  });
+
+  await check('35. Утро: сон, шаги, готовность и тренировка на первом экране; тренировка — 1 тап', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    for (const l of ['Сон, чек-ин', 'Шаги, как рассчитана цель']) {
+      const b = await page.getByLabel(l).boundingBox();
+      assert.ok(b && b.y < 956, `${l} на первом экране`);
+    }
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /Готовность/);
+    assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
+  });
+
+  await check('36. Тренировка: подход → RIR одним тапом → таймер отдыха сам; замена с причинами; блины; разминка', async () => {
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
+    await page.getByText('Тренировать сейчас').click();
+    await page.waitForTimeout(800);
+    const again = page.getByText('Начать новую', { exact: true });
+    if (await again.count()) { await again.click(); await page.waitForTimeout(800); }
+    await page.waitForTimeout(1000);
+    await page.getByLabel('Вес, подход 1').fill('100');
+    await page.waitForTimeout(300);
+    // Разминка: предложена для 100 кг, вставляется одним тапом
+    const warm = page.getByLabel('Добавить разминку');
+    if (await warm.count()) {
+      await warm.click();
+      await page.waitForTimeout(400);
+      assert.ok((await page.getByText('Р', { exact: true }).count()) >= 2, 'разминочные подходы в таблице');
+      await page.getByLabel('Убрать подход').count();
+    }
+    // Блины по тапу на рекомендованный вес (если рекомендация со штангой)
+    const plates = page.getByLabel('Раскладка блинов');
+    if (await plates.count()) {
+      await plates.click();
+      await page.waitForTimeout(600);
+      assert.ok(await page.getByTestId('plates').isVisible(), 'раскладка блинов');
+      await page.getByLabel('Закрыть').last().click();
+      await page.waitForTimeout(500);
+    }
+    // Разминочные подходы (если добавлены) — отметить, отдых между ними короткий
+    for (let i = 0; i < 6 && (await page.getByText('Разминка — готово').count()); i++) {
+      await page.getByText('Разминка — готово').click();
+      await page.waitForTimeout(250);
+      const skip = page.getByText('Пропустить');
+      if (await skip.count()) await skip.first().click();
+      await page.waitForTimeout(200);
+    }
+    // Рабочий подход: один тап «Завершить подход» → таймер запускается сам → RIR одним тапом
+    await page.getByText(/^Завершить подход 1$/).first().click();
+    await page.waitForTimeout(500);
+    assert.ok(await page.getByText('Пропустить').first().isVisible(), 'таймер отдыха запущен автоматически');
+    assert.ok(await page.getByText('+30', { exact: true }).isVisible(), '+30 сек');
+    assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
+    await page.getByLabel('Запас 2', { exact: true }).click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
+    // Замена: причины → альтернативы
+    await page.getByLabel('Заменить упражнение', { exact: true }).first().click();
+    await page.waitForTimeout(600);
+    assert.ok(await page.getByText('Тренажёр занят').isVisible());
+    await page.getByText('Тренажёр занят').click();
+    await page.waitForTimeout(900);
+    assert.ok(await page.getByText('Заменить на…').isVisible(), 'список замен');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(500);
+    await shot('workout-v3');
+  });
+
+  await check('37. Питание: обычный завтрак одним тапом; продукт с последней порцией; КБЖУ обновились', async () => {
+    await page.evaluate(() => {
+      const st = JSON.parse(localStorage.getItem('form.nutrition'));
+      const pad = (n) => String(n).padStart(2, '0');
+      const iso = (dd) => `${dd.getFullYear()}-${pad(dd.getMonth() + 1)}-${pad(dd.getDate())}`;
+      const today = iso(new Date());
+      st.state.entries = st.state.entries.filter((e) => !(e.date === today && e.meal === 'breakfast'));
+      for (let i = 1; i <= 4; i++) {
+        const dd = new Date(); dd.setDate(dd.getDate() - i);
+        const d = iso(dd);
+        st.state.entries = st.state.entries.filter((e) => !(e.date === d && e.meal === 'breakfast'));
+        st.state.entries.push({ id: `u-o-${i}`, date: d, productId: 'local:oats_dry', name: 'Овсяные хлопья', grams: 80, macros: { kcal: 293, protein: 9.8, fat: 4.9, carbs: 47.6, fiber: 8.1 }, meal: 'breakfast', createdAt: dd.getTime() });
+        st.state.entries.push({ id: `u-c-${i}`, date: d, productId: 'local:cottage_5', name: 'Творог 5%', grams: 200, macros: { kcal: 242, protein: 34.4, fat: 10, carbs: 3.6, fiber: 0 }, meal: 'breakfast', createdAt: dd.getTime() });
+      }
+      st.state.lastGrams = { ...st.state.lastGrams, 'local:oats_dry': 80 };
+      localStorage.setItem('form.nutrition', JSON.stringify(st));
+    });
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const before = await page.evaluate(() => JSON.parse(localStorage.getItem('form.nutrition')).state.entries.length);
+    await page.getByTestId('usual-breakfast').click();
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('form.nutrition')).state.entries.length);
+    assert.equal(after - before, 2, 'обычный завтрак: 2 продукта одним тапом');
+    assert.match(await page.getByTestId('macro-summary').innerText(), /\d+\s*\/\s*\d+/);
+    await page.goto(`${URL}/food/add?productId=local:oats_dry`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    const lg = await page.evaluate(() => JSON.parse(localStorage.getItem('form.nutrition')).state.lastGrams['local:oats_dry']);
+    assert.match(await page.getByTestId('last-portion').innerText(), new RegExp(`${lg} г`), 'по умолчанию — последняя порция, не 100 г');
+    assert.notEqual(lg, 100);
+    await shot('nutrition-v3');
+  });
+
+  await check('38. История: дата на главной → календарь → полный день', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    await page.getByLabel('Дневник: календарь дней').click();
+    await page.waitForTimeout(700);
+    const pad = (n) => String(n).padStart(2, '0');
+    const dd = new Date(); dd.setDate(dd.getDate() - 1);
+    const y = `${dd.getFullYear()}-${pad(dd.getMonth() + 1)}-${pad(dd.getDate())}`;
+    if (!(await page.getByTestId(`day-${y}`).count())) { await page.getByLabel('Предыдущий месяц').click(); await page.waitForTimeout(400); }
+    await page.getByTestId(`day-${y}`).first().click();
+    await page.waitForTimeout(900);
+    const det = await page.getByTestId('day-details').innerText();
+    assert.match(det, /Питание/);
+    assert.match(det, /ккал/);
+    await shot('diary');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {
