@@ -27,6 +27,8 @@ const check = async (name, fn) => {
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
+  // E2E_NO_GH=1 — проверка режима телефона: шторки на PanResponder, без gesture-handler
+  if (process.env.E2E_NO_GH) await ctx.addInitScript(() => localStorage.setItem('rynji.noGH', '1'));
   // Онбординг на чистом устройстве: шаг «Здоровье» и разбор ограничений
   {
     const octx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });

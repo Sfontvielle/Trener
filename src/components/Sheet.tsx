@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GH, GestureRoot, SafeDetector } from './gestures';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
@@ -54,17 +54,47 @@ export function Sheet({
     live.current.onClose = onClose;
   }, [onClose]);
 
-  // Жесты нативные (react-native-gesture-handler): на iPhone JS-PanResponder проигрывал встроенному
-  // скроллу — UIScrollView забирал касание, и лист нельзя было стянуть. Теперь:
+  // На телефоне — PanResponder с перехватом (capture) движения вниз: шапка тянет всегда, содержимое — когда его
+  // прокрутка у верха, поэтому UIScrollView не забирает касание. В вебе — gesture-handler. В обоих случаях:
   //  • pan активируется только при движении ВНИЗ (≥6 pt) и работает одновременно со скроллом содержимого;
   //  • лист тянется, только если содержимое прокручено к самому верху (иначе это обычная прокрутка);
   //  • лист следует за пальцем 1:1, отпускание — по расстоянию или скорости броска, без прыжков.
   // Ref читается только внутри обработчиков жеста, не во время рендера
   // eslint-disable-next-line react-hooks/refs
   const [gestures] = useState(() => {
-    if (!GH) return null;
-    const { Gesture } = GH;
     const st = { active: false };
+    const move = (dy: number) => drag.setValue(dy >= 0 ? dy : -Math.min(28, Math.sqrt(-dy) * 3));
+    const back = (vy = 0) => Animated.spring(drag, { toValue: 0, velocity: vy, damping: 26, stiffness: 300, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
+    /** Отпускание: закрыть по расстоянию или броску, иначе плавно вернуть. vy — px/ms */
+    const finish = (dy: number, vy: number) => {
+      const h = Math.max(200, live.current.sheetH);
+      const far = dy > Math.min(160, h * 0.3);
+      const flick = vy > 0.55 && dy > 24;
+      if (far || flick) {
+        live.current.closing = true;
+        const rest = Math.max(0, h + 40 - dy);
+        const duration = Math.max(120, Math.min(260, rest / Math.max(1.4, vy * 1.6)));
+        Animated.timing(drag, { toValue: h + 40, duration, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
+      } else back(vy);
+    };
+
+    if (!GH) {
+      // Запасной режим без нативных жестов: PanResponder. Шапка тянет всегда, весь лист — когда содержимое у верха.
+      const make = (always: boolean) => {
+        const want = (_: unknown, g: { dx: number; dy: number }) => !live.current.closing && g.dy > 6 && g.dy > Math.abs(g.dx) * 1.2 && (always || live.current.atTop);
+        return PanResponder.create({
+          onMoveShouldSetPanResponderCapture: want,
+          onMoveShouldSetPanResponder: want,
+          onPanResponderGrant: () => drag.stopAnimation(),
+          onPanResponderMove: (_, g) => move(g.dy),
+          onPanResponderRelease: (_, g) => finish(g.dy, g.vy),
+          onPanResponderTerminate: () => back(),
+          onPanResponderTerminationRequest: () => false,
+        });
+      };
+      return { native: undefined, pan: undefined, head: make(true).panHandlers, body: make(false).panHandlers };
+    }
+    const { Gesture } = GH;
     // runOnJS(true) у ВСЕХ жестов, включая Native: иначе gesture-handler переключается на Reanimated
     const native = Gesture.Native().runOnJS(true);
     const pan = Gesture.Pan()
@@ -77,34 +107,20 @@ export function Sheet({
         if (st.active) drag.stopAnimation();
       })
       .onUpdate((e) => {
-        if (!st.active) return;
-        const dy = e.translationY;
-        drag.setValue(dy >= 0 ? dy : -Math.min(28, Math.sqrt(-dy) * 3));
+        if (st.active) move(e.translationY);
       })
       .onEnd((e) => {
         if (!st.active) return;
         st.active = false;
-        const dy = e.translationY;
-        const vy = e.velocityY / 1000; // px/ms
-        const h = Math.max(200, live.current.sheetH);
-        const far = dy > Math.min(160, h * 0.3);
-        const flick = vy > 0.55 && dy > 24;
-        if (far || flick) {
-          live.current.closing = true;
-          const rest = Math.max(0, h + 40 - dy);
-          const duration = Math.max(120, Math.min(260, rest / Math.max(1.4, vy * 1.6)));
-          Animated.timing(drag, { toValue: h + 40, duration, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
-        } else {
-          Animated.spring(drag, { toValue: 0, velocity: vy, damping: 26, stiffness: 300, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
-        }
+        finish(e.translationY, e.velocityY / 1000);
       })
       .onFinalize(() => {
         if (st.active) {
           st.active = false;
-          Animated.spring(drag, { toValue: 0, damping: 26, stiffness: 300, overshootClamping: true, useNativeDriver: true }).start();
+          back();
         }
       });
-    return { native, pan };
+    return { native, pan, head: undefined, body: undefined };
   });
 
   // Монтируем сразу при открытии (во время рендера, без лишнего прохода эффекта)
@@ -129,7 +145,7 @@ export function Sheet({
   const maxH = Math.max(240, (height - pad) * maxHeightPct - (pad ? insets.top : 0));
 
   const body = scroll ? (
-    <SafeDetector gesture={gestures?.native}>
+    <SafeDetector gesture={gestures.native}>
     <ScrollView
       ref={scrollRef}
       keyboardShouldPersistTaps="handled"
@@ -161,7 +177,7 @@ export function Sheet({
           <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть" />
         </Animated.View>
         <View style={{ flex: 1 }} pointerEvents="box-none" />
-        <SafeDetector gesture={gestures?.pan}>
+        <SafeDetector gesture={gestures.pan}>
         <Animated.View
           onLayout={(e) => {
             const h = e.nativeEvent.layout.height;
@@ -169,7 +185,9 @@ export function Sheet({
             setSheetH(h);
           }}
           style={[styles.sheet, { maxHeight: maxH, transform: [{ translateY }, { translateY: drag }] }]}
+          {...gestures.body}
         >
+          <View {...gestures.head}>
           <View style={styles.grabZone}>
             <View style={styles.grabber} />
           </View>
@@ -188,6 +206,7 @@ export function Sheet({
               <IconButton name="close" label="Закрыть" onPress={onClose} size={20} style={{ width: 36, height: 36 }} />
             </View>
           ) : null}
+          </View>
           {body}
           {footer ? <View style={{ paddingTop: space.sm, paddingBottom: pad ? space.md : insets.bottom + space.md }}>{footer}</View> : null}
         </Animated.View>

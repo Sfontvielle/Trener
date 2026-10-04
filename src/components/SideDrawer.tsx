@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GH, GestureRoot, SafeDetector } from './gestures';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, space, themed } from '@/theme';
@@ -23,16 +23,39 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
     live.current.w = panelW;
   }, [onClose, panelW]);
 
-  // Нативный жест (react-native-gesture-handler): активируется только движением ВПРАВО (≥8 pt),
+  // Телефон — PanResponder (перехват горизонтального свайпа вправо), веб — gesture-handler. Жест активируется только движением ВПРАВО (≥8 pt),
   // вертикальное движение его отменяет. Список внутри — ScrollView из gesture-handler (DrawerScroll),
   // поэтому свайп вправо и прокрутка списка не мешают друг другу.
   // Если свайп начат на прокручиваемом списке — работают оба жеста; вертикальное движение отменяет свайп.
   // Ref читается только внутри обработчиков жеста, не во время рендера
   // eslint-disable-next-line react-hooks/refs
   const [gestures] = useState(() => {
-    if (!GH) return null;
-    const { Gesture } = GH;
     const st = { active: false };
+    const back = (vx = 0) => Animated.spring(drag, { toValue: 0, velocity: vx, damping: 26, stiffness: 300, overshootClamping: true, useNativeDriver: true }).start();
+    /** Отпускание: закрыть по расстоянию (~30%) или броску, иначе вернуть. vx — px/ms */
+    const finish = (rawDx: number, vx: number) => {
+      const dx = Math.max(0, rawDx);
+      if (dx > live.current.w * 0.3 || (vx > 0.4 && dx > 16)) {
+        live.current.closing = true;
+        const left = live.current.w - dx;
+        Animated.timing(drag, { toValue: live.current.w, duration: Math.max(90, Math.min(220, left / Math.max(0.8, vx))), easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
+      } else back(vx);
+    };
+    if (!GH) {
+      // Запасной режим без нативных жестов: горизонтальный свайп вправо перехватывается у списка
+      const want = (_: unknown, g: { dx: number; dy: number }) => !live.current.closing && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.5;
+      const r = PanResponder.create({
+        onMoveShouldSetPanResponderCapture: want,
+        onMoveShouldSetPanResponder: want,
+        onPanResponderGrant: () => drag.stopAnimation(),
+        onPanResponderMove: (_, g) => drag.setValue(Math.max(0, g.dx)),
+        onPanResponderRelease: (_, g) => finish(g.dx, g.vx),
+        onPanResponderTerminate: () => back(),
+        onPanResponderTerminationRequest: () => false,
+      });
+      return { pan: undefined, native: undefined, handlers: r.panHandlers };
+    }
+    const { Gesture } = GH;
     const native = Gesture.Native().runOnJS(true);
     const pan = Gesture.Pan()
       .runOnJS(true)
@@ -49,21 +72,15 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
       .onEnd((e) => {
         if (!st.active) return;
         st.active = false;
-        const dx = Math.max(0, e.translationX);
-        const vx = e.velocityX / 1000;
-        if (dx > live.current.w * 0.3 || (vx > 0.4 && dx > 16)) {
-          live.current.closing = true;
-          const left = live.current.w - dx;
-          Animated.timing(drag, { toValue: live.current.w, duration: Math.max(90, Math.min(220, left / Math.max(0.8, vx))), easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
-        } else Animated.spring(drag, { toValue: 0, velocity: vx, damping: 26, stiffness: 300, overshootClamping: true, useNativeDriver: true }).start();
+        finish(e.translationX, e.velocityX / 1000);
       })
       .onFinalize(() => {
         if (st.active) {
           st.active = false;
-          Animated.spring(drag, { toValue: 0, damping: 26, stiffness: 300, overshootClamping: true, useNativeDriver: true }).start();
+          back();
         }
       });
-    return { pan, native };
+    return { pan, native, handlers: undefined };
   });
 
   if (visible && !mounted) setMounted(true);
@@ -87,8 +104,8 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть список" />
       </Animated.View>
-      <SafeDetector gesture={gestures?.pan}>
-      <Animated.View style={[styles.panel, { width: panelW, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8, transform: [{ translateX }, { translateX: drag }] }]}>
+      <SafeDetector gesture={gestures.pan}>
+      <Animated.View style={[styles.panel, { width: panelW, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8, transform: [{ translateX }, { translateX: drag }] }]} {...gestures.handlers}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <T v="h2" numberOfLines={2}>
@@ -98,7 +115,7 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
           </View>
           <IconButton name="close" label="Закрыть" onPress={onClose} size={20} style={{ width: 36, height: 36 }} />
         </View>
-        <NativeCtx.Provider value={gestures?.native ?? null}>
+        <NativeCtx.Provider value={gestures.native ?? null}>
           <View style={{ flex: 1 }}>{children}</View>
         </NativeCtx.Provider>
         {footer ? <View style={{ paddingTop: space.sm }}>{footer}</View> : null}
