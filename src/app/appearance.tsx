@@ -7,10 +7,11 @@ import { Card, Icon, SectionTitle, T } from '@/components/ui';
 import { useProfile } from '@/stores/profile';
 import { haptic } from '@/services/haptics';
 import { setPendingNavState } from '@/features/settings/themeNav';
+import { BRAND } from '@/config/brand';
 
 const THEMES: { key: ThemePref; label: string; sub: string }[] = [
   { key: 'system', label: 'Системная', sub: 'Как в настройках iPhone' },
-  { key: 'dark', label: 'Тёмная', sub: 'Фирменная FORM' },
+  { key: 'dark', label: 'Тёмная', sub: `Фирменная ${BRAND}` },
   { key: 'light', label: 'Светлая', sub: 'Для яркого дня' },
 ];
 const ACCENTS: AccentName[] = ['lime', 'blue', 'orange'];

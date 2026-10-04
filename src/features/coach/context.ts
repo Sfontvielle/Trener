@@ -12,6 +12,7 @@ import type {
   WorkoutPlan,
   WorkoutSession,
 } from '@/types';
+import { foodAvoidance, healthOf, healthSummary, healthTraining } from '@/features/profile/health';
 import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { remaining, sumMacros } from '@/features/nutrition/status';
 import { reviewCalories } from '@/features/nutrition/adaptive';
@@ -30,6 +31,7 @@ import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { doneFineVolume, weeklyTargets } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { substitutesFor } from '@/features/training/engine/substitute';
+import { BRAND } from '@/config/brand';
 
 /**
  * Структурированный контекст для AI Coach.
@@ -52,6 +54,8 @@ export interface CoachInputs {
   checkins: Record<string, DailyCheckIn>;
   readiness?: ReadinessResult;
   memory: CoachMemoryItem[];
+  /** Реакция пользователя на прошлые советы */
+  advice?: { key: string; date: string; text: string; status: 'accepted' | 'dismissed' }[];
   /** Ключи предложений, от которых пользователь отказался навсегда */
   rejected?: string[];
   /** Заметки пользователя за сегодня (дневник) */
@@ -78,11 +82,16 @@ export function buildCoachContext(i: CoachInputs): string {
   L.push(`${p.name}, ${p.sex === 'male' ? 'муж' : 'жен'}, ${p.age} лет, рост ${p.heightCm} см, вес (профиль) ${p.weightKg} кг`);
   L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${p.daysPerWeek} трен/нед по ~${p.sessionMinutes} мин; место: ${p.location === 'gym' ? 'зал' : 'дом'}`);
   L.push(`Оборудование: ${p.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ') || '—'}`);
-  L.push(`Ограничения/травмы: ${p.limitations || 'нет'}`);
+  const hp = healthOf(p);
+  const hs = healthSummary(hp);
+  L.push(hs.length ? `Здоровье (со слов пользователя, НЕ диагноз): ${hs.join(' | ')}` : 'Здоровье: особенностей не указано');
+  const ht = healthTraining(p);
+  if (ht.notes.length) L.push(`Правила из профиля здоровья (приложение применяет автоматически): ${ht.notes.join('; ')}${ht.clearance ? '; рекомендовано согласовать нагрузку с врачом' : ''}`);
   const WORK = { desk: 'сидячая', mixed: 'смешанная', physical: 'физическая' } as const;
   const TIME = { morning: 'утром', day: 'днём', evening: 'вечером', any: 'в разное время' } as const;
   L.push(`Шаги ~${p.stepsPerDay}/день, работа: ${WORK[p.workStyle]}, предпочитает тренироваться ${TIME[p.preferredTime]}`);
-  L.push(`Любит: ${p.likedFoods.join(', ') || '—'}; не любит: ${p.dislikedFoods.join(', ') || '—'}; ограничения питания: ${p.dietRestrictions.join(', ') || 'нет'}`);
+  const fa = foodAvoidance(p);
+  L.push(`Любит: ${p.likedFoods.join(', ') || '—'}; не любит/исключить: ${fa.words.join(', ') || '—'}; ограничения питания: ${fa.restrictions.join(', ') || 'нет'}`);
 
   sec('GOAL');
   L.push(`${GOAL_LABEL[p.goal]}${p.goal === 'bulk' || p.goal === 'cut' ? `, темп ${p.ratePctPerWeek}% массы/нед` : ''}`);
@@ -100,9 +109,9 @@ export function buildCoachContext(i: CoachInputs): string {
   // Предпочтения и ограничения — модель обязана их соблюдать (приложение всё равно проверит действие)
   const prefs = getPrefs(p);
   sec('TRAINING PREFERENCES & LIMITATIONS');
-  L.push(`Сплит: ${SPLIT_PREF_LABEL[prefs.preferredSplit]}${i.plan?.splitChoice?.reasons.length ? ` (FORM: ${i.plan.splitChoice.reasons.slice(0, 3).join('; ')})` : ''}`);
-  L.push(`Восстановление (тренировочный контекст): ${prefs.recoveryProfile === 'enhanced' ? 'пользователь указал повышенное' : prefs.recoveryProfile === 'standard' ? 'стандартное' : 'определяется по данным'}${i.plan?.recovery ? `; оценка FORM: ${i.plan.recovery.level}, объём ×${i.plan.recovery.factor}` : ''}`);
-  L.push(`Подходы: ${prefs.setStyle === 'auto' ? 'решает FORM' : `${prefs.setStyle} в упражнении`}; повторы: ${prefs.repStyle}`);
+  L.push(`Сплит: ${SPLIT_PREF_LABEL[prefs.preferredSplit]}${i.plan?.splitChoice?.reasons.length ? ` (${BRAND}: ${i.plan.splitChoice.reasons.slice(0, 3).join('; ')})` : ''}`);
+  L.push(`Восстановление (тренировочный контекст): ${prefs.recoveryProfile === 'enhanced' ? 'пользователь указал повышенное' : prefs.recoveryProfile === 'standard' ? 'стандартное' : 'определяется по данным'}${i.plan?.recovery ? `; оценка ${BRAND}: ${i.plan.recovery.level}, объём ×${i.plan.recovery.factor}` : ''}`);
+  L.push(`Подходы: ${prefs.setStyle === 'auto' ? `решает ${BRAND}` : `${prefs.setStyle} в упражнении`}; повторы: ${prefs.repStyle}`);
   if (prefs.priorityMuscles.length) L.push(`Приоритетные группы: ${prefs.priorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
   if (prefs.lowPriorityMuscles.length) L.push(`Низкий приоритет: ${prefs.lowPriorityMuscles.map((m) => VM_LABEL[m]).join(', ')}`);
   const nameId = (id: string) => `${getExercise(id)?.name ?? id} [${id}]`;
@@ -172,7 +181,7 @@ export function buildCoachContext(i: CoachInputs): string {
       .map((we) => {
         const ws = workingSets(we.sets);
         if (!ws.length) return null;
-        const hard = ws.filter((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0)).length;
+        const hard = ws.filter((x) => x.feel === 'hard' || x.feel === 'max' || (x.rir !== undefined && x.rir <= 0)).length;
         return `${getExercise(we.exerciseId)?.name ?? we.exerciseId}: ${ws.map((x) => (x.weight ? `${x.weight}×${x.reps}` : `${x.reps}`)).join(', ')}${hard ? ` (тяжело: ${hard})` : ''} [план ${we.plannedSets}×${we.repMin}-${we.repMax}]`;
       })
       .filter(Boolean);
@@ -229,6 +238,11 @@ export function buildCoachContext(i: CoachInputs): string {
     const f = i.products[id] ?? LOCAL_FOODS.find((x) => x.id === id);
     if (!f) continue;
     L.push(`- ${f.name}${f.brand ? ` (${f.brand})` : ''}: ${f.per100.kcal} ккал, Б ${f.per100.protein} Ж ${f.per100.fat} У ${f.per100.carbs}${i.recent.includes(id) ? ' [ест регулярно]' : ''}`);
+  }
+
+  if (i.advice?.length) {
+    sec('ADVICE HISTORY — реакция на прошлые советы (не повторяй отклонённое без новых данных)');
+    for (const a of i.advice.slice(-12)) L.push(`- ${a.date} ${a.status === 'accepted' ? 'принял' : 'отклонил'}: ${a.text.slice(0, 120)}`);
   }
 
   return L.join('\n');

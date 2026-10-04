@@ -76,6 +76,16 @@ export function computeReadiness(
     }
   }
 
+  // Недельная нагрузка относительно своей нормы (острая 7 дн против средней за 3 недели до этого)
+  const setsIn = (from: string, to: string) => done.filter((s) => s.date >= from && s.date <= to).reduce((a, s) => a + s.exercises.reduce((b, e) => b + e.sets.filter((x) => x.done && !x.warmup).length, 0), 0);
+  const acute = setsIn(addDays(c.date, -7), addDays(c.date, -1));
+  const chronic = setsIn(addDays(c.date, -28), addDays(c.date, -8)) / 3;
+  if (chronic >= 15 && acute > chronic * 1.3) {
+    const pen = acute > chronic * 1.6 ? 7 : 4;
+    score -= pen;
+    factors.push({ label: 'Нагрузка за неделю', impact: -pen, detail: `${acute} подходов при обычных ~${Math.round(chronic)}` });
+  }
+
   if (c.hrvMs && ctx.hrvBaseline) {
     const r = c.hrvMs / ctx.hrvBaseline;
     if (r < 0.85) {
@@ -108,7 +118,7 @@ export function computeReadiness(
 function hardSetShare(s: WorkoutSession): number {
   const sets = s.exercises.flatMap((e) => e.sets.filter((x) => x.done && !x.warmup));
   if (!sets.length) return 0;
-  return sets.filter((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0)).length / sets.length;
+  return sets.filter((x) => x.feel === 'hard' || x.feel === 'max' || (x.rir !== undefined && x.rir <= 0)).length / sets.length;
 }
 
 /** Самый «проблемный» фактор — для короткого пояснения на главной */

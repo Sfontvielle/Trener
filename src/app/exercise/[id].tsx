@@ -9,15 +9,15 @@ import { confirm, toast } from '@/components/Dialog';
 import { getExercise, CATEGORY_LABEL, EQUIPMENT_LABEL } from '@/data/exercises';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
-import { ExerciseMedia } from '@/features/exercises/ExerciseMedia';
-import { Anatomy } from '@/features/exercises/Anatomy';
+import { TechniqueView } from '@/features/exercises/TechniqueView';
 import { e1rm, historyFor } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { checkAllowed } from '@/features/training/engine/scoring';
-import { prefDislike, prefExclude, prefFavorite, prefInclude } from '@/features/training/prefActions';
+import { guardExercise, prefDislike, prefExclude, prefFavorite, prefInclude } from '@/features/training/prefActions';
 import { formatDayShort } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
+import { BRAND } from '@/config/brand';
 
 export default function ExerciseScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,7 +41,6 @@ export default function ExerciseScreen() {
   return (
     <Screen>
       <Header title={ex.name} subtitle={`${CATEGORY_LABEL[ex.category]} · ${ex.mechanic === 'compound' ? 'базовое' : 'изолирующее'}`} />
-      <ExerciseMedia exercise={ex} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.md }}>
         {ex.equipment.map((e) => (
           <View key={e} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: colors.surface2 }}>
@@ -57,40 +56,8 @@ export default function ExerciseScreen() {
         </View>
       </View>
 
-      <SectionTitle title="Какие мышцы работают" />
-      <Anatomy primary={ex.primary} secondary={ex.secondary} sex={profile?.sex} />
-
-      <SectionTitle title="Как выполнять" />
-      <Card style={{ gap: 10 }}>
-        {ex.cues.map((c, i) => (
-          <View key={i} style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' }}>
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                {i + 1}
-              </T>
-            </View>
-            <T v="body" style={{ flex: 1 }}>
-              {c}
-            </T>
-          </View>
-        ))}
-      </Card>
-
-      {ex.mistakes.length ? (
-        <>
-          <SectionTitle title="Частые ошибки" />
-          <Card tone="warning" style={{ gap: 8 }}>
-            {ex.mistakes.map((m, i) => (
-              <View key={i} style={{ flexDirection: 'row', gap: 10 }}>
-                <Icon name="close-circle" size={18} color={colors.warning} />
-                <T v="body" style={{ flex: 1 }}>
-                  {m}
-                </T>
-              </View>
-            ))}
-          </Card>
-        </>
-      ) : null}
+      <SectionTitle title="Техника и мышцы" />
+      <TechniqueView ex={ex} sex={profile?.sex} />
 
       <SectionTitle title="Твоя история" />
       {history.length ? (
@@ -149,7 +116,7 @@ function ExercisePrefButtons({ id }: { id: string }) {
     <View style={{ gap: 8, marginTop: space.lg }}>
       {!blocked.ok && !excluded ? <Banner tone="warning" icon="shield-checkmark-outline" text={`Не попадает в план: ${blocked.reason}`} /> : null}
       {excluded ? <Banner tone="warning" icon="ban-outline" text={excluded.reason === 'discomfort' ? 'Исключено из-за дискомфорта — не назначается автоматически.' : 'В списке «Не предлагать».'} /> : null}
-      <Button title="Тренировать сейчас" icon="play" onPress={() => startExercises([id])} />
+      <Button title="Тренировать сейчас" icon="play" onPress={() => { const ex = getExercise(id); if (ex) guardExercise(ex, (e) => startExercises([e.id])); else startExercises([id]); }} />
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button title={fav ? 'В избранном' : 'В избранное'} icon={fav ? 'star' : 'star-outline'} size="sm" variant={fav ? 'primary' : 'secondary'} style={{ flex: 1 }} onPress={() => toast(prefFavorite(id))} />
         <Button title={dis ? 'Не нравится ✓' : 'Не нравится'} icon="thumbs-down-outline" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => toast(prefDislike(id))} />
@@ -159,7 +126,7 @@ function ExercisePrefButtons({ id }: { id: string }) {
         icon={excluded ? 'refresh' : 'ban-outline'}
         variant="outline"
         size="sm"
-        onPress={() => (excluded ? toast(prefInclude(id)) : confirm('Не предлагать упражнение?', 'FORM перестроит план и подберёт замену. Вернуть можно здесь или в Профиль → Предпочтения.', 'Не предлагать', () => toast(prefExclude(id))))}
+        onPress={() => (excluded ? toast(prefInclude(id)) : confirm('Не предлагать упражнение?', `${BRAND} перестроит план и подберёт замену. Вернуть можно здесь или в Профиль → Предпочтения.`, 'Не предлагать', () => toast(prefExclude(id))))}
       />
     </View>
   );

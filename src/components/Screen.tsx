@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
+import { KeyboardScrollProvider, useKeyboardAwareScroll } from './keyboard';
 
 export const TAB_BAR_HEIGHT = 64;
 
@@ -28,24 +29,29 @@ export function Screen({
   refreshControl?: React.ComponentProps<typeof ScrollView>['refreshControl'];
 }) {
   const insets = useSafeAreaInsets();
+  const { scrollRef, rootRef, pad, ensure, onScroll } = useKeyboardAwareScroll();
   const bottom = (tabBar ? TAB_BAR_HEIGHT + insets.bottom : insets.bottom) + space.lg;
   const inner = scroll ? (
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1 }}
-      contentContainerStyle={[{ paddingTop: insets.top + space.sm, paddingBottom: bottom, paddingHorizontal: padded ? space.lg : 0 }, contentStyle]}
+      // Пока открыта клавиатура, под содержимым есть место — любое поле можно поднять над ней
+      contentContainerStyle={[{ paddingTop: insets.top + space.sm, paddingBottom: pad ? pad + space.xl : bottom, paddingHorizontal: padded ? space.lg : 0 }, contentStyle]}
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
+      keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
     >
-      {children}
+      <KeyboardScrollProvider ensure={ensure}>{children}</KeyboardScrollProvider>
     </ScrollView>
   ) : (
     <View style={[{ flex: 1, paddingTop: insets.top + space.sm, paddingBottom: bottom, paddingHorizontal: padded ? space.lg : 0 }, contentStyle]}>{children}</View>
   );
   return (
-    <View style={[styles.root, style]}>
-      {keyboard ? (
+    <View ref={rootRef} style={[styles.root, style]}>
+      {keyboard && !scroll ? (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {inner}
         </KeyboardAvoidingView>

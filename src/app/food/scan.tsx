@@ -9,6 +9,7 @@ import { useNutrition } from '@/stores/nutrition';
 import { FoodApiError, foodErrorText, lookupBarcode } from '@/services/foodApi';
 import { haptic } from '@/services/haptics';
 import { cameraGate, pickScanLens, ScanGate, scanZoom } from '@/features/food/scanner';
+import { BRAND } from '@/config/brand';
 
 type Phase = { kind: 'scan' } | { kind: 'loading'; code: string } | { kind: 'not_found'; code: string; text: string } | { kind: 'error'; code: string; text: string };
 
@@ -20,7 +21,7 @@ type Phase = { kind: 'scan' } | { kind: 'loading'; code: string } | { kind: 'not
  *  • камера останавливается, когда приложение в фоне или экран не активен.
  */
 export default function Scan() {
-  const { date } = useLocalSearchParams<{ date?: string }>();
+  const { date, meal } = useLocalSearchParams<{ date?: string; meal?: string }>();
   const insets = useSafeAreaInsets();
   const [perm, request] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>({ kind: 'scan' });
@@ -58,7 +59,8 @@ export default function Scan() {
     try {
       const p = cached ?? (await lookupBarcode(code));
       useNutrition.getState().cacheProduct(p);
-      router.replace({ pathname: '/food/add', params: { productId: p.id, date: date ?? '' } });
+      // Сразу к выбору порции найденного продукта (без клавиатуры поиска), в тот же приём пищи
+      router.replace({ pathname: '/food/add', params: { productId: p.id, date: date ?? '', meal: meal ?? '' } });
     } catch (e) {
       const notFound = e instanceof FoodApiError && e.kind === 'not_found';
       haptic.warning();
@@ -87,13 +89,13 @@ export default function Scan() {
         <EmptyState
           icon="camera-outline"
           title="Нужен доступ к камере"
-          text={g === 'settings' ? 'Доступ к камере выключен. Включи его в Настройках iPhone → FORM → Камера. Камера используется только для чтения штрихкода.' : 'Камера используется только для чтения штрихкода — фото не сохраняются.'}
+          text={g === 'settings' ? `Доступ к камере выключен. Включи его в Настройках iPhone → ${BRAND} → Камера. Камера используется только для чтения штрихкода.` : 'Камера используется только для чтения штрихкода — фото не сохраняются.'}
           action={g === 'ask' ? 'Разрешить камеру' : 'Открыть настройки'}
           onAction={() => (g === 'ask' ? request() : Linking.openSettings())}
         />
         <View style={{ gap: 10 }}>
-          <Button title="Найти по названию" icon="search" variant="secondary" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '' } })} />
-          <Button title="Ввести вручную" icon="create-outline" variant="ghost" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', manual: '1' } })} />
+          <Button title="Найти по названию" icon="search" variant="secondary" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '' } })} />
+          <Button title="Ввести вручную" icon="create-outline" variant="ghost" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1' } })} />
         </View>
       </View>
     );
@@ -166,8 +168,8 @@ export default function Scan() {
                 </T>
               </View>
             </View>
-            <Button title="Найти по названию" icon="search" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '' } })} />
-            <Button title="Ввести вручную" icon="create-outline" variant="secondary" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', manual: '1', barcode: phase.code } })} />
+            <Button title="Найти по названию" icon="search" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '' } })} />
+            <Button title="Ввести вручную" icon="create-outline" variant="secondary" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code } })} />
             {phase.kind === 'error' ? <Button title="Повторить поиск" variant="secondary" onPress={() => void lookup(phase.code)} /> : null}
             <Button title="Сканировать ещё раз" variant="ghost" onPress={retry} />
           </View>

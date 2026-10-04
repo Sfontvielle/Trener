@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { guardExercise } from '@/features/training/prefActions';
+import { DEFAULT_SETS } from '@/features/training/session';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { Exercise, PlannedExercise } from '@/types';
@@ -76,17 +78,25 @@ export default function Builder() {
     );
   }
 
-  const onPick = (ex: Exercise) => {
-    if (picker?.swapIdx !== undefined) {
-      const next = [...exercises];
-      next[picker.swapIdx] = { ...next[picker.swapIdx], exerciseId: ex.id };
-      setExercises(next);
-    } else {
-      const [repMin, repMax] = ex.defaultReps;
-      setExercises([...exercises, { exerciseId: ex.id, sets: 3, repMin, repMax, targetRir: 2, restSec: ex.mechanic === 'compound' ? 120 : 75 }]);
-      toast(`Добавлено: ${ex.name}`, 'add-circle');
-    }
+  const onPick = (picked: Exercise) => {
+    const swapIdx = picker?.swapIdx;
     setPicker(null);
+    // Конфликт с ограничением из профиля — объяснение и безопасная альтернатива, а не молчаливое добавление
+    guardExercise(
+      picked,
+      (ex) => {
+        if (swapIdx !== undefined) {
+          const next = [...exercises];
+          next[swapIdx] = { ...next[swapIdx], exerciseId: ex.id };
+          setExercises(next);
+        } else {
+          const [repMin, repMax] = ex.defaultReps;
+          setExercises([...exercises, { exerciseId: ex.id, sets: DEFAULT_SETS, repMin, repMax, targetRir: 2, restSec: ex.mechanic === 'compound' ? 120 : 75 }]);
+          toast(`Добавлено: ${ex.name}`, 'add-circle');
+        }
+      },
+      customs,
+    );
   };
   const patch = (i: number, p: Partial<PlannedExercise>) => setExercises(exercises.map((e, j) => (j === i ? { ...e, ...p } : e)));
   const move = (i: number, d: -1 | 1) => {

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "FORM",
+    "name": "RYNJI",
     "slug": "form",
     "scheme": "form",
     "version": "1.0.0",
@@ -12,9 +12,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "net.fontvielle.form",
       "infoPlist": {
-        "NSCameraUsageDescription": "FORM использует камеру, чтобы сканировать штрихкоды продуктов.",
+        "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов.",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSHealthShareUsageDescription": "FORM читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве."
+        "NSHealthShareUsageDescription": "RYNJI читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
+        "NSPhotoLibraryUsageDescription": "RYNJI использует фото, чтобы ты мог сохранять фото прогресса. Они остаются на устройстве."
       }
     },
     "android": {
@@ -37,7 +38,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "FORM использует камеру, чтобы сканировать штрихкоды продуктов.",
+          "cameraPermission": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов.",
           "recordAudioAndroid": false
         }
       ],
@@ -55,9 +56,17 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "FORM читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
+          "NSHealthShareUsageDescription": "RYNJI читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
           "NSHealthUpdateUsageDescription": false,
           "background": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RYNJI использует фото, чтобы ты мог сохранять фото прогресса. Они остаются на устройстве.",
+          "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов и фото прогресса.",
+          "microphonePermission": false
         }
       ]
     ],

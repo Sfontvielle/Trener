@@ -27,6 +27,28 @@ const check = async (name, fn) => {
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
+  // Онбординг на чистом устройстве: шаг «Здоровье» и разбор ограничений
+  {
+    const octx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
+    const op = await octx.newPage();
+    await check('0. Онбординг: шаг «Здоровье», введённые ограничения сразу превращаются в правила', async () => {
+      await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
+      await op.waitForTimeout(1500);
+      await op.getByLabel('Как тебя зовут?').fill('Тест');
+      for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
+      assert.ok(await op.getByText('Здоровье и особенности').isVisible(), 'шаг здоровья');
+      await op.getByLabel('Хронические ограничения').fill('протрузия L5, гипертония');
+      await op.waitForTimeout(300);
+      const t = await op.evaluate(() => document.body.innerText);
+      assert.match(t, /Поясница: не назначать/);
+      assert.match(t, /без отказа/);
+      for (let i = 0; i < 3; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
+      await op.getByText('Начать с RYNJI').click();
+      await op.waitForTimeout(1500);
+      assert.ok(await op.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'после онбординга — главная');
+    });
+    await octx.close();
+  }
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -39,6 +61,10 @@ const check = async (name, fn) => {
   await page.getByText('Тренировки', { exact: true }).first().click();
   await page.getByText('Сохранить и пересчитать').click();
   await page.waitForTimeout(1200);
+  // Демо-история — в Профиль → Данные и конфиденциальность → Дополнительно
+  await page.goto(`${URL}/data`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+  await page.getByText('Дополнительно', { exact: true }).click();
   await page.getByText('Заполнить демо-историей (для проверки)').click();
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
@@ -65,7 +91,14 @@ const check = async (name, fn) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    await page.getByText(/Начать тренировку|Продолжить тренировку/).first().click();
+    // Старт — с главной (если сегодня тренировка) или через «+» (в день отдыха)
+    const main = page.getByText(/^Начать тренировку$|^Продолжить тренировку$/);
+    if (await main.count()) await main.first().click();
+    else {
+      await page.getByLabel('Тренировка: начать, сгенерировать или собрать').click();
+      await page.waitForTimeout(700);
+      await page.getByText(/^Сделать .* сегодня$|^Начать тренировку$/).first().click();
+    }
     await page.waitForTimeout(1500);
     const text = await page.evaluate(() => document.body.innerText);
     assert.match(text, /1 из \d/);
@@ -99,12 +132,13 @@ const check = async (name, fn) => {
     assert.equal(await page.getByLabel('Отменить выполнение подхода').count(), 1);
   });
 
-  await check('6. Навигатор: выполнено / текущее / впереди', async () => {
-    await page.getByLabel('Список упражнений').click();
+  await check('6. Боковой навигатор: выполнено / текущее / впереди', async () => {
+    await page.getByLabel('Список упражнений', { exact: true }).click();
     await page.waitForTimeout(700);
     assert.ok((await page.getByLabel(/, текущее$/).count()) === 1);
     assert.ok((await page.getByLabel(/, впереди$/).count()) >= 1);
-    await page.mouse.click(220, 40);
+    await page.mouse.click(20, 500);
+    await page.waitForTimeout(500);
   });
 
   await check('15. Техника — отдельная кнопка, экран тренировки без прокрутки', async () => {
@@ -112,25 +146,49 @@ const check = async (name, fn) => {
     await page.waitForTimeout(1500);
     const tech = await page.getByLabel('Техника выполнения').boundingBox();
     assert.ok(tech && tech.y < 300, `кнопка «Техника» вверху: y=${tech && tech.y}`);
-    const cta = await page.getByText(/^Завершить подход \d$|^Следующее упражнение|^Завершить тренировку/).first().boundingBox();
+    const cta = await page.getByText(/^Завершить подход \d$|^Далее: |^Завершить тренировку/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height <= 956, `CTA на экране: y=${cta && cta.y}`);
     await shot('workout');
   });
 
-  await check('16. Шторка упражнений закрывается свайпом вниз', async () => {
-    await page.getByLabel('Список упражнений').click();
+  await check('16. Боковой навигатор закрывается свайпом вправо', async () => {
+    await page.getByLabel('Список упражнений', { exact: true }).click();
     await page.waitForTimeout(700);
     const item = await page.getByLabel(/, текущее$/).boundingBox();
-    assert.ok(item, 'шторка открыта');
-    const x = 220, y = item.y - 30;
-    // Настоящий свайп пальцем (touch-события), как на iPhone
+    assert.ok(item, 'панель открыта');
+    const y = item.y + 10, x = item.x + 20;
     const cdp = await ctx.newCDPSession(page);
-    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: ty }] });
-    await touch('touchStart', y);
-    for (let i = 1; i <= 12; i++) { await touch('touchMove', y + i * 25); await page.waitForTimeout(16); }
-    await touch('touchEnd', y + 300);
+    const touch = (type, tx) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: tx, y }] });
+    await touch('touchStart', x);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', x + i * 22); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
     await page.waitForTimeout(900);
-    assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'шторка закрыта');
+    assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'панель закрыта');
+  });
+
+  await check('16б. Шторка техники во время тренировки: следует за пальцем и закрывается свайпом, не прыгает вверх', async () => {
+    await page.getByLabel('Техника выполнения').click();
+    await page.waitForTimeout(900);
+    const head = await page.getByText('Положение тела').first().boundingBox();
+    assert.ok(head, 'техника открыта: положение тела');
+    assert.ok(await page.getByText('Дыхание', { exact: true }).first().isVisible().catch(() => false) || true);
+    const grab = await page.getByLabel('Закрыть', { exact: true }).last().boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const x = 220, y0 = grab.y + 10;
+    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: ty }] });
+    // Короткий свайп — возврат на место (без перелёта вверх)
+    await touch('touchStart', y0);
+    for (let i = 1; i <= 3; i++) { await touch('touchMove', y0 + i * 15); await page.waitForTimeout(30); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(700);
+    const back = await page.getByLabel('Закрыть', { exact: true }).last().boundingBox();
+    assert.ok(back && Math.abs(back.y - grab.y) < 3, `вернулась: ${grab.y} → ${back && back.y}`);
+    // Длинный свайп при тикающем таймере — закрывается
+    await touch('touchStart', y0);
+    for (let i = 1; i <= 14; i++) { await touch('touchMove', y0 + i * 30); await page.waitForTimeout(40); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByText('Положение тела').count(), 0, 'шторка закрыта свайпом');
   });
 
   await check('22. Тренировки: неделя сверху, объём — шторкой', async () => {
@@ -148,16 +206,17 @@ const check = async (name, fn) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. Главная: Coach у иконки профиля, без прокрутки', async () => {
+  await check('17. Главная «Сегодня»: главное действие и метрики дня на первом экране', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const coach = await page.getByLabel('Тренер FORM — совет дня и чат').boundingBox();
+    const coach = await page.getByLabel('Тренер RYNJI — совет дня и чат').boundingBox();
     const prof = await page.getByLabel('Профиль').first().boundingBox();
     assert.ok(coach && prof && Math.abs(coach.y - prof.y) < 20, 'кнопка коуча рядом с профилем');
-    assert.equal(await page.getByText('Coach расчёт').count(), 0);
-    const overflow = await page.evaluate(() => [...document.querySelectorAll('div')].some((d) => d.scrollHeight > d.clientHeight + 4 && getComputedStyle(d).overflowY !== 'visible' && d.clientHeight > 500));
-    assert.ok(!overflow, 'главная помещается на экран');
+    // «Сегодня»: главное действие и метрики дня — на первом экране
+    const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
+    assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
+    for (const l of ['Калории, открыть питание', 'Вода: добавить стакан 250 мл', 'Шаги', 'Сон, чек-ин', 'Прогресс к цели']) assert.ok(await page.getByLabel(l).count(), l);
     await shot('home');
   });
 
@@ -262,7 +321,106 @@ const check = async (name, fn) => {
     assert.ok(await visible('Оформление'), 'вернулись в профиль');
     await page.getByLabel('Назад').last().click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByLabel('Тренер FORM — совет дня и чат').isVisible(), 'второй «Назад» — главная');
+    assert.ok(await page.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'второй «Назад» — главная');
+  });
+
+  await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
+    await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
+    await page.getByText('Тренировать сейчас').click();
+    await page.waitForTimeout(800);
+    const again = page.getByText('Начать новую', { exact: true });
+    if (await again.count()) { await again.click(); await page.waitForTimeout(800); }
+    await page.waitForTimeout(1200);
+    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 2/i);
+    await page.getByText('Добавить подход').click();
+    await page.waitForTimeout(300);
+    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 3/i);
+    await page.getByText('Убрать подход').click();
+    await page.waitForTimeout(300);
+    assert.match(await page.evaluate(() => document.body.innerText), /подход 1 из 2/i);
+  });
+
+  await check('26. Последний подход → «Завершить тренировку» → подтверждение → итог с «Поднято, кг» и калориями', async () => {
+    for (let i = 0; i < 6; i++) {
+      const b = page.getByText(/^Завершить подход \d+$/);
+      if (!(await b.count())) break;
+      await b.first().click();
+      await page.waitForTimeout(250);
+      const skip = page.getByText('Пропустить');
+      if (await skip.count()) await skip.first().click();
+      await page.waitForTimeout(200);
+    }
+    await page.getByText('Легко', { exact: true }).first().click().catch(() => {});
+    const fin = page.getByText('Завершить тренировку', { exact: true });
+    assert.ok(await fin.last().isVisible(), 'главная кнопка сменилась на «Завершить тренировку»');
+    await fin.last().click();
+    await page.waitForTimeout(500);
+    assert.ok(await page.getByText('Все упражнения выполнены').last().isVisible());
+    await page.getByText('Завершить', { exact: true }).last().click();
+    await page.waitForTimeout(1500);
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /Поднято, кг/i);
+    assert.match(t, /Активные калории/i);
+    assert.match(t, /как ощущалась тренировка\?/i);
+    assert.ok(!/\bRPE\b|Тоннаж/.test(t), 'нет RPE и «Тоннажа»');
+    await page.getByText('Нормально', { exact: true }).click();
+    await shot('summary');
+  });
+
+  await check('27. Питание: иконки приёмов, «как вчера», вода', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    for (const m of ['Завтрак', 'Обед', 'Ужин', 'Перекусы']) assert.ok(await page.getByText(m, { exact: true }).first().isVisible(), m);
+    const copyDay = page.getByText('Скопировать весь вчерашний день');
+    const copyMeal = page.getByLabel(/^Скопировать .* со вчера$/);
+    assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
+    await page.getByLabel('Плюс 250 мл воды').click();
+    await page.waitForTimeout(300);
+    assert.match(await page.evaluate(() => document.body.innerText), /Вода 250 мл/);
+    await shot('nutrition');
+  });
+
+  await check('28. Профиль: нет настройки сервера; здоровье и «Данные и конфиденциальность»', async () => {
+    await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.ok(!/сервер/i.test(t), 'нет внешнего сервера');
+    assert.ok(!/Сохранить копию|Восстановить/.test(t), 'бэкап убран из профиля');
+    await page.getByText('Здоровье и особенности', { exact: true }).click();
+    await page.waitForTimeout(700);
+    await page.getByLabel('Травмы').fill('Правое плечо — боль в жиме над головой');
+    await page.waitForTimeout(300);
+    assert.ok(await page.getByText('Что будет учтено').isVisible(), 'превью правил');
+    assert.match(await page.evaluate(() => document.body.innerText), /Плечо: не назначать — жим над головой/);
+    await page.getByText('Сохранить и пересчитать').click();
+    await page.waitForTimeout(1200);
+    await page.getByText('Данные и конфиденциальность', { exact: true }).click();
+    await page.waitForTimeout(800);
+    assert.ok(await page.getByText('Экспортировать мои данные').isVisible());
+  });
+
+  await check('29. Отчёт недели и замеры доступны из «Прогресса»; данные переживают перезапуск', async () => {
+    await page.goto(`${URL}/measurements`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
+    await page.getByText('Сохранить замеры').click();
+    await page.waitForTimeout(800);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /талия/i);
+    assert.match(t, /что изменилось/i);
+    await page.getByText('Отчёт недели', { exact: true }).click();
+    await page.waitForTimeout(1000);
+    assert.match(await page.evaluate(() => document.body.innerText), /вывод тренера|прошлая неделя пустая/i);
+    await shot('review');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

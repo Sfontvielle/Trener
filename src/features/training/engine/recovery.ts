@@ -102,7 +102,7 @@ export function estimateRecovery(args: {
     const rows = progressRows(args.sessions, [], 42).filter((r) => r.sessions >= 3);
     const gain = rows.length ? rows.reduce((a, r) => a + r.gainPct, 0) / rows.length : 0;
     const sets = recent.slice(-6).flatMap((s) => s.exercises.flatMap((we) => we.sets.filter((x) => x.done && !x.warmup)));
-    const hardShare = sets.length ? sets.filter((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0)).length / sets.length : 0;
+    const hardShare = sets.length ? sets.filter((x) => x.feel === 'hard' || x.feel === 'max' || (x.rir !== undefined && x.rir <= 0)).length / sets.length : 0;
     if (hardShare >= 0.5) {
       data -= 0.2;
       bad = true;

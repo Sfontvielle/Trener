@@ -41,7 +41,7 @@ export function workoutDebrief(s: WorkoutSession, all: WorkoutSession[], customs
     if (lastTop > 0 && top > lastTop) up.push(`${ex.name} (+${kg(top - lastTop)} кг)`);
     // Два последних подхода тяжелее нормы: «тяжело»/RIR 0 или ниже нижней границы повторов
     const tail = ws.slice(-2);
-    if (tail.length === 2 && tail.every((x) => x.feel === 'hard' || (x.rir !== undefined && x.rir <= 0) || x.reps < we.repMin)) heavy.push(ex.name);
+    if (tail.length === 2 && tail.every((x) => x.feel === 'hard' || x.feel === 'max' || (x.rir !== undefined && x.rir <= 0) || x.reps < we.repMin)) heavy.push(ex.name);
   }
 
   const lines: string[] = [];

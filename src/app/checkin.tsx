@@ -17,6 +17,7 @@ import { MODE_LABEL } from '@/features/training/today';
 import { parseDecimal } from '@/utils/format';
 import { useBody } from '@/stores/body';
 import { useProfile } from '@/stores/profile';
+import { BRAND } from '@/config/brand';
 
 export default function CheckIn() {
   const d = today();
@@ -114,7 +115,7 @@ export default function CheckIn() {
         <View style={{ gap: 8 }}>
           <Toggle value={c.pain} onChange={(v) => set({ pain: v })} label="Есть боль (не крепатура)" sub="Сустав, спина, острая боль при движении" />
           {c.pain ? <Field placeholder="Где и когда болит?" value={c.painNote ?? ''} onChangeText={(t) => set({ painNote: t })} /> : null}
-          {c.pain ? <Banner tone="warning" icon="medkit-outline" text="FORM исключит нагрузку, но не заменяет врача. При острой боли, отёке или травме — к специалисту." /> : null}
+          {c.pain ? <Banner tone="warning" icon="medkit-outline" text={`${BRAND} исключит нагрузку, но не заменяет врача. При острой боли, отёке или травме — к специалисту.`} /> : null}
         </View>
         <View style={{ gap: 8 }}>
           <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя (Apple Health подключится позже)" />

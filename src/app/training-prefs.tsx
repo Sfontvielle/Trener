@@ -14,26 +14,27 @@ import { SplitCompareButton } from '@/features/training/SplitCompare';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { getExercise } from '@/data/exercises';
-import { excludeExercise, getPrefs, includeExercise, removeLimitation, toggleDislike, toggleFavorite, upsertLimitation, withPrefs } from '@/features/training/engine/prefs';
+import { excludeExercise, getPrefs, includeExercise, isAutoLimitation, rawPrefs, removeLimitation, toggleDislike, toggleFavorite, upsertLimitation, withPrefs } from '@/features/training/engine/prefs';
 import { chooseSplit, SPLIT_LABEL, SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { AREA_LABEL, AREA_MOVEMENTS, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { uid } from '@/utils/id';
+import { BRAND } from '@/config/brand';
 
 const SPLITS: SplitPreference[] = ['auto', 'fullbody', 'upper_lower', 'torso_limbs', 'ppl', 'ul_ppl', 'bro', 'custom'];
 const RECOVERY: { key: RecoveryProfile; label: string; sub: string }[] = [
-  { key: 'auto', label: 'Определять FORM', sub: 'по сну, готовности, крепатуре и прогрессу' },
+  { key: 'auto', label: `Определять ${BRAND}`, sub: 'по сну, готовности, крепатуре и прогрессу' },
   { key: 'standard', label: 'Стандартное', sub: 'обычный объём, корректируется по данным' },
   { key: 'enhanced', label: 'Повышенное', sub: 'учитывается как один из факторов, не как разрешение на объём' },
 ];
 const SET_ITEMS: { key: string; label: string }[] = [
-  { key: 'auto', label: 'FORM решает' },
+  { key: 'auto', label: `${BRAND} решает` },
   { key: '2', label: '2 подхода' },
   { key: '3', label: '3 подхода' },
 ];
 const SET_HINT: Record<string, string> = {
-  auto: 'Подходы считаются от недельной цели по каждой мышце: основные 3–5, изоляция 2–4.',
-  '2': 'Обычно 2 подхода. Чтобы не терять недельный объём, FORM добавит упражнение или +1 подход в основном движении — и объяснит это в плане.',
+  auto: 'Новое упражнение — 2 подхода. Больше (до 4 в основных) — только если этого требует недельная цель мышцы; причина видна в «Почему?».',
+  '2': `Обычно 2 подхода. Чтобы не терять недельный объём, ${BRAND} добавит упражнение или +1 подход в основном движении — и объяснит это в плане.`,
   '3': 'Обычно 3 подхода, в основном упражнении — до 4, если иначе объём не добрать.',
 };
 const REP_ITEMS: { key: RepStyle; label: string }[] = [
@@ -93,11 +94,11 @@ export default function TrainingPrefs() {
           ))}
         </View>
         {prefs.preferredSplit === 'custom' ? (
-          <T v="small">Свой формат: FORM не перестраивает твои шаблоны, только заменяет упражнения, которые конфликтуют с ограничениями.</T>
+          <T v="small">Свой формат: {BRAND} не перестраивает твои шаблоны, только заменяет упражнения, которые конфликтуют с ограничениями.</T>
         ) : (
           <View style={styles.why}>
             <T v="body" style={{ fontWeight: '800' }}>
-              {prefs.preferredSplit === 'auto' ? `FORM выбрал: ${SPLIT_LABEL[choice.split]}` : SPLIT_LABEL[choice.split]}
+              {prefs.preferredSplit === 'auto' ? `${BRAND} выбрал: ${SPLIT_LABEL[choice.split]}` : SPLIT_LABEL[choice.split]}
             </T>
             <T v="caption" style={{ marginTop: 4 }}>
               Почему
@@ -137,7 +138,7 @@ export default function TrainingPrefs() {
           </T>
         ) : null}
         <T v="small" style={{ fontSize: 11, marginTop: 4 }} color={colors.muted}>
-          Это только тренировочный контекст. FORM не даёт советов по препаратам и дозировкам и не оценивает их безопасность. Главное для объёма — фактический сон, готовность и прогресс.
+          Это только тренировочный контекст. {BRAND} не даёт советов по препаратам и дозировкам и не оценивает их безопасность. Главное для объёма — фактический сон, готовность и прогресс.
         </T>
       </Card>
 
@@ -187,14 +188,19 @@ export default function TrainingPrefs() {
 
       <SectionTitle title="Ограничения" />
       <Card style={{ gap: 10 }}>
-        <T v="small">Опиши, какие ДВИЖЕНИЯ вызывают дискомфорт. Это не диагноз — FORM просто не будет их назначать.</T>
+        <T v="small">Опиши, какие ДВИЖЕНИЯ вызывают дискомфорт. Это не диагноз — {BRAND} просто не будет их назначать. Травмы и особенности, описанные словами в Профиль → Здоровье, разбираются сюда автоматически.</T>
         {prefs.limitations.map((l) => (
-          <Pressable key={l.id} accessibilityRole="button" onPress={() => setEditing(l)} style={[styles.lim, l.severity === 'severe' && { borderColor: colors.danger }]}>
+          <Pressable key={l.id} accessibilityRole="button" onPress={() => setEditing(isAutoLimitation(l) ? { ...l, id: uid('lim_'), createdAt: Date.now() } : l)} style={[styles.lim, l.severity === 'severe' && { borderColor: colors.danger }]}>
             <View style={{ flex: 1, gap: 2 }}>
               <T v="body" style={{ fontWeight: '800' }}>
                 {AREA_LABEL[l.area]} · {SEVERITY.find((x) => x.key === l.severity)?.label.toLowerCase()}
                 {l.source === 'doctor' ? ' · от врача' : ''}
               </T>
+              {isAutoLimitation(l) ? (
+                <T v="small" color={colors.accent} style={{ fontSize: 11, fontWeight: '700' }}>
+                  Из профиля здоровья · тап — уточнить вручную
+                </T>
+              ) : null}
               <T v="small" numberOfLines={2}>
                 {l.severity === 'severe' ? 'Все упражнения на эту зону исключены' : l.movements.map((m) => RESTRICTION_LABEL[m].toLowerCase()).join(', ') || 'движения не выбраны'}
               </T>
@@ -208,7 +214,7 @@ export default function TrainingPrefs() {
           </Pressable>
         ))}
         {prefs.limitations.some((l) => l.severity === 'severe') ? (
-          <Banner tone="danger" icon="medkit-outline" text="Сильная или острая боль — повод обратиться к врачу. Тренировки не лечат боль: FORM только исключает нагрузку на эту зону." />
+          <Banner tone="danger" icon="medkit-outline" text={`Сильная или острая боль — повод обратиться к врачу. Тренировки не лечат боль: ${BRAND} только исключает нагрузку на эту зону.`} />
         ) : null}
         <Button title="Добавить ограничение" icon="add" variant="secondary" size="sm" onPress={() => setEditing({ id: uid('lim_'), area: 'shoulder', movements: [], severity: 'moderate', source: 'user', createdAt: Date.now() })} />
         <Pressable accessibilityRole="button" onPress={() => setShowMovements((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 }}>
@@ -224,7 +230,11 @@ export default function TrainingPrefs() {
                 key={m}
                 label={RESTRICTION_LABEL[m]}
                 active={prefs.excludedMovements.includes(m)}
-                onPress={() => commit(withPrefs(profile, { excludedMovements: prefs.excludedMovements.includes(m) ? prefs.excludedMovements.filter((x) => x !== m) : [...prefs.excludedMovements, m] }))}
+                onPress={() => {
+                  const own = rawPrefs(profile).excludedMovements;
+                  if (!own.includes(m) && prefs.excludedMovements.includes(m)) return toast('Это правило из профиля здоровья — измени его там');
+                  commit(withPrefs(profile, { excludedMovements: own.includes(m) ? own.filter((x) => x !== m) : [...own, m] }));
+                }}
               />
             ))}
           </View>
@@ -336,7 +346,7 @@ function LimitationSheet({ value, onClose, onSave, onDelete, exists }: { value: 
             <Segmented items={SEVERITY} value={l.severity} onChange={(k) => set({ severity: k })} />
             <T v="small">{SEVERITY_HINT[l.severity]}</T>
           </View>
-          {l.severity === 'severe' ? <Banner tone="danger" icon="medkit-outline" text="При сильной, острой или нарастающей боли не тренируй эту зону и обратись к врачу. FORM не ставит диагнозов и не «лечит» боль тренировками." /> : null}
+          {l.severity === 'severe' ? <Banner tone="danger" icon="medkit-outline" text={`При сильной, острой или нарастающей боли не тренируй эту зону и обратись к врачу. ${BRAND} не ставит диагнозов и не «лечит» боль тренировками.`} /> : null}
           <Toggle value={l.source === 'doctor'} onChange={(v) => set({ source: v ? 'doctor' : 'user' })} label="Рекомендация врача или физиотерапевта" sub="Такие ограничения — всегда жёсткий запрет" />
           <Field label="Комментарий" placeholder="Например: тянет в правом плече при жиме над головой" value={l.note ?? ''} onChangeText={(t) => set({ note: t })} maxLength={140} />
         </View>

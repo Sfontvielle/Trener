@@ -10,6 +10,7 @@ import { connectHealth, syncHealth } from '@/features/health/sync';
 import { healthContext } from '@/features/health/model';
 import { formatHours, relativeDay, today, toISODate } from '@/utils/date';
 import { haptic } from '@/services/haptics';
+import { BRAND } from '@/config/brand';
 
 const READS: { icon: IconName; label: string; why: string }[] = [
   { icon: 'moon-outline', label: 'Сон', why: 'готовность без ручного ввода' },
@@ -17,7 +18,7 @@ const READS: { icon: IconName; label: string; why: string }[] = [
   { icon: 'pulse-outline', label: 'HRV', why: 'сравнение с твоей базой' },
   { icon: 'heart-outline', label: 'Пульс покоя', why: 'признак недовосстановления' },
   { icon: 'flame-outline', label: 'Активные калории', why: 'контекст питания' },
-  { icon: 'barbell-outline', label: 'Тренировки', why: 'нагрузка вне FORM' },
+  { icon: 'barbell-outline', label: 'Тренировки', why: `нагрузка вне ${BRAND}` },
   { icon: 'scale-outline', label: 'Вес', why: 'тренд без ручных записей' },
 ];
 
@@ -43,13 +44,13 @@ export default function Health() {
     <Screen>
       <Header title="Apple Health" subtitle="Только чтение · данные остаются на iPhone" />
 
-      {av === 'unsupported' ? <Banner icon="phone-portrait-outline" text={Platform.OS === 'web' ? 'Apple Health работает в приложении FORM на iPhone. В веб-превью — ручной чек-ин.' : 'Apple Health доступен только на iPhone.'} /> : null}
+      {av === 'unsupported' ? <Banner icon="phone-portrait-outline" text={Platform.OS === 'web' ? `Apple Health работает в приложении ${BRAND} на iPhone. В веб-превью — ручной чек-ин.` : 'Apple Health доступен только на iPhone.'} /> : null}
       {av === 'needs_dev_build' ? (
-        <Banner tone="warning" icon="construct-outline" text="Apple Health требует сборку FORM (EAS development / production build). В Expo Go нативный модуль HealthKit недоступен — FORM работает на ручном чек-ине." />
+        <Banner tone="warning" icon="construct-outline" text={`Apple Health требует сборку ${BRAND} (EAS development / production build). В Expo Go нативный модуль HealthKit недоступен — ${BRAND} работает на ручном чек-ине.`} />
       ) : null}
       {av === 'unavailable' ? <Banner tone="warning" text="На этом устройстве Apple Health недоступен (например, iPad)." /> : null}
 
-      <SectionTitle title="FORM может читать" />
+      <SectionTitle title={`${BRAND} может читать`} />
       <Card style={{ gap: 2, paddingVertical: 6 }}>
         {READS.map((r) => (
           <View key={r.label} style={styles.row}>
@@ -83,7 +84,7 @@ export default function Health() {
                 <Metric label="HRV" value={ctx.hrvMs ? `${ctx.hrvMs} мс` : '—'} sub={ctx.hrvDeltaPct !== undefined ? `${ctx.hrvDeltaPct >= 0 ? '+' : ''}${ctx.hrvDeltaPct}% к базе 21 дн` : undefined} warn={(ctx.hrvDeltaPct ?? 0) <= -15} />
               </View>
             ) : (
-              <T v="small">Данных за сегодня пока нет. Если так и останется — проверь доступ: «Здоровье» → профиль → Приложения → FORM.</T>
+              <T v="small">Данных за сегодня пока нет. Если так и останется — проверь доступ: «Здоровье» → профиль → Приложения → {BRAND}.</T>
             )}
             <Button title="Синхронизировать" icon="sync" loading={busy} onPress={() => run(syncHealth)} />
             <Button title="Управление доступом" icon="settings-outline" variant="secondary" onPress={() => Linking.openURL('x-apple-health://').catch(() => Linking.openSettings())} />
@@ -94,7 +95,7 @@ export default function Health() {
         <Button title="Подключить Apple Health" icon="heart" size="lg" style={{ marginTop: space.lg }} disabled={av !== 'available'} loading={busy} onPress={() => run(connectHealth)} />
       )}
       <T v="small" style={{ marginTop: space.lg, textAlign: 'center' }}>
-        Без доступа FORM продолжает работать: сон и самочувствие можно отмечать в чек-ине. FORM не ставит медицинских диагнозов.
+        Без доступа {BRAND} продолжает работать: сон и самочувствие можно отмечать в чек-ине. {BRAND} не ставит медицинских диагнозов.
       </T>
     </Screen>
   );

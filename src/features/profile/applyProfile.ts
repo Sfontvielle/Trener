@@ -13,7 +13,7 @@ import { computeNutritionTarget, GOAL_LABEL } from '@/features/nutrition/targets
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { today } from '@/utils/date';
 
-const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays', 'training'];
+const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays', 'training', 'health', 'limitations'];
 const NUTRITION_KEYS: (keyof UserProfile)[] = ['goal', 'ratePctPerWeek', 'sex', 'age', 'heightCm', 'weightKg', 'stepsPerDay', 'workStyle', 'activity', 'daysPerWeek', 'sessionMinutes'];
 
 /**

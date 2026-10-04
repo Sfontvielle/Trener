@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CoachAction, CoachMessage } from '@/types';
@@ -9,9 +9,10 @@ import { Button, Chip, Icon, IconButton, T } from '@/components/ui';
 import { confirm, toast } from '@/components/Dialog';
 import { useCoach } from '@/stores/coach';
 import { applyCoachAction, declineCoachAction, sendCoachMessage } from '@/features/coach/service';
-import { coachBaseUrl } from '@/services/coachApi';
+import { useKeyboardAwareScroll } from '@/components/keyboard';
 import { haptic } from '@/services/haptics';
-import { toISODate } from '@/utils/date';
+import { plural, toISODate } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 const QUICK = ['Что мне сегодня делать?', 'Упражнения на верх груди', 'Что мне поесть сейчас?', 'Какие анализы сдать?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит плечо при жиме', 'Что ты обо мне помнишь?'];
 
@@ -23,7 +24,8 @@ export default function Coach() {
   const [text, setText] = useState(params.q ? String(params.q) : '');
   const [busy, setBusy] = useState(false);
   const list = useRef<FlatList<CoachMessage>>(null);
-  const configured = !!coachBaseUrl();
+  // Композер всегда над клавиатурой (iOS и Android edge-to-edge)
+  const { rootRef, pad } = useKeyboardAwareScroll();
 
   useEffect(() => {
     const t = setTimeout(() => list.current?.scrollToEnd({ animated: true }), 60);
@@ -44,11 +46,11 @@ export default function Coach() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
+    <View ref={rootRef} style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm, paddingBottom: pad }}>
       <View style={{ paddingHorizontal: space.lg }}>
         <Header
-          title="Тренер FORM"
-          subtitle={`${configured ? 'Внешний сервер' : 'На устройстве'} · помнит ${memoryCount} ${memoryCount === 1 ? 'факт' : 'фактов'} о тебе`}
+          title={`Тренер ${BRAND}`}
+          subtitle={`Знает твои данные · помнит ${memoryCount} ${plural(memoryCount, 'факт', 'факта', 'фактов')} о тебе`}
           right={
             <IconButton
               name="ellipsis-horizontal"
@@ -60,7 +62,7 @@ export default function Coach() {
           }
         />
       </View>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <View style={{ flex: 1 }}>
         <FlatList
           ref={list}
           data={messages}
@@ -73,7 +75,7 @@ export default function Coach() {
           ListFooterComponent={busy ? <Typing /> : null}
           onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
         />
-        <View style={[styles.composer, { paddingBottom: insets.bottom + 8 }]}>
+        <View style={[styles.composer, { paddingBottom: pad ? 8 : insets.bottom + 8 }]}>
           {!messages.length || !busy ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: space.lg }} keyboardShouldPersistTaps="handled">
               {QUICK.map((q) => (
@@ -100,7 +102,7 @@ export default function Coach() {
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }
@@ -114,7 +116,7 @@ function Intro() {
         <Icon name="sparkles" size={28} color={colors.onAccent} />
       </View>
       <T v="h2">Я знаю твой план, питание, тренировки и восстановление</T>
-      <T v="bodyDim">Тренировка на сегодня с весами, программа на любую мышцу (соберу и запущу), техника и замены, подготовка к соревнованиям, питание и диетология, разбор анализов (напиши «ТТГ 5,2, ферритин 18»), гормоны, травмы и риски препаратов. Помню, что ты рассказываешь о себе. Работаю на устройстве — без интернета и настроек.</T>
+      <T v="bodyDim">Тренировка на сегодня с весами, программа на любую мышцу (соберу и запущу), техника и замены, подготовка к соревнованиям, питание и диетология, разбор анализов (напиши «ТТГ 5,2, ферритин 18»), гормоны, травмы и риски препаратов. Помню, что ты рассказываешь о себе, и сам слежу за прогрессом, питанием и восстановлением. Работаю на устройстве; при интернете дополняю ответы свежими научными обзорами и показываю источники.</T>
       {todayInsight ? (
         <View style={styles.insightCard}>
           <T v="caption" color={colors.accent}>
@@ -126,7 +128,7 @@ function Intro() {
         </View>
       ) : null}
       <T v="small" style={{ fontSize: 12 }}>
-        FORM — фитнес-помощник, не врач и не ставит диагнозов. При боли в груди, обмороке, сильной одышке или травме — сразу к врачу.
+        {BRAND} — фитнес-помощник, не врач и не ставит диагнозов. При боли в груди, обмороке, сильной одышке или травме — сразу к врачу.
       </T>
     </View>
   );
@@ -146,6 +148,7 @@ function Bubble({ m }: { m: CoachMessage }) {
           {renderBold(m.text, mine)}
         </T>
       </View>
+      {!mine && m.sources?.length ? <Sources list={m.sources} /> : null}
       {m.actions?.length ? (
         <View style={{ gap: 6, marginTop: 6, alignSelf: 'stretch' }}>
           {m.actions.map((a) => (
@@ -169,10 +172,39 @@ function Bubble({ m }: { m: CoachMessage }) {
   );
 }
 
+/** Откуда рекомендация: позиции обществ, обзоры, руководства — открываются в браузере */
+function Sources({ list }: { list: NonNullable<CoachMessage['sources']> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.sources}>
+      <Pressable accessibilityRole="button" onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }} hitSlop={6}>
+        <Icon name="library-outline" size={14} color={colors.accent} />
+        <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12, flex: 1 }}>
+          Источники · {list.length}
+        </T>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textDim} />
+      </Pressable>
+      {open
+        ? list.map((s) => (
+            <Pressable key={s.url} accessibilityRole="link" onPress={() => void Linking.openURL(s.url)} style={{ paddingVertical: 4 }}>
+              <T v="small" color={colors.text} style={{ fontSize: 12 }} numberOfLines={3}>
+                {s.title}
+              </T>
+              <T v="small" style={{ fontSize: 11 }}>
+                {s.org}
+                {s.year ? ` · ${s.year}` : ''} · открыть
+              </T>
+            </Pressable>
+          ))
+        : null}
+    </View>
+  );
+}
+
 /** AI предлагает → приложение проверило → пользователь решает */
 function ActionState({ messageId, a }: { messageId: string; a: CoachAction }) {
   if (a.applied || a.declined || a.invalid) {
-    const label = a.applied ? (a.type.startsWith('start') ? 'Начато' : a.type === 'create_exercise' || a.type === 'add_to_plan' ? 'Готово' : 'Применено') : a.declined ? 'Не сейчас' : `Отклонено FORM: ${a.invalid}`;
+    const label = a.applied ? (a.type.startsWith('start') ? 'Начато' : a.type === 'create_exercise' || a.type === 'add_to_plan' ? 'Готово' : 'Применено') : a.declined ? 'Не сейчас' : `Отклонено ${BRAND}: ${a.invalid}`;
     const color = a.applied ? colors.accent : a.invalid ? colors.warning : colors.textDim;
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, maxWidth: '45%' }}>
@@ -246,5 +278,6 @@ const styles = themed({
   theirs: { backgroundColor: colors.surface, borderColor: colors.border, borderBottomLeftRadius: 6 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
   insightCard: { padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine, gap: 4 },
+  sources: { maxWidth: '88%', marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
   introIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
 });

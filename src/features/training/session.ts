@@ -4,6 +4,13 @@ import { uid } from '@/utils/id';
 import { today } from '@/utils/date';
 import { historyFor, recommend } from './progression';
 
+/**
+ * Подходов у нового упражнения по умолчанию (ручное добавление, конструктор, «Тренировать сейчас»,
+ * тренер). Больше — только когда программа осознанно распределяет недельный объём; третий, четвёртый
+ * подход пользователь добавляет сам одной кнопкой.
+ */
+export const DEFAULT_SETS = 2;
+
 export interface SessionContext {
   sessions: WorkoutSession[];
   customs: Exercise[];

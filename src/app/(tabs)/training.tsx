@@ -34,6 +34,7 @@ import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
 import { addDays, formatDayShort, relativeDay, startOfWeek, today, weekdayIndex as weekdayIndexOf, WEEKDAYS_SHORT } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 type Seg = 'today' | 'plan' | 'history' | 'library';
 
@@ -316,7 +317,7 @@ function PlanTab({ bottom }: { bottom: number }) {
     const recovery = estimateRecovery({ profile: prefs.recoveryProfile, sessions, checkins: useCheckins.getState().byDate, health: useHealth.getState().days });
     return generatePlan(withPrefs(profile, { preferredSplit: pick }), { previous: plan, sessions, customs, recovery });
   }, [profile, plan, pick, sessions, customs]);
-  if (!plan || !profile) return <EmptyState icon="calendar-outline" title="Плана пока нет" text="Заполни профиль — FORM создаст план автоматически." action="Профиль" onAction={() => router.push('/profile')} />;
+  if (!plan || !profile) return <EmptyState icon="calendar-outline" title="Плана пока нет" text={`Заполни профиль — ${BRAND} создаст план автоматически.`} action="Профиль" onAction={() => router.push('/profile')} />;
   const prefs = getPrefs(profile);
   const changing = !!preview && preview.split !== plan.split;
   const shown = changing ? preview : plan;

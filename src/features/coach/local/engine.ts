@@ -18,9 +18,12 @@ import { relevantMemory } from './memory';
 import { labsReply, readLabs } from './labs';
 import { MODE_LABEL } from '@/features/training/today';
 import { fmtWeight } from '@/utils/format';
+import { DEFAULT_SETS } from '@/features/training/session';
+import { analyzeProgram, splitFitText } from '@/features/training/adaptPlan';
 import { uid } from '@/utils/id';
 import { keyHit, norm } from './text';
 import { formatHours } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 export { keyHit, norm };
 
@@ -199,11 +202,11 @@ function targetAnswer(t: MuscleTarget, c: LocalCtx): LocalReply {
     'Отдых: базовые 2–3 мин, изоляция 60–90 с. Последний подход каждого упражнения — с запасом 0–1 повтор.',
     blocked.length ? `Не предлагаю: ${blocked.map((b) => `${b.ex.name} (${b.blocked})`).join('; ')}.` : '',
   ].filter(Boolean).join('\n\n');
-  actions.push({ id: uid('act_'), type: 'start_custom_workout', label: 'Начать эту тренировку', params: { exerciseIds: pick.map((e) => e.id), name: t.label, sets: 3 } });
+  actions.push({ id: uid('act_'), type: 'start_custom_workout', label: 'Начать эту тренировку', params: { exerciseIds: pick.map((e) => e.id), name: t.label, sets: DEFAULT_SETS } });
   // В план: в тренировку, где уже работает эта группа мышц и упражнения ещё нет
   const grp = pick[0].groups.primary[0];
   const tpl = c.plan?.templates.find((x) => x.muscles.includes(grp) && !x.exercises.some((e) => e.exerciseId === pick[0].id)) ?? c.plan?.templates.find((x) => !x.exercises.some((e) => e.exerciseId === pick[0].id));
-  if (tpl) actions.push({ id: uid('act_'), type: 'add_to_plan', label: `Добавить в план (${tpl.name})`.slice(0, 40), params: { templateId: tpl.id, exerciseId: pick[0].id, sets: 3, repMin: pick[0].defaultReps[0], repMax: pick[0].defaultReps[1], reason: t.label } });
+  if (tpl) actions.push({ id: uid('act_'), type: 'add_to_plan', label: `Добавить в план (${tpl.name})`.slice(0, 40), params: { templateId: tpl.id, exerciseId: pick[0].id, sets: DEFAULT_SETS, repMin: pick[0].defaultReps[0], repMax: pick[0].defaultReps[1], reason: t.label } });
   return { text, actions, intent: 'target' };
 }
 
@@ -237,7 +240,7 @@ export function localCoach(c: LocalCtx): LocalReply {
 
   // 2. Приветствие
   if (/^(привет|здравств|добр(ый|ое|ого)|хай|хеллоу|ку|йо)(\s|$)/.test(n) && n.split(' ').length <= 4) {
-    return { text: `Привет${c.profile.name ? `, ${c.profile.name}` : ''}! Я твой тренер в FORM — работаю прямо на телефоне. Спроси, например: «что мне сегодня делать», «упражнения на верх груди», «чем заменить присед», «что поесть», «какие анализы сдать», «болит плечо при жиме».`, actions, intent: 'greeting' };
+    return { text: `Привет${c.profile.name ? `, ${c.profile.name}` : ''}! Я твой тренер в ${BRAND} — работаю прямо на телефоне. Спроси, например: «что мне сегодня делать», «упражнения на верх груди», «чем заменить присед», «что поесть», «какие анализы сдать», «болит плечо при жиме».`, actions, intent: 'greeting' };
   }
 
   // 2а. Память: «что ты обо мне помнишь»
@@ -270,7 +273,7 @@ export function localCoach(c: LocalCtx): LocalReply {
     const ex = buildCustomExercise(customName);
     actions.push({ id: uid('act_'), type: 'create_exercise', label: 'Создать упражнение', params: { exercise: ex } });
     return {
-      text: `Создам упражнение **«${ex.name}»**: группа — ${ex.category === 'fullbody' ? 'всё тело' : ex.groups.primary.map((g) => GROUP_LABEL[g] ?? g).join(', ').toLowerCase()}, ${ex.mechanic === 'compound' ? 'базовое' : 'изолирующее'}, ${ex.defaultReps[0]}–${ex.defaultReps[1]} повторов. Оно появится в Библиотеке (раздел «Мои»), его можно ставить в любую тренировку, а прогрессию веса FORM будет вести так же, как для встроенных.\n\nЕсли группа мышц определилась неверно — уточни, например: «создай упражнение жим гантелей на полу на грудь».`,
+      text: `Создам упражнение **«${ex.name}»**: группа — ${ex.category === 'fullbody' ? 'всё тело' : ex.groups.primary.map((g) => GROUP_LABEL[g] ?? g).join(', ').toLowerCase()}, ${ex.mechanic === 'compound' ? 'базовое' : 'изолирующее'}, ${ex.defaultReps[0]}–${ex.defaultReps[1]} повторов. Оно появится в Библиотеке (раздел «Мои»), его можно ставить в любую тренировку, а прогрессию веса ${BRAND} будет вести так же, как для встроенных.\n\nЕсли группа мышц определилась неверно — уточни, например: «создай упражнение жим гантелей на полу на грудь».`,
       actions,
       intent: 'create_exercise',
     };
@@ -293,7 +296,7 @@ export function localCoach(c: LocalCtx): LocalReply {
       if (!subs.length) return { text: `Для «${ex.name}» нет подходящих замен с твоим оборудованием и ограничениями. Можно взять похожее движение с другим оборудованием или изменить ограничения в Профиль → Предпочтения.`, actions, intent: 'exercise_sub' };
       if (todayPe) actions.push({ id: uid('act_'), type: 'replace_exercise', label: `Заменить на ${subs[0].name}`.slice(0, 40), params: { exerciseId: ex.id, toExerciseId: subs[0].id, scope: 'today', reason: 'Та же мышца и движение' } });
       return {
-        text: `Замены для «${ex.name}» (та же мышца и тип движения, с учётом твоих ограничений и оборудования):\n${subs.map((s, i) => `${i + 1}. ${s.name}`).join('\n')}\n\nЛучше всего — «${subs[0].name}». Рабочий вес подберётся за 1–2 тренировки. Если упражнение вызывает дискомфорт — отметь это в тренировке (••• → Дискомфорт), FORM перестанет его предлагать.`,
+        text: `Замены для «${ex.name}» (та же мышца и тип движения, с учётом твоих ограничений и оборудования):\n${subs.map((s, i) => `${i + 1}. ${s.name}`).join('\n')}\n\nЛучше всего — «${subs[0].name}». Рабочий вес подберётся за 1–2 тренировки. Если упражнение вызывает дискомфорт — отметь это в тренировке (••• → Дискомфорт), ${BRAND} перестанет его предлагать.`,
         actions,
         intent: 'exercise_sub',
       };
@@ -304,7 +307,7 @@ export function localCoach(c: LocalCtx): LocalReply {
     const hist = historyFor(ex.id, c.sessions, 6);
     if (!hist.length) {
       actions.push({ id: uid('act_'), type: 'start_custom_workout', label: `Тренировать: ${ex.name}`.slice(0, 40), params: { exerciseIds: [ex.id], name: ex.name } });
-      return { text: `По «${ex.name}» у тебя ещё нет истории. Первая тренировка: подбери вес, с которым ${todayPe ? todayPe.repMax : ex.defaultReps[1]} повторов оставляют 2–3 в запасе — дальше FORM будет вести прогрессию сам.\n\n${ex.cues.slice(0, 2).map((x) => `• ${x}`).join('\n')}`, actions, intent: 'exercise_progress' };
+      return { text: `По «${ex.name}» у тебя ещё нет истории. Первая тренировка: подбери вес, с которым ${todayPe ? todayPe.repMax : ex.defaultReps[1]} повторов оставляют 2–3 в запасе — дальше ${BRAND} будет вести прогрессию сам.\n\n${ex.cues.slice(0, 2).map((x) => `• ${x}`).join('\n')}`, actions, intent: 'exercise_progress' };
     }
     const st = progressStatus(ex.id, c.sessions);
     const rec = recommend({ exercise: ex, plannedSets: todayPe?.sets ?? 3, repMin: todayPe?.repMin ?? ex.defaultReps[0], repMax: todayPe?.repMax ?? ex.defaultReps[1], targetRir: todayPe?.targetRir ?? 2, rirDelta: 0, history: hist, band: c.readiness?.band, volumeFactor: 1 });
@@ -341,7 +344,7 @@ export function localCoach(c: LocalCtx): LocalReply {
     if (w) {
       const parts = [
         `Тренировок ${w.workouts}${w.planned ? ` из ${w.planned}` : ''}, рабочих подходов ${w.sets}.`,
-        w.avgKcal ? `Калории в среднем ${w.avgKcal}${c.target ? ` при цели ${c.target.kcal}` : ''}, белок в норме ${w.proteinDays} из ${w.loggedDays} дней.` : 'Питание почти не записывалось — без этого FORM не может точно скорректировать калории.',
+        w.avgKcal ? `Калории в среднем ${w.avgKcal}${c.target ? ` при цели ${c.target.kcal}` : ''}, белок в норме ${w.proteinDays} из ${w.loggedDays} дней.` : `Питание почти не записывалось — без этого ${BRAND} не может точно скорректировать калории.`,
         w.weightDelta !== null ? `Вес ${w.weightDelta >= 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг за неделю.` : '',
         w.avgSleep ? `Сон в среднем ${formatHours(w.avgSleep)}.` : '',
       ].filter(Boolean);
@@ -354,7 +357,7 @@ export function localCoach(c: LocalCtx): LocalReply {
     const sets = recent.reduce((a, s) => a + s.exercises.reduce((b, e) => b + e.sets.filter((x) => x.done).length, 0), 0);
     const days = new Set(c.entries.filter((e) => e.createdAt >= since).map((e) => e.date)).size;
     return {
-      text: `Полной недели данных ещё нет, поэтому смотрю последние 7 дней: тренировок ${recent.length}${c.profile.daysPerWeek ? ` из ${c.profile.daysPerWeek} запланированных` : ''}, рабочих подходов ${sets}, питание записано в ${days} из 7 дней.\n\n${recent.length < (c.profile.daysPerWeek ?? 3) ? 'Главное сейчас — закрепить регулярность: проведи тренировки по плану, даже короткие (есть режим «30 минут»).' : 'Регулярность хорошая — продолжаем по плану.'} ${days < 5 ? 'Записывай еду хотя бы 5 дней из 7 — тогда через неделю FORM точно скажет, нужно ли менять калории.' : ''}\n\nПолный разбор с весом, сном и белком появится в понедельник.`.trim(),
+      text: `Полной недели данных ещё нет, поэтому смотрю последние 7 дней: тренировок ${recent.length}${c.profile.daysPerWeek ? ` из ${c.profile.daysPerWeek} запланированных` : ''}, рабочих подходов ${sets}, питание записано в ${days} из 7 дней.\n\n${recent.length < (c.profile.daysPerWeek ?? 3) ? 'Главное сейчас — закрепить регулярность: проведи тренировки по плану, даже короткие (есть режим «30 минут»).' : 'Регулярность хорошая — продолжаем по плану.'} ${days < 5 ? `Записывай еду хотя бы 5 дней из 7 — тогда через неделю ${BRAND} точно скажет, нужно ли менять калории.` : ''}\n\nПолный разбор с весом, сном и белком появится в понедельник.`.trim(),
       actions,
       intent: 'week',
     };
@@ -368,6 +371,22 @@ export function localCoach(c: LocalCtx): LocalReply {
     actions.push(...off.actions);
     const dislikes = memory.filter((m) => m.category === 'food').slice(-3);
     return withKb(`${off.text}${dislikes.length ? `\n\nУчитываю: ${dislikes.map((m) => m.text.replace(/^Питание: /, '').toLowerCase()).join('; ')}.` : ''}`, 'food_now', 4.5);
+  }
+
+  // 9б. Программа: «подходит ли мне сплит», «что поменять в программе», «почему фулбади»
+  if (c.plan && has(n, /(программ|сплит|full ?body|фулбади|всё тело|все тело|верх.?низ|жим.?тяга|ppl|структур)/) && has(n, /(подход|поменя|смени|измени|почему|какой|лучше|советуеш|выбрал|адапт|перестро)/)) {
+    const props = analyzeProgram({ profile: c.profile, plan: c.plan, sessions: c.sessions, checkins: c.checkins });
+    const lines = [`**Сейчас: ${c.plan.splitLabel}, ${c.plan.daysPerWeek} дн/нед.** ${splitFitText(c.plan.split, c.plan.daysPerWeek)}`];
+    if (c.plan.splitChoice?.reasons.length) lines.push(`Почему он выбран для тебя: ${c.plan.splitChoice.reasons.slice(0, 3).join('; ')}.`);
+    if (props.length) {
+      const p = props[0];
+      lines.push(`**Что я бы изменил:** ${p.title}.\n${p.why.map((x) => `• ${x}`).join('\n')}${p.splitWhy ? `\n\n${p.splitWhy}` : ''}`);
+      if (p.change.split) actions.push({ id: uid('act_'), type: 'change_split', label: `Перейти: ${p.title}`.slice(0, 48), params: { split: p.change.split, reason: p.why[0] } });
+      else lines.push('Применить можно на главной («Тренер советует») или в «Отчёте недели» — без твоего подтверждения программа не меняется.');
+    } else {
+      lines.push('По твоим данным менять структуру сейчас не нужно: тренировки выполняются, восстановление и прогресс в норме. Я сам предложу изменение, если появятся пропуски, застой или признаки плохого восстановления.');
+    }
+    return { text: lines.join('\n\n'), actions, intent: 'program' };
   }
 
   // 10. План на сегодня: «что мне сегодня делать», «какая тренировка», «как сегодня тренироваться»
