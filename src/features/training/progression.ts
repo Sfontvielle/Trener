@@ -2,11 +2,19 @@ import type { Exercise, ExerciseSet, ReadinessBand, Recommendation, WorkoutSessi
 import { fmtWeight } from '@/utils/format';
 
 /**
- * Двойная прогрессия с учётом RIR/ощущений и готовности.
- * 1) Все рабочие подходы на верхней границе диапазона с запасом → +вес.
- * 2) В диапазоне → тот же вес, добираем повторы.
- * 3) Два и более подхода ниже диапазона → держим вес; если так уже вторую тренировку подряд → −5–10%.
- * Низкая готовность запрещает повышение.
+ * Progressive overload — двойная прогрессия (ACSM 2009: когда выполняешь на 1–2 повтора больше цели
+ * в двух тренировках подряд/во всех подходах — +2–10% нагрузки; ACSM 2026: близость к отказу ~2–3 RIR
+ * достаточна для гипертрофии; RIR-шкала — Zourdos 2016).
+ * Правила (детерминированные, порядок важен):
+ *  0) нет истории → подобрать вес с запасом 2–3 повтора;
+ *  1) прошлый раз выполнены НЕ все запланированные подходы → вес не повышаем (провал ≠ прогресс);
+ *  2) прошлое повышение не удалось (ниже диапазона) → возврат к предыдущему весу;
+ *  3) все подходы на верхней границе с нормальным запасом → + минимальный шаг оборудования
+ *     (например 50 → 52,5 кг при диапазоне 8–10, а не сразу 55);
+ *  4) в диапазоне → тот же вес, +1 повтор;
+ *  5) ниже диапазона → держим; вторую тренировку подряд → −8% (округление до шага);
+ *  Низкая готовность (сон, HRV, пульс, усталость) запрещает повышение — вес держим.
+ * Шаг повышения = минимальный доступный шаг оборудования (ex.increment) — ЭВРИСТИКА: ACSM даёт 2–10%.
  */
 
 export interface ExerciseHistoryEntry {
@@ -14,6 +22,8 @@ export interface ExerciseHistoryEntry {
   sets: ExerciseSet[];
   repMin: number;
   repMax: number;
+  /** Сколько подходов было запланировано (для «не все подходы выполнены») */
+  plannedSets?: number;
 }
 
 export function workingSets(sets: ExerciseSet[]): ExerciseSet[] {
@@ -27,7 +37,7 @@ export function historyFor(exerciseId: string, sessions: WorkoutSession[], limit
     for (const we of s.exercises) {
       if (we.exerciseId !== exerciseId) continue;
       const ws = workingSets(we.sets);
-      if (ws.length) out.push({ date: s.date, sets: ws, repMin: we.repMin, repMax: we.repMax });
+      if (ws.length) out.push({ date: s.date, sets: ws, repMin: we.repMin, repMax: we.repMax, plannedSets: we.plannedSets });
     }
     if (out.length >= limit) break;
   }
@@ -82,6 +92,7 @@ export function recommend(args: {
       sets,
       targetRir,
       action: 'new',
+      delta: 'Подобрать вес',
       rationale: ex.bodyweight
         ? `Первый раз: сделай ${repMin}–${repMax} повторов с запасом ${targetRir}.`
         : `Первый раз: подбери вес, с которым ${repMax} повторов оставляют ${targetRir}–${targetRir + 1} в запасе.`,
@@ -100,31 +111,40 @@ export function recommend(args: {
   if (ex.bodyweight && top === 0) {
     const best = Math.max(...last.sets.map((s) => s.reps));
     if (allTop && ok && !lowReadiness) {
-      return { weight: 0, repMin: repMin + 1, repMax: repMax + 1, sets, targetRir, action: 'reps', rationale: `Прошлый раз ${lastStr} — верх диапазона. Добавь повтор в каждом подходе или возьми отягощение.` };
+      return { weight: 0, repMin: repMin + 1, repMax: repMax + 1, sets, targetRir, action: 'reps', delta: '+1 повтор', rationale: `Прошлый раз ${lastStr} — верх диапазона. Добавь повтор в каждом подходе или возьми отягощение.` };
     }
-    return { weight: 0, repMin, repMax, sets, targetRir, action: 'hold', rationale: `Прошлый раз ${lastStr} (лучший ${best}). Цель — ${repMax} во всех подходах.` };
+    return { weight: 0, repMin, repMax, sets, targetRir, action: 'hold', delta: '+1 повтор', rationale: `Прошлый раз ${lastStr} (лучший ${best}). Цель — ${repMax} во всех подходах.` };
+  }
+
+  // 1) Провал прошлой тренировки: выполнено меньше подходов, чем планировалось
+  if (last.plannedSets && last.sets.length < last.plannedSets) {
+    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Прошлый раз выполнено ${last.sets.length} из ${last.plannedSets} подходов — вес не повышаем, сначала все подходы в диапазоне ${repMin}–${repMax}.` };
+  }
+  // 2) Прошлое повышение не удалось: вес вырос, а повторы ниже диапазона → вернуться
+  const prevEntry = history[1];
+  const prevTop = prevEntry ? Math.max(...prevEntry.sets.map((s) => s.weight)) : 0;
+  if (prevEntry && prevTop > 0 && top > prevTop && below >= 1) {
+    return { weight: prevTop, repMin, repMax, sets, targetRir, action: 'decrease', delta: `−${fmtWeight(top - prevTop)} кг`, rationale: `Повышение до ${w(top)} не получилось (${lastStr}, ниже ${repMin}). Возвращаемся к ${w(prevTop)} и добираем повторы до ${repMax}.` };
   }
 
   if (allTop && ok) {
     if (lowReadiness) {
-      return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', rationale: `Готов к +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
+      return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Готов к +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
     }
     const next = roundTo(top + ex.increment, ex.increment >= 2 ? ex.increment / 2 : 0.5);
-    return { weight: next, repMin, repMax, sets, targetRir, action: 'increase', rationale: `Прошлый раз ${w(top)} × ${lastStr} с запасом — пробуем ${w(next)}.` };
+    return { weight: next, repMin, repMax, sets, targetRir, action: 'increase', delta: `+${fmtWeight(next - top)} кг`, rationale: `Прошлый раз ${w(top)} × ${lastStr} с запасом — пробуем ${w(next)}.` };
   }
   if (allTop && !ok) {
-    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', rationale: `${w(top)} × ${lastStr}, но подходы шли тяжело. Закрепим вес, потом +${fmtWeight(ex.increment)} кг.` };
+    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `${w(top)} × ${lastStr}, но подходы шли тяжело. Закрепим вес, потом +${fmtWeight(ex.increment)} кг.` };
   }
 
   if (below >= 2 || (atTop.length === 1 && below === 1)) {
-    const prev = history[1];
-    const prevTop = prev ? Math.max(...prev.sets.map((s) => s.weight)) : 0;
-    const prevFailed = prev && prevTop === top && prev.sets.filter((s) => s.weight === top && s.reps < repMin).length >= 2;
+    const prevFailed = prevEntry && prevTop === top && prevEntry.sets.filter((s) => s.weight === top && s.reps < repMin).length >= 2;
     if (prevFailed) {
       const next = Math.max(0, roundTo(top * 0.92, ex.increment >= 2 ? ex.increment / 2 : 0.5));
-      return { weight: next, repMin, repMax, sets, targetRir, action: 'decrease', rationale: `Две тренировки подряд ниже ${repMin} повторов на ${w(top)}. Снизим до ${w(next)} и наберём повторы заново.` };
+      return { weight: next, repMin, repMax, sets, targetRir, action: 'decrease', delta: `−${fmtWeight(top - next)} кг`, rationale: `Две тренировки подряд ниже ${repMin} повторов на ${w(top)}. Снизим до ${w(next)} и наберём повторы заново.` };
     }
-    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', rationale: `Прошлый раз ${w(top)} × ${lastStr} — ниже диапазона. Не повышаем, цель — ${repMin}+ во всех подходах.` };
+    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Прошлый раз ${w(top)} × ${lastStr} — ниже диапазона. Не повышаем, цель — ${repMin}+ во всех подходах.` };
   }
 
   return {
@@ -134,6 +154,7 @@ export function recommend(args: {
     sets,
     targetRir,
     action: 'reps',
+    delta: '+1 повтор',
     rationale: `Прошлый раз ${w(top)} × ${lastStr}. Тот же вес, добери до ${repMax} повторов${minReps < repMax ? ` (минимум ${Math.min(repMax, minReps + 1)})` : ''}.`,
   };
 }

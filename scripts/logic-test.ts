@@ -4,8 +4,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { CoachAction, DailyCheckIn, WorkoutExercise, ExerciseSet, MovementRestriction, UserProfile, WeightEntry, WorkoutSession } from '../src/types';
-import { computeNutritionTarget } from '../src/features/nutrition/targets';
+import type { CoachAction, DailyCheckIn, WorkoutExercise, ExerciseSet, MovementRestriction, UserProfile, WeightEntry, WorkoutSession , FoodEntry } from '../src/types';
+import { computeNutritionTarget , bmrMifflin, fiberTarget } from '../src/features/nutrition/targets';
 import { reviewCalories } from '../src/features/nutrition/adaptive';
 import { weightTrend, weeklyRate } from '../src/features/progress/weightTrend';
 import { recommend } from '../src/features/training/progression';
@@ -17,10 +17,10 @@ import { analyzeWorkout, suggestOrder } from '../src/features/training/engine/or
 import { estimateMinutes } from '../src/features/training/engine/time';
 import { actionKey, applyToExercises, validateAction } from '../src/features/coach/actions';
 import { cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate } from '../src/features/food/scanner';
-import { currentIndexOf, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress } from '../src/features/training/workoutNav';
+import { currentIndexOf, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress , isExerciseDone } from '../src/features/training/workoutNav';
 import { chooseSplit, compareSplits } from '../src/features/training/engine/split';
 import { estimateRecovery } from '../src/features/training/engine/recovery';
-import { healthAvailability, fetchHealthDays, mergedMinutes } from '../src/services/health';
+import { healthAvailability, fetchHealthDays, mergedMinutes , READ_TYPES } from '../src/services/health';
 import { healthContext, type HealthDay } from '../src/features/health/model';
 import { readinessFor } from '../src/features/recovery/derive';
 import { applyPalette, colors, paletteFor, resolveScheme, themed } from '../src/theme';
@@ -37,7 +37,7 @@ import { readLabs } from '../src/features/coach/local/labs';
 import { keyHit } from '../src/features/coach/local/text';
 import { localizeWorkoutName } from '../src/features/training/names';
 import { getExercise, EXERCISES } from '../src/data/exercises';
-import { addDays, today, weekdayIndex } from '../src/utils/date';
+import { addDays, today, weekdayIndex , formatHours, formatSleep , startOfWeek } from '../src/utils/date';
 import { foodAvoidance, healthTraining, parseLimitText } from '../src/features/profile/health';
 import { setLimits } from '../src/features/training/engine/volume';
 import { sessionEnergy, roundKcal } from '../src/features/training/energy';
@@ -47,7 +47,24 @@ import { goalProgress } from '../src/features/progress/goal';
 import { techniqueFor } from '../src/features/exercises/technique';
 import { KB_SOURCES } from '../src/features/coach/local/kbSources';
 import { BRAND } from '../src/config/brand';
+import { migrateCheckins } from '../src/stores/checkins';
 import { localInsights } from '../src/features/coach/insights';
+import { macrosFor, sumFiber, sumMacros, fiberLabel } from '../src/features/nutrition/status';
+import { bodyNarrative, bodyTrend, rollingAverage7, waistTrend } from '../src/features/science/bodyTrend';
+import { decideCalories } from '../src/features/science/calories';
+import { stepGoal } from '../src/features/science/steps';
+import { CATEGORY_LABEL, categoryForScore, sleepBaseline, sleepMinutesOf, withSleep } from '../src/features/science/recovery';
+import { dayInsights } from '../src/features/science/insights';
+import { buildDaySummary, dayMarkers } from '../src/features/day/summary';
+import { healthUiState } from '../src/features/health/state';
+import { LOCAL_FOODS } from '../src/data/foods';
+import { mapOffProduct } from '../src/services/foodApi';
+import { PICKER_CATALOG, joinItems, splitItems, toggleItem } from '../src/features/profile/pickerCatalog';
+
+import { warmupSets, platesPerSide } from '../src/features/training/warmup';
+import { checkDeload } from '../src/features/training/deload';
+import { lastWeekSummary } from '../src/features/progress/weekly';
+import { frequentProducts, sameMealYesterday } from '../src/features/nutrition/quick';
 
 const base: UserProfile = {
   name: 'Тест', sex: 'male', age: 30, heightCm: 180, weightKg: 80, goal: 'bulk', ratePctPerWeek: 0.35, level: 'intermediate', trainingYears: 2,
@@ -203,13 +220,6 @@ test('Библиотека: уникальные id, техника и мышц�
     assert.ok(e.defaultReps[0] <= e.defaultReps[1], e.id);
   }
 });
-
-import { warmupSets, platesPerSide } from '../src/features/training/warmup';
-import { checkDeload } from '../src/features/training/deload';
-import { lastWeekSummary } from '../src/features/progress/weekly';
-import { frequentProducts, sameMealYesterday } from '../src/features/nutrition/quick';
-import { startOfWeek } from '../src/utils/date';
-import type { FoodEntry } from '../src/types';
 
 test('Разминка и блины: присед 100 кг → 20×10, 50×5, 70×3, 85×1; блины 25+15 на сторону', () => {
   const w = warmupSets(getExercise('back_squat')!, 100);
@@ -549,7 +559,8 @@ test('Т10. «Повышенное восстановление» не даёт 
 
 test('Т11–12. Apple Health: отказ — приложение работает; данные есть — попадают в готовность с личной базой', async () => {
   // В node (как в Expo Go) нативного модуля нет: статус «нужна сборка», чтение — пустое, без исключений
-  assert.equal(healthAvailability(), 'needs_dev_build');
+  // В node нативного модуля нет (как в сборке без HealthKit): статус «модуль отсутствует», чтение — пустое, без исключений
+  assert.equal(healthAvailability(), 'module_missing');
   assert.deepEqual(await fetchHealthDays(7), []);
   const d = today();
   const c: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, createdAt: 0 };
@@ -898,4 +909,254 @@ test('Сложность подхода: «До отказа» считаетс�
   const hist = [{ date: addDays(today(), -3), repMin: 6, repMax: 10, sets: [set(80, 10, { feel: 'max', rir: 0 }), set(80, 10, { feel: 'max', rir: 0 }), set(80, 10, { feel: 'max', rir: 0 })] }];
   const r = recommend({ exercise: ex, plannedSets: 3, repMin: 6, repMax: 10, targetRir: 2, history: hist });
   assert.equal(r.action, 'hold', 'до отказа на верхней границе — сначала закрепить вес');
+});
+
+// ─── Научный слой и новые сценарии ──────────────────────────────────────────
+
+test('Калории: Mifflin–St Jeor — эталонный расчёт и клетчатка 14 г/1000 ккал', () => {
+  // Муж., 30 лет, 180 см, 80 кг: 800 + 1125 − 150 + 5 = 1780
+  assert.equal(bmrMifflin({ sex: 'male', age: 30, heightCm: 180 }, 80), 1780);
+  assert.equal(bmrMifflin({ sex: 'female', age: 30, heightCm: 165 }, 60), 600 + 1031.25 - 150 - 161);
+  const t = computeNutritionTarget(base);
+  assert.ok(t.fiber && t.fiber === fiberTarget(t.kcal), 'клетчатка в цели');
+  assert.equal(fiberTarget(2000), 30);
+  assert.equal(fiberTarget(1000), 20, 'не ниже 20 г');
+});
+
+test('Макросы: белок 1,6–2,2 г/кг, жиры в AMDR 20–35%, сумма сходится с калориями', () => {
+  for (const goal of ['bulk', 'cut', 'maintain', 'recomp'] as const) {
+    const t = computeNutritionTarget({ ...base, goal });
+    assert.ok(t.protein / base.weightKg >= 1.6 - 1e-9 && t.protein / base.weightKg <= 2.3, `${goal} белок ${t.protein}`);
+    const fatPct = (t.fat * 9) / t.kcal;
+    assert.ok(fatPct >= 0.2 - 0.01 && fatPct <= 0.35 + 0.01, `${goal} жиры ${fatPct}`);
+    const sum = t.protein * 4 + t.fat * 9 + t.carbs * 4;
+    assert.ok(Math.abs(sum - t.kcal) / t.kcal < 0.04, `${goal}: ${sum} vs ${t.kcal}`);
+  }
+});
+
+test('Тренд веса: 7-дневное среднее требует ≥3 взвешиваний; одно взвешивание не меняет решения', () => {
+  const ref = today();
+  assert.equal(rollingAverage7([{ id: '1', date: ref, kg: 80, createdAt: 0 }], ref), null);
+  const w3: WeightEntry[] = [0, -2, -4].map((d, i) => ({ id: String(i), date: addDays(ref, d), kg: 80 + i * 0.2, createdAt: 0 }));
+  assert.equal(rollingAverage7(w3, ref)?.kg, 80.2);
+  // Скачок одного дня +1,5 кг почти не двигает EMA-тренд
+  const ws: WeightEntry[] = Array.from({ length: 21 }, (_, i) => ({ id: `w${i}`, date: addDays(ref, -20 + i), kg: 80, createdAt: 0 }));
+  ws[20] = { ...ws[20], kg: 81.5 };
+  const tr = weightTrend(ws);
+  assert.ok(tr[tr.length - 1].trend < 80.2, `тренд ${tr[tr.length - 1].trend}`);
+});
+
+test('Тренд талии: регрессия за 6 недель, нужно ≥14 дней между замерами', () => {
+  const ref = today();
+  const m = (d: number, v: number) => ({ id: `m${d}`, date: addDays(ref, d), kind: 'waist' as const, value: v });
+  assert.equal(waistTrend([m(-5, 85), m(0, 85.5)], ref), null, 'мало дней');
+  const wt = waistTrend([m(-28, 84), m(-21, 84.5), m(-14, 85), m(-7, 85.5), m(0, 86)], ref)!;
+  assert.ok(Math.abs(wt.cmPerWeek - 0.5) < 0.01, String(wt.cmPerWeek));
+  assert.ok(Math.abs(wt.changeCm - 2) < 0.05);
+  const stable = bodyTrend([], [m(-28, 85), m(0, 85.2)], ref);
+  assert.match(bodyNarrative(stable, 'bulk', 0.3).join(' '), /талия практически стабильна/);
+});
+
+test('Адаптация калорий (набор): решения маленькие, объяснимые, без +500', () => {
+  const baseIn = { goal: 'bulk' as const, targetKgPerWeek: 0.3, waistCmPerWeek: null, waistDays: 0, strength: 'unknown' as const, coverage: 0.9, daysSinceLastChange: 30, bodyWeightKg: 80 };
+  assert.equal(decideCalories({ ...baseIn, actualKgPerWeek: null }).action, 'insufficient');
+  const inBand = decideCalories({ ...baseIn, actualKgPerWeek: 0.3 });
+  assert.equal(inBand.action, 'hold');
+  assert.match(inBand.reasons.join(' '), /Средний вес растёт в целевом диапазоне\. Калорийность пока менять не нужно\./);
+  const fast = decideCalories({ ...baseIn, actualKgPerWeek: 0.9 });
+  assert.equal(fast.action, 'decrease');
+  assert.ok(Math.abs(fast.deltaKcal) <= 200 && Math.abs(fast.deltaKcal) >= 100);
+  const flatStalled = decideCalories({ ...baseIn, actualKgPerWeek: 0, strength: 'stalled' });
+  assert.equal(flatStalled.action, 'increase');
+  assert.ok(flatStalled.deltaKcal > 0 && flatStalled.deltaKcal <= 200, 'не +500');
+  assert.equal(decideCalories({ ...baseIn, actualKgPerWeek: 0, strength: 'progressing' }).action, 'hold', 'силовые растут — подождать');
+  const waist = decideCalories({ ...baseIn, actualKgPerWeek: 0.3, waistCmPerWeek: 0.5, waistDays: 28 });
+  assert.equal(waist.action, 'decrease', 'талия растёт непропорционально весу');
+  assert.equal(decideCalories({ ...baseIn, actualKgPerWeek: 0.9, daysSinceLastChange: 5 }).action, 'wait', 'не чаще раза в 14 дней');
+  assert.equal(Math.abs(decideCalories({ ...baseIn, actualKgPerWeek: 0.9, coverage: 0.3 }).deltaKcal), 100, 'мало данных — минимальный шаг');
+});
+
+test('Прогрессия: 50×10,10,10 (8–10) → 52,5 кг; 50×9,9,8 → 50 кг и добрать повторы', () => {
+  const ex = { ...getExercise('bench_press')!, increment: 2.5 };
+  const h = (reps: number[]) => [{ date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 3, sets: reps.map((r) => set(50, r, { feel: 'ok', rir: 2 })) }];
+  const up = recommend({ exercise: ex, plannedSets: 3, repMin: 8, repMax: 10, targetRir: 2, history: h([10, 10, 10]) });
+  assert.equal(up.action, 'increase');
+  assert.equal(up.weight, 52.5);
+  assert.equal(up.delta, '+2,5 кг');
+  const hold = recommend({ exercise: ex, plannedSets: 3, repMin: 8, repMax: 10, targetRir: 2, history: h([9, 9, 8]) });
+  assert.equal(hold.weight, 50);
+  assert.equal(hold.action, 'reps');
+  assert.equal(hold.delta, '+1 повтор');
+});
+
+test('Провал: неполная тренировка и неудачное повышение не повышают вес; низкая готовность — без повышения', () => {
+  const ex = { ...getExercise('bench_press')!, increment: 2.5 };
+  const partial = [{ date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 3, sets: [set(50, 10, { rir: 2 }), set(50, 10, { rir: 2 })] }];
+  const r1 = recommend({ exercise: ex, plannedSets: 3, repMin: 8, repMax: 10, targetRir: 2, history: partial });
+  assert.equal(r1.action, 'hold');
+  assert.equal(r1.weight, 50);
+  const failedIncrease = [
+    { date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 3, sets: [set(52.5, 7), set(52.5, 6), set(52.5, 6)] },
+    { date: addDays(today(), -7), repMin: 8, repMax: 10, plannedSets: 3, sets: [set(50, 10, { rir: 2 }), set(50, 10, { rir: 2 }), set(50, 10, { rir: 2 })] },
+  ];
+  const r2 = recommend({ exercise: ex, plannedSets: 3, repMin: 8, repMax: 10, targetRir: 2, history: failedIncrease });
+  assert.equal(r2.weight, 50, 'возврат к прежнему весу');
+  assert.equal(r2.action, 'decrease');
+  const ready = [{ date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 3, sets: [10, 10, 10].map((r) => set(50, r, { rir: 2 })) }];
+  for (const band of ['reduce', 'light', 'recover'] as const) {
+    const r = recommend({ exercise: ex, plannedSets: 3, repMin: 8, repMax: 10, targetRir: 2, history: ready, band });
+    assert.ok(r.weight <= 50, `${band}: ${r.weight}`);
+    assert.notEqual(r.action, 'increase');
+  }
+});
+
+test('Питание: суммы КБЖУ и клетчатка — неизвестная клетчатка не равна нулю', () => {
+  const e = (kcal: number, fiber?: number) => ({ macros: fiber === undefined ? { kcal, protein: 10, fat: 5, carbs: 20 } : { kcal, protein: 10, fat: 5, carbs: 20, fiber } });
+  assert.deepEqual(sumMacros([e(100), e(200)]), { kcal: 300, protein: 20, fat: 10, carbs: 40 });
+  assert.deepEqual(sumFiber([e(100), e(200)]), { g: null, complete: false, known: 0 });
+  assert.equal(fiberLabel(sumFiber([e(100), e(200)])), '—');
+  const mixed = sumFiber([e(100, 3), e(200)]);
+  assert.equal(mixed.g, 3);
+  assert.equal(mixed.complete, false);
+  assert.equal(fiberLabel(mixed), '≥3 г');
+  assert.equal(fiberLabel(sumFiber([e(1, 2.5), e(1, 1)])), '4 г');
+  // Пересчёт порции: клетчатка только если известна на 100 г
+  assert.equal(macrosFor({ kcal: 100, protein: 1, fat: 1, carbs: 1, fiber: 10 }, 50).fiber, 5);
+  assert.equal(macrosFor({ kcal: 100, protein: 1, fat: 1, carbs: 1 }, 50).fiber, undefined);
+  // Локальная база: овсянка с клетчаткой, плов — без данных
+  assert.equal(LOCAL_FOODS.find((f) => f.id === 'local:oats_dry')?.per100.fiber, 10.1);
+  assert.equal(LOCAL_FOODS.find((f) => f.id === 'local:plov')?.per100.fiber, undefined);
+  // Open Food Facts: fiber_100g есть → берём; нет → undefined
+  assert.equal(mapOffProduct({ code: '4600000000003', product_name: 'Хлебцы', nutriments: { 'energy-kcal_100g': 380, proteins_100g: 10, fat_100g: 3, carbohydrates_100g: 70, fiber_100g: 12 } })?.per100.fiber, 12);
+  assert.equal(mapOffProduct({ code: '4600000000003', product_name: 'Хлебцы', nutriments: { 'energy-kcal_100g': 380, proteins_100g: 10, fat_100g: 3, carbohydrates_100g: 70 } })?.per100.fiber, undefined);
+});
+
+test('Завершение тренировки: после последнего подхода всё выполнено, прогресс 100%', () => {
+  const we = (id: string, done: boolean[]): WorkoutExercise => ({ id, exerciseId: 'bench_press', sets: done.map((d, i) => set(50, 8, { id: `${id}${i}`, done: d })), repMin: 8, repMax: 10, targetRir: 2, restSec: 90, plannedSets: done.length } as WorkoutExercise);
+  const s = { id: 's', date: today(), name: 'A', startedAt: 0, status: 'active', exercises: [we('a', [true, true]), we('b', [true, false])], volumeFactor: 1 } as unknown as WorkoutSession;
+  assert.equal(nextIndex(s, 0), 1);
+  assert.ok(workoutProgress(s) < 1);
+  s.exercises[1].sets[1].done = true;
+  assert.equal(workoutProgress(s), 1);
+  assert.ok(s.exercises.every(isExerciseDone), 'кнопка «Завершить тренировку» показывается');
+});
+
+test('DaySummary: тренировка, питание, чек-ин, Health и замеры за выбранный день', () => {
+  const d0 = addDays(today(), -10);
+  const sess = { id: 's1', date: d0, name: 'Верх A', startedAt: new Date(`${d0}T18:00:00`).getTime(), finishedAt: new Date(`${d0}T19:05:00`).getTime(), status: 'completed', volumeFactor: 1, exercises: [{ id: 'we1', exerciseId: 'bench_press', repMin: 8, repMax: 10, targetRir: 2, restSec: 90, plannedSets: 2, sets: [set(60, 10, { rir: 2 }), set(60, 9, { rir: 1 })] }] } as unknown as WorkoutSession;
+  const src = {
+    sessions: [sess],
+    entries: [{ id: 'e1', date: d0, productId: 'local:oats_dry', name: 'Овсянка', grams: 80, macros: { kcal: 300, protein: 10, fat: 5, carbs: 50, fiber: 8 }, meal: 'breakfast' as const, createdAt: 0 }],
+    checkins: { [d0]: { date: d0, sleepHours: 7.717, sleepMinutes: 463, sleepQuality: 4 as const, energy: 4 as const, stress: 2 as const, soreness: 2 as const, pain: false, createdAt: 0 } },
+    health: { [d0]: { date: d0, steps: 6820, restingHr: 55, hrvMs: 60 } },
+    weights: [{ id: 'w', date: d0, kg: 80.4, createdAt: 0 }],
+    metrics: [{ id: 'm', date: d0, kind: 'waist' as const, value: 84 }],
+  };
+  const s = buildDaySummary(d0, src);
+  assert.equal(s.workouts.length, 1);
+  assert.equal(s.workouts[0].minutes, 65);
+  assert.equal(s.workouts[0].workingSets, 2);
+  assert.equal(s.workouts[0].exercises[0].sets[1].rir, 1);
+  assert.equal(s.nutrition?.kcal, 300);
+  assert.equal(s.nutrition?.fiber, 8);
+  assert.equal(s.nutrition?.meals[0].slot, 'breakfast');
+  assert.equal(s.checkin?.sleepMinutes, 463);
+  assert.equal(s.health?.steps, 6820);
+  assert.equal(s.weightKg, 80.4);
+  assert.deepEqual(s.measurements, [{ kind: 'waist', value: 84 }]);
+  assert.equal(buildDaySummary(addDays(d0, 1), src).hasAny, false, 'другой день — пусто');
+  const mk = dayMarkers([d0, addDays(d0, 1)], src);
+  assert.equal(mk[d0].trained, true);
+  assert.equal(mk[addDays(d0, 1)].trained, false);
+});
+
+test('Сон: колесо часы+минуты хранит минуты; старые записи без sleepMinutes читаются', () => {
+  const old = { sleepHours: 7.5 };
+  assert.equal(sleepMinutesOf(old), 450, 'миграция на чтении');
+  const c = withSleep({ date: today(), sleepHours: 0, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: 0 } as DailyCheckIn, 7 * 60 + 43, 'manual');
+  assert.equal(c.sleepMinutes, 463);
+  assert.equal(formatSleep(c.sleepMinutes), '7 ч 43 мин');
+  assert.ok(Math.abs(c.sleepHours - 7.717) < 0.001, 'старое поле синхронно');
+  assert.equal(c.sleepSource, 'manual');
+  assert.equal(formatHours(7.999), '8:00', 'без «7:60»');
+});
+
+test('Шаги: цель от личной базы Apple Health, плавный рост, не ограничиваем тех, кто ходит много', () => {
+  const ref = today();
+  const hd = (steps: number) => Object.fromEntries(Array.from({ length: 21 }, (_, i) => [addDays(ref, -1 - i), { date: addDays(ref, -1 - i), steps }]));
+  const low = stepGoal({ age: 30, profileSteps: 5000, health: hd(5000), ref });
+  assert.equal(low.source, 'health');
+  assert.equal(low.target, 5500, '+~10%, не скачок до 10 000');
+  const high = stepGoal({ age: 30, profileSteps: 5000, health: hd(14000), ref });
+  assert.equal(high.target, 14000, 'не просим ходить меньше');
+  const noData = stepGoal({ age: 65, profileSteps: 4000, ref });
+  assert.equal(noData.source, 'profile');
+  assert.deepEqual(noData.benefitRange, [6000, 8000]);
+  assert.equal(stepGoal({ age: 30, profileSteps: 2000, ref }).target, 4000, 'минимум 4000');
+});
+
+test('Готовность: категории без процентов и причины относительно личной нормы', () => {
+  const ref = today();
+  const ci = (date: string, sleepHours: number): DailyCheckIn => ({ date, sleepHours, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: 0 });
+  const hist = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [addDays(ref, -1 - i), ci(addDays(ref, -1 - i), 8)]));
+  const base8 = sleepBaseline(ref, hist);
+  assert.equal(base8, 8);
+  const r = computeReadiness({ ...ci(ref, 6), energy: 2 }, { sessions: [], sleepBaseline: base8 });
+  assert.ok(r.category && ['reduced', 'low'].includes(r.category), String(r.category));
+  assert.ok(r.reasons?.some((x) => /ниже твоей обычной/.test(x)));
+  const ins = dayInsights({ readiness: r, sleepBaseline: base8, sleepHours: 6 });
+  assert.ok(ins.includes('Сон значительно ниже вашей обычной продолжительности. Сегодня нагрузку повышать не будем.'));
+  assert.equal(CATEGORY_LABEL[categoryForScore(90)], 'Высокая');
+  assert.equal(sleepBaseline(ref, {}), undefined, 'без истории — нет базы');
+});
+
+test('Apple Health: явные состояния без «фальшивого успеха»', () => {
+  assert.equal(healthUiState({ av: 'expo_go', enabled: false, lastSyncAt: null, lastError: null, hasData: false }).kind, 'unavailable');
+  assert.equal(healthUiState({ av: 'module_missing', enabled: true, lastSyncAt: null, lastError: null, hasData: false }).kind, 'unavailable');
+  assert.equal(healthUiState({ av: 'available', enabled: false, lastSyncAt: null, lastError: null, hasData: false }).kind, 'not_connected');
+  const err = healthUiState({ av: 'available', enabled: true, lastSyncAt: 1, lastError: 'Error: boom', hasData: true });
+  assert.equal(err.kind, 'error');
+  assert.equal(err.kind === 'error' && err.detail, 'Error: boom');
+  assert.equal(healthUiState({ av: 'available', enabled: true, lastSyncAt: 1, lastError: null, hasData: false }).kind, 'no_permission');
+  assert.equal(healthUiState({ av: 'available', enabled: true, lastSyncAt: 5, lastError: null, hasData: true }).kind, 'connected');
+  assert.deepEqual([...READ_TYPES].sort(), ['HKCategoryTypeIdentifierSleepAnalysis', 'HKQuantityTypeIdentifierActiveEnergyBurned', 'HKQuantityTypeIdentifierBodyMass', 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HKQuantityTypeIdentifierRestingHeartRate', 'HKQuantityTypeIdentifierStepCount', 'HKWorkoutTypeIdentifier'].sort(), 'только нужные разрешения');
+});
+
+test('Онбординг: у каждой категории «+» есть каталог; выбор без дублей, свой вариант, текстовые поля', () => {
+  for (const k of Object.keys(PICKER_CATALOG) as (keyof typeof PICKER_CATALOG)[]) assert.ok(PICKER_CATALOG[k].popular.length >= 5, k);
+  let l = toggleItem([], 'Орехи');
+  l = toggleItem(l, 'орехи');
+  assert.deepEqual(l, [], 'повторный выбор снимает, регистр не важен');
+  l = toggleItem(toggleItem(l, 'Ёжевика'), 'Свой вариант');
+  assert.deepEqual(l, ['Ёжевика', 'Свой вариант']);
+  assert.deepEqual(splitItems('Плечо, колено;\nпоясница'), ['Плечо', 'колено', 'поясница']);
+  assert.equal(joinItems(['Плечо', 'Колено']), 'Плечо, Колено');
+});
+
+test('Сканер: один штрихкод = одно событие даже при 30 кадрах/с', () => {
+  const g = new ScanGate();
+  const hits = Array.from({ length: 30 }, () => g.accept('4006381333931', 'ean13')).filter(Boolean);
+  assert.equal(hits.length, 1);
+  assert.equal(g.ignored, 29);
+  g.retry();
+  assert.equal(g.accept('4006381333931', 'ean13'), '4006381333931');
+});
+
+test('Старые данные: записи без новых полей открываются', () => {
+  const oldEntry = { id: 'x', date: today(), productId: 'p', name: 'Старое', grams: 100, macros: { kcal: 100, protein: 1, fat: 1, carbs: 1 }, meal: 'lunch' as const, createdAt: 0 };
+  const s = buildDaySummary(today(), { sessions: [], entries: [oldEntry], checkins: { [today()]: { date: today(), sleepHours: 6.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 3, pain: false, createdAt: 0 } }, weights: [], metrics: [] });
+  assert.equal(s.nutrition?.fiber, null);
+  assert.equal(s.checkin?.sleepMinutes, 390);
+  const oldTarget = { kcal: 2500, protein: 160, fat: 70, carbs: 300 };
+  assert.equal((oldTarget as { fiber?: number }).fiber ?? fiberTarget(oldTarget.kcal), 35, 'цель клетчатки для старого плана');
+});
+
+test('Миграция чек-инов v1 → v2: минуты сна из часов, повреждённые записи пропускаются', () => {
+  const v1 = { byDate: { '2025-01-01': { date: '2025-01-01', sleepHours: 7.25, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: 1 }, bad: { date: 'x' } } };
+  const m = migrateCheckins(v1, 1);
+  assert.equal(m.byDate['2025-01-01'].sleepMinutes, 435);
+  assert.equal(m.byDate['2025-01-01'].sleepSource, 'manual');
+  assert.equal(m.byDate['2025-01-01'].sleepHours, 7.25, 'старое поле сохранено');
+  assert.equal(Object.keys(m.byDate).length, 1);
+  assert.deepEqual(migrateCheckins(undefined, 1), { byDate: {} });
 });

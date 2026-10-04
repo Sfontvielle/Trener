@@ -106,11 +106,15 @@ scripts/logic-test.ts  автотесты логики
 - Анатомические контуры: `react-native-body-highlighter` (MIT).
 - Продукты: [Open Food Facts](https://world.openfoodfacts.org) (ODbL) — поиск и штрихкоды; найденные продукты кэшируются локально.
 
+- Научные основания рекомендаций (калории, БЖУ, клетчатка, темп набора, шаги, прогрессия, восстановление), источники,
+  ограничения и список оставшихся эвристик: [docs/SCIENCE.md](docs/SCIENCE.md).
+- Проверка Apple Health на реальном iPhone: [docs/HEALTHKIT_CHECKLIST.md](docs/HEALTHKIT_CHECKLIST.md).
+
 RYNJI — фитнес-помощник и не ставит медицинских диагнозов.
 
 ## Тесты
 
 ```bash
-npm test                     # логика: план, здоровье, сплиты, прогрессия, калории, восстановление, сканер, Health, отчёт, тренер
+npm test                     # логика: наука (калории, тренды, шаги), прогрессия, клетчатка, DaySummary, сон, миграции, сканер, Health, тренер
 npx expo start --web --port 8081 & node scripts/e2e-web.cjs   # UI в Expo Web (нужен Playwright)
 ```

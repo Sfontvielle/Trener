@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
-import { useCheckins } from '@/stores/checkins';
+import { migrateCheckins, useCheckins } from '@/stores/checkins';
 import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
 import { useWorkouts } from '@/stores/workouts';
@@ -169,7 +169,8 @@ export function restoreBackup(b: BackupFile): void {
   const obj = (x: unknown): Record<string, any> => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, any>) : {});
   useProfile.setState({ profile: d.profile.profile, settings: { ...useProfile.getState().settings, ...obj(d.profile.settings) } });
   usePlan.setState({ plan: d.plan?.plan ?? null, target: d.plan?.target ?? null, overrides: obj(d.plan?.overrides), adjustments: arr(d.plan?.adjustments) });
-  useCheckins.setState({ byDate: obj(d.checkins?.byDate) });
+  // Старые копии (сон только в часах) нормализуются той же миграцией, что и хранилище
+  useCheckins.setState(migrateCheckins({ byDate: obj(d.checkins?.byDate) }, 1));
   useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics), photos: arr(d.body?.photos) });
   useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams), meals: arr(d.nutrition?.meals), water: obj(d.nutrition?.water), favorites: arr(d.nutrition?.favorites) });
   useJournal.setState({ notes: arr(d.journal?.notes) });

@@ -5,6 +5,7 @@ import type { FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, IconButton, T, type IconName } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
+import { addDays } from '@/utils/date';
 import { toast } from '@/components/Dialog';
 import { useNutrition, MEAL_LABEL } from '@/stores/nutrition';
 import { LOCAL_FOODS } from '@/data/foods';
@@ -62,9 +63,10 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
     toast(`${p.name} — ${grams} г · ${MEAL_LABEL[meal].toLowerCase()}`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntry(e.id) });
   };
 
-  const title = view === 'menu' ? 'Добавить еду' : view === 'favorites' ? 'Избранное' : view === 'frequent' ? 'Частые продукты' : view === 'recent' ? 'Недавние' : 'Мои блюда';
+  const yesterday = useMemo(() => entries.filter((e) => e.date === addDays(date, -1) && e.meal === meal), [entries, date, meal]);
+  const title = view === 'menu' ? `Добавить в ${MEAL_LABEL[meal]}` : view === 'favorites' ? 'Избранное' : view === 'frequent' ? 'Частые продукты' : view === 'recent' ? 'Недавние' : 'Мои блюда';
   return (
-    <Sheet visible={visible} onClose={close} title={title} subtitle={`${MEAL_LABEL[meal]} · порция как в прошлый раз, изменить — тап по записи`}>
+    <Sheet visible={visible} onClose={close} title={title} subtitle={view === 'menu' ? 'Порция как в прошлый раз, изменить — тап по записи' : MEAL_LABEL[meal]}>
       {view !== 'menu' ? (
         <Pressable accessibilityRole="button" onPress={() => setView('menu')} style={styles.back} hitSlop={6}>
           <Icon name="chevron-back" size={18} color={colors.accent} />
@@ -80,6 +82,19 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
           <Row icon="barcode-outline" title="Сканировать штрихкод" sub="Камера iPhone" onPress={() => go(() => router.push({ pathname: '/food/scan', params: { date, meal } }))} />
           {favorites.length ? <Row icon="star" title="Избранное" sub={favorites.slice(0, 3).map((f) => f.product.name).join(', ')} badge={favorites.length} onPress={() => setView('favorites')} /> : null}
           <Row icon="flash-outline" title="Частые продукты" sub={frequent.length ? frequent.slice(0, 3).map((f) => f.product.name).join(', ') : 'Появятся сами, когда что-то будешь есть регулярно'} badge={frequent.length || undefined} onPress={() => setView('frequent')} />
+          {yesterday.length ? (
+            <Row
+              icon="repeat"
+              title="Как вчера"
+              sub={`${yesterday.map((e) => e.name).slice(0, 3).join(', ')} · ${Math.round(yesterday.reduce((a, e) => a + e.macros.kcal, 0))} ккал`}
+              onPress={() => {
+                const ids = useNutrition.getState().copyEntries(addDays(date, -1), date, meal);
+                haptic.success();
+                close();
+                toast(`${MEAL_LABEL[meal]} как вчера: ${ids.length} прод.`, 'copy-outline', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
+              }}
+            />
+          ) : null}
           <Row icon="time-outline" title="Недавние" sub={recent.length ? recent.slice(0, 3).map((f) => f.product.name).join(', ') : 'Пока пусто'} onPress={() => setView('recent')} />
           <Row icon="restaurant-outline" title="Мои блюда" sub={meals.length ? meals.slice(0, 3).map((m) => m.name).join(', ') : 'Сохрани приём пищи как блюдо — добавляй одним тапом'} badge={meals.length || undefined} onPress={() => setView('meals')} />
           <Row icon="create-outline" title="Ввести вручную" sub="КБЖУ на 100 г с этикетки" onPress={() => go(() => router.push({ pathname: '/food/add', params: { date, meal, manual: '1' } }))} />

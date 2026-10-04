@@ -1,11 +1,13 @@
 import type { DailyCheckIn, Exercise, FoodEntry, ISODate, MealSlot, PlanAdjustment, ReadinessResult, WeightEntry, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
 import { isPersonalRecord, workingSets, historyFor } from '@/features/training/progression';
-import { toISODate } from '@/utils/date';
+import { formatSleep, toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { readinessLabel } from '@/features/science/insights';
+import { sleepMinutesOf } from '@/features/science/recovery';
 
 /**
- * Дневник дня: FORM собирает его сам из уже существующих данных — пользователю не нужно ничего вести.
+ * Дневник дня: RYNJI собирает его сам из уже существующих данных — пользователю не нужно ничего вести.
  * Ручные только заметки.
  */
 export type JournalKind = 'checkin' | 'weight' | 'meal' | 'workout_planned' | 'workout_active' | 'workout_done' | 'pr' | 'plan' | 'health' | 'note';
@@ -45,7 +47,7 @@ export function buildJournal(args: {
   const out: JournalEvent[] = [];
 
   if (args.checkin && args.checkin.date === date) {
-    out.push({ id: `ci-${date}`, at: args.checkin.createdAt || new Date(`${date}T08:00:00`).getTime(), kind: 'checkin', title: 'Чек-ин', sub: args.readiness ? `Готовность ${args.readiness.score}` : `Сон ${fmt(args.checkin.sleepHours)} ч` });
+    out.push({ id: `ci-${date}`, at: args.checkin.createdAt || new Date(`${date}T08:00:00`).getTime(), kind: 'checkin', title: 'Чек-ин', sub: args.readiness ? `Готовность: ${readinessLabel(args.readiness).toLowerCase()}` : `Сон ${formatSleep(sleepMinutesOf(args.checkin))}` });
   }
   for (const w of args.weights) if (w.date === date) out.push({ id: `w-${w.id}`, at: w.createdAt || new Date(`${date}T08:30:00`).getTime(), kind: 'weight', title: 'Вес', sub: `${fmt(w.kg)} кг` });
 

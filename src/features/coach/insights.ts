@@ -5,7 +5,7 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { checkAllowed } from '@/features/training/engine/scoring';
 import { substitutesFor } from '@/features/training/engine/substitute';
 import { healthTraining } from '@/features/profile/health';
-import type { CoachAction, DailyCheckIn, FoodEntry, NutritionTarget, ReadinessResult, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession, PlanAdjustment } from '@/types';
+import type { BodyMetric, CoachAction, DailyCheckIn, FoodEntry, NutritionTarget, ReadinessResult, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession, PlanAdjustment } from '@/types';
 import { adherence } from '@/features/training/analytics';
 import { checkDeload } from '@/features/training/deload';
 import { lastWeekSummary } from '@/features/progress/weekly';
@@ -51,6 +51,7 @@ export function localInsights(args: {
   /** Реакция на прошлые советы: отклонённые сегодня не повторяются, частые отказы понижают приоритет */
   advice?: AdviceRecord[];
   readinessHistory?: number[];
+  metrics?: BodyMetric[];
 }): LocalInsight[] {
   const out: LocalInsight[] = [];
   const d = today();
@@ -117,7 +118,7 @@ export function localInsights(args: {
   }
 
   if (args.target) {
-    const rev = reviewCalories({ profile: args.profile, weights: args.weights, entries: args.entries, adjustments: args.adjustments, targetKcal: args.target.kcal });
+    const rev = reviewCalories({ profile: args.profile, weights: args.weights, entries: args.entries, adjustments: args.adjustments, targetKcal: args.target.kcal, sessions: args.sessions, metrics: args.metrics });
     if (rev.status === 'adjust') out.push({ kind: 'weight', priority: 70, text: `${rev.headline}: ${rev.detail}` });
 
     const todayEntries = args.entries.filter((e) => e.date === d);

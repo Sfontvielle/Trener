@@ -1,8 +1,11 @@
-import type { FoodEntry, ISODate, PlanAdjustment, UserProfile, WeightEntry } from '@/types';
+import type { BodyMetric, FoodEntry, ISODate, PlanAdjustment, UserProfile, WeightEntry, WorkoutSession } from '@/types';
+import { decideCalories, KCAL_PER_KG } from '@/features/science/calories';
+import { waistTrend } from '@/features/science/bodyTrend';
+import type { Basis } from '@/features/science/sources';
+import { progressStatus } from '@/features/training/engine/scoring';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
 import { targetWeeklyChangeKg } from './targets';
 import { addDays, daysBetween, today } from '@/utils/date';
-import { clamp } from '@/utils/format';
 import { BRAND } from '@/config/brand';
 
 export interface CalorieReview {
@@ -14,13 +17,15 @@ export interface CalorieReview {
   detail: string;
   observedTdee?: number;
   loggingCoverage: number;
+  /** Пошаговое обоснование решения (из science/calories) */
+  reasons: string[];
+  basis: Basis;
 }
 
-const MIN_DAYS_BETWEEN_ADJUSTMENTS = 14;
-
 /**
- * Сравнивает фактический темп тренда веса с целевым и предлагает корректировку калорий.
- * Не реагирует на единичные взвешивания: нужен тренд за ≥10 дней и ≥5 замеров.
+ * Обзор калорийности: тренд веса (не одно взвешивание) + талия + силовые + полнота дневника →
+ * решение science/calories. Фактический расход (observed TDEE) = средняя калорийность − изменение
+ * запасов (темп × 7700 / 7) — показывается, когда дневник заполнен ≥70% дней.
  */
 export function reviewCalories(args: {
   profile: UserProfile;
@@ -28,6 +33,8 @@ export function reviewCalories(args: {
   entries: FoodEntry[];
   adjustments: PlanAdjustment[];
   targetKcal: number;
+  metrics?: BodyMetric[];
+  sessions?: WorkoutSession[];
   now?: ISODate;
 }): CalorieReview {
   const { profile, weights, entries, adjustments, targetKcal } = args;
@@ -37,14 +44,32 @@ export function reviewCalories(args: {
   const target = targetWeeklyChangeKg(profile, currentW);
   const rate = weeklyRate(trend, 21);
 
-  // Покрытие дневника питания за 14 дней
+  // Покрытие дневника питания за 14 дней (день считается, если записано ≥50% цели)
   const since = addDays(now, -14);
   const loggedDays = new Map<ISODate, number>();
   for (const e of entries) if (e.date > since && e.date < now) loggedDays.set(e.date, (loggedDays.get(e.date) ?? 0) + e.macros.kcal);
   const fullDays = [...loggedDays.values()].filter((k) => k > targetKcal * 0.5);
   const coverage = fullDays.length / 13;
+  const observedTdee = rate && coverage >= 0.7 ? avg(fullDays) - (rate.kgPerWeek * KCAL_PER_KG) / 7 : undefined;
 
-  if (!rate) {
+  // Таймер «ждём эффекта» запускают только изменения калорий (не перестройка тренировок)
+  const lastCal = adjustments.filter((a) => a.kind === 'calories' && (a.deltaKcal !== 0 || a.source === 'goal_change')).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const daysSinceAdj = lastCal ? daysBetween(isoFromMs(lastCal.createdAt), now) : 999;
+  const waist = args.metrics ? waistTrend(args.metrics, now) : null;
+
+  const d = decideCalories({
+    goal: profile.goal,
+    targetKgPerWeek: target,
+    actualKgPerWeek: rate ? rate.kgPerWeek : null,
+    waistCmPerWeek: waist?.cmPerWeek ?? null,
+    waistDays: waist?.days ?? 0,
+    strength: args.sessions ? strengthSignal(args.sessions) : 'unknown',
+    coverage,
+    daysSinceLastChange: daysSinceAdj,
+    bodyWeightKg: currentW,
+  });
+
+  if (d.action === 'insufficient') {
     const n = weights.length;
     return {
       status: 'insufficient_data',
@@ -53,64 +78,37 @@ export function reviewCalories(args: {
       headline: 'Мало данных о весе',
       detail: n === 0 ? `Взвешивайся утром 3–4 раза в неделю — через 2 недели ${BRAND} сверит калории с реальным трендом.` : `Есть ${n} ${n === 1 ? 'замер' : 'замера(ов)'}. Нужно ≥5 взвешиваний за 10+ дней, чтобы увидеть тренд.`,
       loggingCoverage: coverage,
+      reasons: d.reasons,
+      basis: d.basis,
     };
   }
-
-  const observedTdee = coverage >= 0.7 ? avg(fullDays) - (rate.kgPerWeek * 7700) / 7 : undefined;
-
-  // Таймер «ждём эффекта» запускают только изменения калорий (не перестройка тренировок)
-  const lastCal = adjustments.filter((a) => a.kind === 'calories' && (a.deltaKcal !== 0 || a.source === 'goal_change')).sort((a, b) => b.createdAt - a.createdAt)[0];
-  const daysSinceAdj = lastCal ? daysBetween(isoFromMs(lastCal.createdAt), now) : Infinity;
-
-  const diff = rate.kgPerWeek - target; // >0 — набираем быстрее цели / худеем медленнее
-  const tolerance = Math.max(0.1, currentW * 0.0015);
-  const fmt = (x: number) => `${x > 0 ? '+' : ''}${x.toFixed(2)} кг/нед`;
-
-  if (Math.abs(diff) <= tolerance) {
-    return {
-      status: 'on_track',
-      actualKgPerWeek: rate.kgPerWeek,
-      targetKgPerWeek: target,
-      deltaKcal: 0,
-      headline: 'Вес идёт по плану',
-      detail: `Тренд ${fmt(rate.kgPerWeek)} при цели ${fmt(target)}. Калории не меняем.`,
-      observedTdee,
-      loggingCoverage: coverage,
-    };
-  }
-
-  // Переводим расхождение в ккал/день, корректируем мягко: ±100…250, шаг 50
-  const raw = (-diff * 7700) / 7;
-  const delta = Math.sign(raw) * clamp(Math.round(Math.abs(raw) / 50) * 50, 100, 250);
-
-  if (daysSinceAdj < MIN_DAYS_BETWEEN_ADJUSTMENTS) {
-    return {
-      status: 'on_track',
-      actualKgPerWeek: rate.kgPerWeek,
-      targetKgPerWeek: target,
-      deltaKcal: 0,
-      headline: 'Ждём эффекта корректировки',
-      detail: `Калории меняли ${daysSinceAdj} дн. назад. Следующая проверка — через ${MIN_DAYS_BETWEEN_ADJUSTMENTS - daysSinceAdj} дн.`,
-      observedTdee,
-      loggingCoverage: coverage,
-    };
-  }
-
   let headline: string;
-  if (profile.goal === 'bulk') headline = diff < 0 ? 'Вес не растёт — добавим калорий' : 'Вес растёт слишком быстро';
-  else if (profile.goal === 'cut') headline = diff > 0 ? 'Вес снижается медленнее плана' : 'Вес уходит слишком быстро';
-  else headline = diff > 0 ? 'Вес растёт' : 'Вес снижается';
-
+  if (d.action === 'hold') headline = profile.goal === 'bulk' ? 'Набор идёт по плану' : profile.goal === 'cut' ? 'Снижение идёт по плану' : 'Вес идёт по плану';
+  else if (d.action === 'wait') headline = 'Ждём эффекта корректировки';
+  else if (profile.goal === 'bulk') headline = d.deltaKcal > 0 ? 'Вес не растёт — добавим калорий' : 'Набор слишком быстрый — замедлим';
+  else if (profile.goal === 'cut') headline = d.deltaKcal < 0 ? 'Вес снижается медленнее плана' : 'Вес уходит слишком быстро';
+  else headline = d.deltaKcal < 0 ? 'Вес растёт' : 'Вес снижается';
   return {
-    status: 'adjust',
-    actualKgPerWeek: rate.kgPerWeek,
+    status: d.action === 'increase' || d.action === 'decrease' ? 'adjust' : 'on_track',
+    actualKgPerWeek: rate!.kgPerWeek,
     targetKgPerWeek: target,
-    deltaKcal: delta,
+    deltaKcal: d.deltaKcal,
     headline,
-    detail: `Тренд за ${rate.days} дн.: ${fmt(rate.kgPerWeek)}, цель ${fmt(target)}. Предлагаю ${delta > 0 ? '+' : ''}${delta} ккал/день.${coverage < 0.7 ? ' Дневник питания заполнен не полностью — точность ниже.' : ''}`,
+    detail: `${d.reasons.join(' ')}${d.deltaKcal ? ` Предлагаю ${d.deltaKcal > 0 ? '+' : ''}${d.deltaKcal} ккал/день.` : ''}`,
     observedTdee,
     loggingCoverage: coverage,
+    reasons: d.reasons,
+    basis: d.basis,
   };
+}
+
+/** Силовые по основным упражнениям за 6 недель: растут / стоят / мало данных */
+export function strengthSignal(sessions: WorkoutSession[]): 'progressing' | 'stalled' | 'unknown' {
+  const recent = sessions.filter((s) => s.status === 'completed' && s.date > addDays(today(), -42));
+  const ids = [...new Set(recent.flatMap((s) => s.exercises.slice(0, 2).map((e) => e.exerciseId)))];
+  const st = ids.map((id) => progressStatus(id, recent)).filter((x) => x.status === 'progressing' || x.status === 'plateau');
+  if (st.length < 2) return 'unknown';
+  return st.filter((x) => x.status === 'progressing').length >= st.length / 2 ? 'progressing' : 'stalled';
 }
 
 function avg(a: number[]): number {

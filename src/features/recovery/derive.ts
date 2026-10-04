@@ -1,6 +1,7 @@
 import type { DailyCheckIn, ISODate, ReadinessResult, WorkoutSession } from '@/types';
 import { computeReadiness } from './readiness';
 import { healthContext, type HealthDay } from '@/features/health/model';
+import { sleepBaseline } from '@/features/science/recovery';
 
 /** HRV/пульс покоя: базовая линия = медиана за 28 дней до даты */
 function baseline(checkins: Record<string, DailyCheckIn>, date: ISODate, key: 'hrvMs' | 'restingHr'): number | undefined {
@@ -28,12 +29,13 @@ export function readinessFor(date: ISODate, checkins: Record<string, DailyCheckI
       sessions,
       hrvBaseline: h?.hrvBaseline ?? baseline(checkins, date, 'hrvMs'),
       rhrBaseline: h?.rhrBaseline ?? baseline(checkins, date, 'restingHr'),
+      sleepBaseline: sleepBaseline(date, checkins, health),
     });
   }
   if (h?.sleepHours) {
     // Нейтральные значения = точка «без влияния» в формуле (энергия 4/5, стресс 2/5 …)
     const synthetic: DailyCheckIn = { date, sleepHours: h.sleepHours, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, hrvMs: h.hrvMs, restingHr: h.restingHr, createdAt: 0 };
-    return { ...computeReadiness(synthetic, { sessions, hrvBaseline: h.hrvBaseline, rhrBaseline: h.rhrBaseline, objectiveOnly: true }), source: 'health' };
+    return { ...computeReadiness(synthetic, { sessions, hrvBaseline: h.hrvBaseline, rhrBaseline: h.rhrBaseline, objectiveOnly: true, sleepBaseline: sleepBaseline(date, checkins, health) }), source: 'health' };
   }
   return undefined;
 }

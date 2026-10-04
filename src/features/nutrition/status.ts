@@ -16,12 +16,30 @@ export function sumMacros(entries: Pick<FoodEntry, 'macros'>[]): Macros {
 
 export function macrosFor(per100: Macros, grams: number): Macros {
   const k = grams / 100;
-  return {
+  const m: Macros = {
     kcal: Math.round(per100.kcal * k),
     protein: Math.round(per100.protein * k * 10) / 10,
     fat: Math.round(per100.fat * k * 10) / 10,
     carbs: Math.round(per100.carbs * k * 10) / 10,
   };
+  if (per100.fiber !== undefined) m.fiber = Math.round(per100.fiber * k * 10) / 10;
+  return m;
+}
+
+/**
+ * Клетчатка за набор записей. Неизвестная клетчатка НЕ считается нулём:
+ *  g = null — ни у одной записи нет данных («—»); complete = false — часть записей без данных (сумма — минимум).
+ */
+export function sumFiber(entries: Pick<FoodEntry, 'macros'>[]): { g: number | null; complete: boolean; known: number } {
+  const known = entries.filter((e) => e.macros.fiber !== undefined);
+  if (!known.length) return { g: null, complete: entries.length === 0, known: 0 };
+  return { g: Math.round(known.reduce((a, e) => a + (e.macros.fiber ?? 0), 0) * 10) / 10, complete: known.length === entries.length, known: known.length };
+}
+
+/** «12 г», «≥12 г» (часть продуктов без данных) или «—» */
+export function fiberLabel(f: { g: number | null; complete: boolean }): string {
+  if (f.g === null) return '—';
+  return `${f.complete ? '' : '≥'}${Math.round(f.g)} г`;
 }
 
 export type MacroState = 'progress' | 'target' | 'attention' | 'off';

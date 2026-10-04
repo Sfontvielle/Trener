@@ -1,32 +1,60 @@
 import { Platform } from 'react-native';
-import type { HealthDay, HealthStatus } from '@/features/health/model';
+import type { HealthDay } from '@/features/health/model';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { addDays, toISODate } from '@/utils/date';
+import { BRAND } from '@/config/brand';
 
 /**
  * Apple Health (HealthKit) через @kingstinct/react-native-healthkit.
  *
- * Нативный модуль есть только в iOS development/production build (EAS). В Expo Go, в вебе и на Android
- * модуля нет — загрузка ленивая и обёрнута в try/catch, приложение работает без Health.
- * FORM только ЧИТАЕТ данные (запись не запрашивается).
+ * Нативный модуль есть только в iOS development/production build (EAS), собранной ПОСЛЕ добавления
+ * библиотеки в package.json/app.json (плагин добавляет entitlement com.apple.developer.healthkit и
+ * NSHealthShareUsageDescription). В Expo Go, в вебе и на Android модуля нет — состояние показывается
+ * явно, ошибки логируются (console.warn) и доступны в «Подробнее». Только ЧТЕНИЕ.
  */
 
 type HK = typeof import('@kingstinct/react-native-healthkit');
 let cached: HK | null | undefined;
+/** Техническая причина, почему модуль не загрузился (для «Подробнее» и логов) */
+let loadError: string | null = null;
+
+/** Expo Go не содержит нативный модуль HealthKit — даже не пытаемся его загружать (иначе красная ошибка в dev) */
+export function isExpoGo(): boolean {
+  return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+}
+
+function errText(e: unknown): string {
+  if (e instanceof Error) return `${e.name}: ${e.message}`;
+  return String(e);
+}
+
+export function logHealthError(where: string, e: unknown) {
+  console.warn(`[${BRAND}] HealthKit ${where}:`, errText(e));
+}
 
 function load(): HK | null {
   if (cached !== undefined) return cached;
   if (Platform.OS !== 'ios') return (cached = null);
+  if (isExpoGo()) {
+    loadError = 'Expo Go: нативного модуля HealthKit нет в этой среде';
+    return (cached = null);
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     cached = require('@kingstinct/react-native-healthkit') as HK;
-    // В Expo Go Nitro-модуль отсутствует: обращение бросает — считаем недоступным
-    cached.isHealthDataAvailable();
-  } catch {
+  } catch (e) {
+    // Модуль не слинкован в нативной сборке (сборка сделана до добавления библиотеки) или несовместим Nitro
+    loadError = errText(e);
+    logHealthError('load', e);
     cached = null;
   }
   return cached;
 }
 
+/**
+ * Только то, что нужно для решений RYNJI: сон, шаги, вес, пульс покоя, HRV, активная энергия, тренировки.
+ * Запись не запрашивается (NSHealthUpdateUsageDescription отключён в app.json).
+ */
 export const READ_TYPES = [
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKQuantityTypeIdentifierStepCount',
@@ -34,30 +62,59 @@ export const READ_TYPES = [
   'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
   'HKQuantityTypeIdentifierBodyMass',
-  'HKQuantityTypeIdentifierDistanceWalkingRunning',
   'HKWorkoutTypeIdentifier',
 ] as const;
 
+type ReadArg = Parameters<HK['requestAuthorization']>[0];
+const AUTH: ReadArg = { toRead: READ_TYPES as unknown as ReadArg['toRead'] };
+
+export type HealthAvailability = 'unsupported' | 'expo_go' | 'module_missing' | 'unavailable' | 'available';
+
 /** Доступность Health на этом устройстве/сборке (без запроса разрешений) */
-export function healthAvailability(): Exclude<HealthStatus, 'connected' | 'not_connected' | 'denied'> | 'available' {
+export function healthAvailability(): HealthAvailability {
   if (Platform.OS !== 'ios') return 'unsupported';
+  if (isExpoGo()) return 'expo_go';
   const hk = load();
-  if (!hk) return 'needs_dev_build';
+  if (!hk) return 'module_missing';
   try {
     return hk.isHealthDataAvailable() ? 'available' : 'unavailable';
-  } catch {
-    return 'needs_dev_build';
+  } catch (e) {
+    loadError = errText(e);
+    logHealthError('isHealthDataAvailable', e);
+    return 'module_missing';
   }
 }
 
-/** Системный диалог доступа. iOS не сообщает, что именно запрещено к чтению, — проверяем по факту данных */
-export async function requestHealthAccess(): Promise<boolean> {
+export function healthLoadError(): string | null {
+  return loadError;
+}
+
+/**
+ * Нужно ли показывать системный диалог. iOS из соображений приватности не сообщает, разрешено ли ЧТЕНИЕ:
+ * 'unnecessary' значит «диалог уже показывался», а не «всё разрешено» — поэтому наличие данных проверяется отдельно.
+ */
+export async function healthRequestStatus(): Promise<'should_request' | 'requested' | 'unknown'> {
   const hk = load();
-  if (!hk) return false;
+  if (!hk) return 'unknown';
   try {
-    return await hk.requestAuthorization({ toRead: READ_TYPES as unknown as Parameters<HK['requestAuthorization']>[0]['toRead'] });
-  } catch {
-    return false;
+    const st = Number(await hk.getRequestStatusForAuthorization(AUTH));
+    return st === 1 ? 'should_request' : st === 2 ? 'requested' : 'unknown';
+  } catch (e) {
+    logHealthError('getRequestStatusForAuthorization', e);
+    return 'unknown';
+  }
+}
+
+/** Системный диалог доступа. Ошибка возвращается с текстом — не превращается молча в «нет доступа» */
+export async function requestHealthAccess(): Promise<{ ok: boolean; error?: string }> {
+  const hk = load();
+  if (!hk) return { ok: false, error: loadError ?? 'HealthKit не загружен' };
+  try {
+    const ok = await hk.requestAuthorization(AUTH);
+    return { ok };
+  } catch (e) {
+    logHealthError('requestAuthorization', e);
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -74,12 +131,13 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
   const safe = async <T>(fn: () => Promise<T>): Promise<T | undefined> => {
     try {
       return await fn();
-    } catch {
+    } catch (e) {
+      logHealthError('query', e);
       return undefined;
     }
   };
 
-  // Суммы за день: шаги, активные калории, дистанция
+  // Суммы за день: шаги, активные калории
   await Promise.all(
     dates.map(async (d) => {
       const day = out.get(d)!;
@@ -87,8 +145,6 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
       if (steps?.sumQuantity) day.steps = Math.round(steps.sumQuantity.quantity);
       const kcal = await safe(() => hk.queryStatisticsForQuantity('HKQuantityTypeIdentifierActiveEnergyBurned', ['cumulativeSum'], { filter: range(d), unit: 'kcal' }));
       if (kcal?.sumQuantity) day.activeKcal = Math.round(kcal.sumQuantity.quantity);
-      const dist = await safe(() => hk.queryStatisticsForQuantity('HKQuantityTypeIdentifierDistanceWalkingRunning', ['cumulativeSum'], { filter: range(d), unit: 'km' }));
-      if (dist?.sumQuantity) day.distanceKm = Math.round(dist.sumQuantity.quantity * 10) / 10;
     }),
   );
 

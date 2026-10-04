@@ -86,6 +86,7 @@ export function currentLocalInsights() {
     lastBackupAt: useProfile.getState().settings.lastBackupAt,
     advice: useCoach.getState().advice,
     readinessHistory: readinessHistory(14),
+    metrics: useBody.getState().metrics,
   });
 }
 

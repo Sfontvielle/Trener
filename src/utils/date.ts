@@ -82,7 +82,14 @@ export function formatDuration(sec: number): string {
 }
 
 export function formatHours(h: number): string {
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60);
-  return `${hh}:${pad(mm)}`;
+  const total = Math.round(h * 60);
+  return `${Math.floor(total / 60)}:${pad(total % 60)}`;
+}
+
+/** «7 ч 43 мин» из минут */
+export function formatSleep(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm ? `${hh} ч ${mm} мин` : `${hh} ч`;
 }

@@ -119,6 +119,8 @@ export interface NutritionTarget {
   protein: number;
   fat: number;
   carbs: number;
+  /** Клетчатка, г (14 г на 1000 ккал, IOM). Старые цели без поля — считаются через fiberTarget() */
+  fiber?: number;
   /** Расчётный TDEE (формула или адаптивный по факту) */
   tdee: number;
   bmr: number;
@@ -342,7 +344,12 @@ export interface BodyMetric {
 
 export interface DailyCheckIn {
   date: ISODate;
+  /** Сон в часах (дробное) — старое поле, остаётся для совместимости и вычисляется из sleepMinutes */
   sleepHours: number;
+  /** Сон в минутах — точное значение (например 463 = 7 ч 43 мин). В старых записях отсутствует */
+  sleepMinutes?: number;
+  /** Откуда значение сна: введено вручную или подставлено из Apple Health */
+  sleepSource?: 'manual' | 'health';
   sleepQuality: 1 | 2 | 3 | 4 | 5;
   energy: 1 | 2 | 3 | 4 | 5;
   stress: 1 | 2 | 3 | 4 | 5; // 5 = очень высокий
@@ -366,6 +373,10 @@ export interface ReadinessResult {
   factors: { label: string; impact: number; detail: string }[];
   /** health — без чек-ина, по данным Apple Health */
   source?: 'checkin' | 'health';
+  /** Категория для интерфейса (балл — внутренний, не показывается как «точный процент») */
+  category?: 'high' | 'normal' | 'reduced' | 'low';
+  /** Причины простыми словами, в сравнении с личной нормой */
+  reasons?: string[];
 }
 
 // ─── Exercises ──────────────────────────────────────────────────────────────
@@ -476,6 +487,8 @@ export interface Recommendation {
   sets: number;
   targetRir: number;
   action: 'increase' | 'hold' | 'reps' | 'decrease' | 'deload' | 'new';
+  /** Коротко для интерфейса: «+2,5 кг», «+1 повтор», «Оставить 50 кг» */
+  delta?: string;
   rationale: string;
 }
 
@@ -535,6 +548,8 @@ export interface Macros {
   protein: number;
   fat: number;
   carbs: number;
+  /** Клетчатка, г. undefined = неизвестно (не 0!) — у многих продуктов в базах её нет */
+  fiber?: number;
 }
 
 export interface FoodProduct {

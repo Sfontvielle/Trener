@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import type { Equipment, GoalType, HealthProfile, UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Banner, Chip, Icon, T } from '@/components/ui';
@@ -8,10 +8,10 @@ import { EQUIPMENT_LABEL } from '@/data/exercises';
 import { GOAL_LABEL, defaultRate } from '@/features/nutrition/targets';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
-import { useEnsureVisible } from '@/components/keyboard';
 import { EMPTY_HEALTH, healthOf, healthTraining } from './health';
 import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
 import { BRAND } from '@/config/brand';
+import { CategoryPicker, joinItems, splitItems, type PickerCategory } from './CategoryPicker';
 
 export const GOAL_DESC: Record<GoalType, string> = {
   bulk: 'Профицит калорий, упор на прогрессию весов',
@@ -233,13 +233,13 @@ export function HealthSection({ p, set }: { p: UserProfile; set: Setter }) {
   const rules = healthTraining({ health: h, limitations: h.injuries });
   return (
     <View style={{ gap: space.md }}>
-      <Field label="Травмы" placeholder="Например: правое плечо — больно в жиме над головой" value={h.injuries} onChangeText={(t) => upd({ injuries: t })} multiline maxLength={400} />
-      <Field label="Хронические ограничения" placeholder="Например: протрузия L5, гипертония" value={h.chronic} onChangeText={(t) => upd({ chronic: t })} multiline maxLength={400} />
-      <Field label="Движения, вызывающие боль" placeholder="Например: глубокий присед, выпады" value={h.painfulMovements} onChangeText={(t) => upd({ painfulMovements: t })} multiline maxLength={300} />
-      <Field label="Ограничения от врача или физиотерапевта" placeholder="Например: без осевой нагрузки 3 месяца" value={h.medical} onChangeText={(t) => upd({ medical: t })} multiline maxLength={300} hint="Соблюдаются строго — такие движения не назначаются совсем." />
-      <TagInput label="Аллергии" values={h.allergies} onChange={(v) => upd({ allergies: v })} suggestions={['Орехи', 'Арахис', 'Морепродукты', 'Яйца', 'Мёд']} placeholder="Добавить аллерген" />
-      <TagInput label="Непереносимости" values={h.intolerances} onChange={(v) => upd({ intolerances: v })} suggestions={['Лактоза', 'Глютен', 'Фруктоза']} placeholder="Добавить" />
-      <TagInput label="Запрещённые продукты" values={h.forbiddenFoods} onChange={(v) => upd({ forbiddenFoods: v })} suggestions={['Сахар', 'Алкоголь', 'Кофе']} placeholder="Добавить продукт" />
+      <PickerField label="Травмы" category="injuries" placeholder="Например: правое плечо — больно в жиме над головой" value={h.injuries} onChange={(t) => upd({ injuries: t })} maxLength={400} />
+      <PickerField label="Хронические ограничения" category="chronic" placeholder="Например: протрузия L5, гипертония" value={h.chronic} onChange={(t) => upd({ chronic: t })} maxLength={400} />
+      <PickerField label="Движения, вызывающие боль" category="painful" placeholder="Например: глубокий присед, выпады" value={h.painfulMovements} onChange={(t) => upd({ painfulMovements: t })} maxLength={300} />
+      <PickerField label="Ограничения от врача или физиотерапевта" category="medical" placeholder="Например: без осевой нагрузки 3 месяца" value={h.medical} onChange={(t) => upd({ medical: t })} maxLength={300} hint="Соблюдаются строго — такие движения не назначаются совсем." />
+      <TagInput label="Аллергии" category="allergies" values={h.allergies} onChange={(v) => upd({ allergies: v })} />
+      <TagInput label="Непереносимости" category="intolerances" values={h.intolerances} onChange={(v) => upd({ intolerances: v })} />
+      <TagInput label="Запрещённые продукты" category="forbidden" values={h.forbiddenFoods} onChange={(v) => upd({ forbiddenFoods: v })} />
       <Field label="Другие важные особенности" placeholder="Например: астма, после операции на колене в 2022" value={h.other} onChangeText={(t) => upd({ other: t })} multiline maxLength={300} />
       {rules.limitations.length || rules.notes.length ? (
         <View style={styles.rules}>
@@ -266,7 +266,6 @@ export function HealthSection({ p, set }: { p: UserProfile; set: Setter }) {
   );
 }
 
-const LIKE_SUGGEST = ['Курица', 'Творог', 'Рис', 'Гречка', 'Яйца', 'Овсянка', 'Говядина', 'Индейка', 'Лосось', 'Скир', 'Бананы', 'Картофель', 'Макароны', 'Орехи'];
 const RESTRICTIONS: { v: string; label: string }[] = [
   { v: 'vegetarian', label: 'Вегетарианство' },
   { v: 'no_fish', label: 'Без рыбы' },
@@ -277,8 +276,8 @@ const RESTRICTIONS: { v: string; label: string }[] = [
 export function FoodSection({ p, set }: { p: UserProfile; set: Setter }) {
   return (
     <View style={{ gap: space.md }}>
-      <TagInput label="Любимые продукты" values={p.likedFoods} onChange={(v) => set({ likedFoods: v })} suggestions={LIKE_SUGGEST} placeholder="Добавить продукт" />
-      <TagInput label="Не ешь / не любишь" values={p.dislikedFoods} onChange={(v) => set({ dislikedFoods: v })} suggestions={['Рыба', 'Молоко', 'Грибы', 'Свинина', 'Печень']} placeholder="Добавить продукт" />
+      <TagInput label="Любимые продукты" category="liked" values={p.likedFoods} onChange={(v) => set({ likedFoods: v })} />
+      <TagInput label="Не ешь / не любишь" category="disliked" values={p.dislikedFoods} onChange={(v) => set({ dislikedFoods: v })} />
       <View style={{ gap: 6 }}>
         <T v="caption">Пищевые ограничения</T>
         <View style={styles.wrap}>
@@ -291,56 +290,64 @@ export function FoodSection({ p, set }: { p: UserProfile; set: Setter }) {
   );
 }
 
-export function TagInput({ label, values, onChange, suggestions = [], placeholder }: { label: string; values: string[]; onChange: (v: string[]) => void; suggestions?: string[]; placeholder?: string }) {
-  const [text, setText] = useState('');
-  const ensure = useEnsureVisible();
-  const add = (v: string) => {
-    const t = v.trim();
-    if (!t || values.some((x) => x.toLowerCase() === t.toLowerCase())) return;
-    onChange([...values, t]);
-    setText('');
-  };
-  const rest = suggestions.filter((s) => !values.some((v) => v.toLowerCase() === s.toLowerCase()));
+/**
+ * Список значений с кнопкой «+»: открывает выбор по категории (поиск, популярное, мультивыбор, свой вариант).
+ * Выбранные элементы удаляются тапом по чипу.
+ */
+export function TagInput({ label, values, onChange, category }: { label: string; values: string[]; onChange: (v: string[]) => void; category: PickerCategory }) {
+  const [open, setOpen] = useState(false);
   return (
     <View style={{ gap: 8 }}>
       <T v="caption">{label}</T>
-      {values.length ? (
-        <View style={styles.wrap}>
-          {values.map((v) => (
-            <Pressable key={v} accessibilityLabel={`Удалить ${v}`} onPress={() => onChange(values.filter((x) => x !== v))} style={styles.tag}>
-              <T v="small" color={colors.onAccent} style={{ fontWeight: '700' }}>
-                {v}
-              </T>
-              <Icon name="close" size={14} color={colors.onAccent} />
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-      <View style={styles.tagInputRow}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder={placeholder}
-          placeholderTextColor={colors.muted}
-          onSubmitEditing={() => add(text)}
-          onFocus={ensure}
-          blurOnSubmit={false}
-          returnKeyType="done"
-          style={styles.tagInput}
-          selectionColor={colors.accent}
-        />
-        <Pressable onPress={() => add(text)} accessibilityLabel="Добавить" style={styles.tagAdd} disabled={!text.trim()}>
-          <Icon name="add" size={20} color={text.trim() ? colors.accent : colors.muted} />
-        </Pressable>
+      <View style={styles.wrap}>
+        {values.map((v) => (
+          <Pressable key={v} accessibilityLabel={`Удалить ${v}`} onPress={() => onChange(values.filter((x) => x !== v))} style={styles.tag}>
+            <T v="small" color={colors.onAccent} style={{ fontWeight: '700' }}>
+              {v}
+            </T>
+            <Icon name="close" size={14} color={colors.onAccent} />
+          </Pressable>
+        ))}
+        <AddPill label={values.length ? 'Добавить' : `Выбрать`} onPress={() => setOpen(true)} a11y={`Добавить: ${label}`} />
       </View>
-      {rest.length ? (
-        <View style={styles.wrap}>
-          {rest.slice(0, 10).map((s) => (
-            <Chip key={s} label={`+ ${s}`} onPress={() => add(s)} style={{ height: 32 }} />
-          ))}
-        </View>
-      ) : null}
+      <CategoryPicker visible={open} category={category} value={values} onClose={() => setOpen(false)} onSave={onChange} />
     </View>
+  );
+}
+
+/** Текстовое поле + «+»: выбранные в каталоге пункты добавляются в текст через запятую, свой текст сохраняется */
+export function PickerField({ label, value, onChange, category, placeholder, hint, maxLength }: { label: string; value: string; onChange: (t: string) => void; category: PickerCategory; placeholder?: string; hint?: string; maxLength?: number }) {
+  const [open, setOpen] = useState(false);
+  const items = splitItems(value);
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T v="caption">{label}</T>
+        <AddPill label="Выбрать" onPress={() => setOpen(true)} a11y={`Выбрать: ${label}`} />
+      </View>
+      <Field accessibilityLabel={label} placeholder={placeholder} value={value} onChangeText={onChange} multiline maxLength={maxLength} hint={hint} />
+      <CategoryPicker visible={open} category={category} value={items} onClose={() => setOpen(false)} onSave={(v) => onChange(joinItems(v))} />
+    </View>
+  );
+}
+
+function AddPill({ label, onPress, a11y }: { label: string; onPress: () => void; a11y: string }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={a11y}
+      onPress={() => {
+        haptic.tap();
+        onPress();
+      }}
+      hitSlop={6}
+      style={({ pressed }) => [styles.addPill, pressed && { opacity: 0.7 }]}
+    >
+      <Icon name="add" size={16} color={colors.accent} />
+      <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
+        {label}
+      </T>
+    </Pressable>
   );
 }
 
@@ -350,8 +357,6 @@ const styles = themed({
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
-  tagInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  tagInput: { flex: 1, minWidth: 0, height: 48, color: colors.text, fontSize: 16, paddingHorizontal: space.md },
-  tagAdd: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  addPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 32, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim },
   rules: { gap: 4, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
 });

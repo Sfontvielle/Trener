@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { MuscleSlug } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
@@ -17,7 +16,6 @@ import { workoutDebrief } from '@/features/training/debrief';
 import { sessionEnergy } from '@/features/training/energy';
 import { historyFor, workingSets } from '@/features/training/progression';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
-import { Anatomy } from '@/features/exercises/Anatomy';
 import { EnergySheet } from '@/features/training/EnergySheet';
 import { formatDayLong } from '@/utils/date';
 import { fmtNum, fmtWeight } from '@/utils/format';
@@ -38,7 +36,6 @@ export default function SessionDetail() {
   const customs = useWorkouts((s) => s.customExercises);
   const unit = useProfile((s) => s.settings.weightUnit);
   const profileW = useProfile((s) => s.profile?.weightKg ?? 75);
-  const sex = useProfile((s) => s.profile?.sex);
   const weights = useBody((s) => s.weights);
   const healthDays = useHealth((s) => s.days);
   const s = sessions.find((x) => x.id === id);
@@ -49,20 +46,6 @@ export default function SessionDetail() {
   const bodyW = latestTrendWeight(weights) ?? profileW;
   // Если часы досинхронизировали тренировку — показываем измеренное, иначе сохранённую оценку
   const energy = useMemo(() => (s ? sessionEnergy(s, bodyW, healthDays, customs) : null), [s, bodyW, healthDays, customs]);
-  const muscles = useMemo(() => {
-    if (!s) return { primary: [] as MuscleSlug[], secondary: [] as MuscleSlug[] };
-    const w = new Map<MuscleSlug, number>();
-    const sec = new Set<MuscleSlug>();
-    for (const we of s.exercises) {
-      const ex = getExercise(we.exerciseId, customs);
-      const n = workingSets(we.sets).length;
-      if (!ex || !n) continue;
-      ex.primary.forEach((m) => w.set(m, (w.get(m) ?? 0) + n));
-      ex.secondary.forEach((m) => sec.add(m));
-    }
-    const primary = [...w.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m).slice(0, 5);
-    return { primary, secondary: [...sec].filter((m) => !primary.includes(m)) };
-  }, [s, customs]);
   const progress = useMemo(() => {
     if (!s) return [];
     const before = sessions.filter((x) => x.id !== s.id && x.status === 'completed' && (x.finishedAt ?? x.startedAt) < s.startedAt);
@@ -168,13 +151,6 @@ export default function SessionDetail() {
               </T>
             </View>
           ))}
-        </Card>
-      ) : null}
-
-      {muscles.primary.length ? (
-        <Card style={{ marginTop: space.md, gap: 8 }}>
-          <T v="caption">Основные мышцы</T>
-          <Anatomy primary={muscles.primary} secondary={muscles.secondary} sex={sex} scale={0.55} />
         </Card>
       ) : null}
 

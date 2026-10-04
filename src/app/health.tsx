@@ -2,13 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Card, Icon, SectionTitle, T, type IconName } from '@/components/ui';
+import { Button, Card, Icon, SectionTitle, T, type IconName } from '@/components/ui';
 import { toast } from '@/components/Dialog';
 import { useHealth } from '@/stores/health';
-import { healthAvailability } from '@/services/health';
+import { healthAvailability, healthLoadError } from '@/services/health';
+import { healthUiState, type HealthUiState } from '@/features/health/state';
 import { connectHealth, syncHealth } from '@/features/health/sync';
 import { healthContext } from '@/features/health/model';
-import { formatHours, relativeDay, today, toISODate } from '@/utils/date';
+import { formatSleep, relativeDay, today, toISODate } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 
@@ -31,12 +32,15 @@ export default function Health() {
   const [busy, setBusy] = useState(false);
   const av = useMemo(() => healthAvailability(), []);
   const ctx = useMemo(() => healthContext(days, today()), [days]);
+  const hasData = useMemo(() => Object.values(days).some((d) => d.steps || d.sleepHours || d.restingHr || d.hrvMs || d.activeKcal || d.weightKg), [days]);
+  const state = healthUiState({ av, enabled, lastSyncAt, lastError, hasData, loadError: healthLoadError() });
 
   const run = async (fn: () => Promise<{ ok: boolean; message: string }>) => {
     setBusy(true);
     const r = await fn();
     setBusy(false);
     if (r.ok) haptic.success();
+    else haptic.warning();
     toast(r.message, r.ok ? 'checkmark-circle' : 'alert-circle');
   };
 
@@ -44,11 +48,7 @@ export default function Health() {
     <Screen>
       <Header title="Apple Health" subtitle="Только чтение · данные остаются на iPhone" />
 
-      {av === 'unsupported' ? <Banner icon="phone-portrait-outline" text={Platform.OS === 'web' ? `Apple Health работает в приложении ${BRAND} на iPhone. В веб-превью — ручной чек-ин.` : 'Apple Health доступен только на iPhone.'} /> : null}
-      {av === 'needs_dev_build' ? (
-        <Banner tone="warning" icon="construct-outline" text={`Apple Health требует сборку ${BRAND} (EAS development / production build). В Expo Go нативный модуль HealthKit недоступен — ${BRAND} работает на ручном чек-ине.`} />
-      ) : null}
-      {av === 'unavailable' ? <Banner tone="warning" text="На этом устройстве Apple Health недоступен (например, iPad)." /> : null}
+      <StatusCard state={state} busy={busy} onRetry={() => run(enabled ? syncHealth : connectHealth)} onConnect={() => run(connectHealth)} />
 
       <SectionTitle title={`${BRAND} может читать`} />
       <Card style={{ gap: 2, paddingVertical: 6 }}>
@@ -65,39 +65,73 @@ export default function Health() {
         ))}
       </Card>
 
-      {enabled ? (
+      {enabled && state.kind !== 'unavailable' ? (
         <>
-          <SectionTitle title="Подключено" />
+          <SectionTitle title="Данные" />
           <Card style={{ gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Icon name="checkmark-circle" size={20} color={colors.accent} />
-              <T v="body" style={{ fontWeight: '700', flex: 1 }}>
-                Последняя синхронизация: {lastSyncAt ? `${relativeDay(toISODate(new Date(lastSyncAt))).toLowerCase()} ${new Date(lastSyncAt).toTimeString().slice(0, 5)}` : '—'}
-              </T>
-            </View>
-            {lastError ? <Banner tone="warning" text={lastError} /> : null}
             {ctx ? (
               <View style={styles.grid}>
-                <Metric label="Сон" value={ctx.sleepHours ? formatHours(ctx.sleepHours) : '—'} />
+                <Metric label="Сон" value={ctx.sleepHours ? formatSleep(ctx.sleepHours * 60) : '—'} />
                 <Metric label="Шаги" value={ctx.steps ? ctx.steps.toLocaleString('ru-RU') : '—'} />
                 <Metric label="Пульс покоя" value={ctx.restingHr ? `${ctx.restingHr}` : '—'} sub={ctx.rhrDelta !== undefined ? `${ctx.rhrDelta >= 0 ? '+' : ''}${ctx.rhrDelta} к базе 14 дн` : undefined} warn={(ctx.rhrDelta ?? 0) >= 5} />
                 <Metric label="HRV" value={ctx.hrvMs ? `${ctx.hrvMs} мс` : '—'} sub={ctx.hrvDeltaPct !== undefined ? `${ctx.hrvDeltaPct >= 0 ? '+' : ''}${ctx.hrvDeltaPct}% к базе 21 дн` : undefined} warn={(ctx.hrvDeltaPct ?? 0) <= -15} />
               </View>
             ) : (
-              <T v="small">Данных за сегодня пока нет. Если так и останется — проверь доступ: «Здоровье» → профиль → Приложения → {BRAND}.</T>
+              <T v="small">Данных за сегодня пока нет.</T>
             )}
             <Button title="Синхронизировать" icon="sync" loading={busy} onPress={() => run(syncHealth)} />
             <Button title="Управление доступом" icon="settings-outline" variant="secondary" onPress={() => Linking.openURL('x-apple-health://').catch(() => Linking.openSettings())} />
             <Button title="Отключить" variant="ghost" onPress={() => useHealth.getState().setEnabled(false)} />
           </Card>
         </>
-      ) : (
-        <Button title="Подключить Apple Health" icon="heart" size="lg" style={{ marginTop: space.lg }} disabled={av !== 'available'} loading={busy} onPress={() => run(connectHealth)} />
-      )}
+      ) : null}
       <T v="small" style={{ marginTop: space.lg, textAlign: 'center' }}>
         Без доступа {BRAND} продолжает работать: сон и самочувствие можно отмечать в чек-ине. {BRAND} не ставит медицинских диагнозов.
       </T>
     </Screen>
+  );
+}
+
+function syncTime(at: number): string {
+  return `${relativeDay(toISODate(new Date(at))).toLowerCase()} в ${new Date(at).toTimeString().slice(0, 5)}`;
+}
+
+/** Явное состояние: Подключено / Нет разрешения / Недоступен (причина) / Ошибка (Повторить, Подробнее) */
+function StatusCard({ state, busy, onRetry, onConnect }: { state: HealthUiState; busy: boolean; onRetry: () => void; onConnect: () => void }) {
+  const [more, setMore] = useState(false);
+  const meta: Record<HealthUiState['kind'], { icon: IconName; title: string; color: string }> = {
+    connected: { icon: 'checkmark-circle', title: 'Подключено', color: colors.accent },
+    no_permission: { icon: 'lock-closed-outline', title: 'Нет разрешения', color: colors.warning },
+    unavailable: { icon: 'phone-portrait-outline', title: 'HealthKit недоступен', color: colors.textDim },
+    error: { icon: 'alert-circle', title: 'Ошибка подключения', color: colors.danger },
+    not_connected: { icon: 'heart-outline', title: 'Не подключено', color: colors.textDim },
+  };
+  const m = meta[state.kind];
+  const detail = state.kind === 'error' ? state.detail : state.kind === 'unavailable' ? state.detail : undefined;
+  return (
+    <Card style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Icon name={m.icon} size={22} color={m.color} />
+        <T v="h3" style={{ flex: 1 }}>
+          {m.title}
+        </T>
+      </View>
+      {state.kind === 'connected' ? <T v="small">Последняя синхронизация: {syncTime(state.lastSyncAt)}</T> : null}
+      {state.kind === 'no_permission' ? <T v="small">{state.text}</T> : null}
+      {state.kind === 'unavailable' ? <T v="small">{state.reason}</T> : null}
+      {state.kind === 'error' ? <T v="small">Не удалось прочитать данные Apple Health. Техническая причина записана в журнал.</T> : null}
+      {state.kind === 'not_connected' ? <T v="small">Сон, шаги, пульс покоя и HRV будут подставляться автоматически.</T> : null}
+      {more && detail ? (
+        <T v="small" selectable style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12 }}>
+          {detail}
+        </T>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {state.kind === 'error' || state.kind === 'no_permission' ? <Button title="Повторить" icon="refresh" loading={busy} onPress={onRetry} style={{ flex: 1 }} /> : null}
+        {state.kind === 'not_connected' ? <Button title="Подключить Apple Health" icon="heart" loading={busy} onPress={onConnect} style={{ flex: 1 }} /> : null}
+        {detail ? <Button title={more ? 'Скрыть' : 'Подробнее'} variant="secondary" onPress={() => setMore((x) => !x)} style={{ flex: state.kind === 'error' ? 1 : undefined }} /> : null}
+      </View>
+    </Card>
   );
 }
 

@@ -64,6 +64,9 @@ export function mapOffProduct(p: any): FoodProduct | null {
     fat: round1(fat ?? 0),
     carbs: round1(carbs ?? 0),
   };
+  // Клетчатка — только если указана на этикетке/в базе; отсутствие ≠ 0
+  const fiber = num(n.fiber_100g);
+  if (fiber !== undefined && fiber >= 0 && fiber <= 100) per100.fiber = round1(fiber);
   if (per100.kcal > 950 || per100.protein > 100 || per100.fat > 100 || per100.carbs > 100) return null;
   const name = (p.product_name_ru || p.product_name || p.generic_name || '').trim();
   if (!name) return null;

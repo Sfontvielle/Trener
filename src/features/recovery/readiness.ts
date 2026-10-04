@@ -1,6 +1,7 @@
 import { addDays, formatHours } from '@/utils/date';
 import type { DailyCheckIn, ISODate, ReadinessBand, ReadinessResult, WorkoutSession } from '@/types';
 import { clamp } from '@/utils/format';
+import { readinessCategory } from '@/features/science/recovery';
 
 /**
  * Готовность к нагрузке 0–100 по чек-ину + недавней нагрузке (+ HRV/пульс покоя из Apple Health, если есть).
@@ -26,7 +27,7 @@ export const BAND_META: Record<ReadinessBand, { headline: string; volumeFactor: 
 
 export function computeReadiness(
   c: DailyCheckIn,
-  ctx: { sessions: WorkoutSession[]; hrvBaseline?: number; rhrBaseline?: number; objectiveOnly?: boolean },
+  ctx: { sessions: WorkoutSession[]; hrvBaseline?: number; rhrBaseline?: number; objectiveOnly?: boolean; sleepBaseline?: number },
 ): ReadinessResult {
   const factors: ReadinessResult['factors'] = [];
 
@@ -39,13 +40,16 @@ export function computeReadiness(
     [9.5, 1],
     [11, 0.85],
   ]);
+  // Сравнение с личной нормой сна (если есть ≥5 ночей истории): половина веса — абсолютная длительность, половина — отклонение от своей нормы
+  const sleepRel = ctx.sleepBaseline ? interp(c.sleepHours - ctx.sleepBaseline, [[-2, 0.15], [-1, 0.5], [-0.5, 0.8], [0, 1]]) : undefined;
+  const sleepScore = sleepRel !== undefined ? (sleepH + sleepRel) / 2 : sleepH;
   const sleepQ = (c.sleepQuality - 1) / 4;
   const energy = (c.energy - 1) / 4;
   const stress = (5 - c.stress) / 4;
   const soreness = (5 - c.soreness) / 4;
 
   const parts = [
-    { label: 'Сон', w: 0.3, v: sleepH, detail: `${formatHours(c.sleepHours)} ч` },
+    { label: 'Сон', w: 0.3, v: sleepScore, detail: `${formatHours(c.sleepHours)} ч${ctx.sleepBaseline ? ` (твоя норма ~${formatHours(ctx.sleepBaseline)})` : ''}` },
     { label: 'Качество сна', w: 0.1, v: sleepQ, detail: `${c.sleepQuality}/5` },
     { label: 'Энергия', w: 0.25, v: energy, detail: `${c.energy}/5` },
     { label: 'Стресс', w: 0.15, v: stress, detail: `${c.stress}/5` },
@@ -112,7 +116,18 @@ export function computeReadiness(
   const band: ReadinessBand = score >= 75 ? 'go' : score >= 60 ? 'reduce' : score >= 45 ? 'light' : 'recover';
   const meta = BAND_META[band];
   factors.sort((a, b) => a.impact - b.impact);
-  return { score, band, headline: c.pain ? `${meta.headline}. Избегай движений, которые вызывают боль` : meta.headline, volumeFactor: meta.volumeFactor, rirDelta: meta.rirDelta, factors };
+  // Причины простыми словами — сравнение с личной нормой, где она есть
+  const reasons: string[] = [];
+  if (ctx.sleepBaseline && c.sleepHours < ctx.sleepBaseline - 0.75) reasons.push(`сон ниже твоей обычной продолжительности (${formatHours(c.sleepHours)} при норме ~${formatHours(ctx.sleepBaseline)})`);
+  else if (c.sleepHours < 6.5) reasons.push(`сон ${formatHours(c.sleepHours)} — меньше 7 ч`);
+  if (c.hrvMs && ctx.hrvBaseline && c.hrvMs < ctx.hrvBaseline * 0.85) reasons.push('HRV ниже твоей 21-дневной базы');
+  if (c.restingHr && ctx.rhrBaseline && c.restingHr - ctx.rhrBaseline >= 5) reasons.push('пульс покоя выше твоей обычной нормы');
+  if (!ctx.objectiveOnly && c.energy <= 2) reasons.push('мало энергии');
+  if (!ctx.objectiveOnly && c.soreness >= 4) reasons.push('сильная мышечная усталость');
+  if (!ctx.objectiveOnly && c.stress >= 4) reasons.push('высокий стресс');
+  if (factors.some((f) => f.label === 'Нагрузка за неделю')) reasons.push('нагрузка за неделю выше обычной');
+  if (c.pain) reasons.push('отмечена боль');
+  return { score, band, category: readinessCategory(score, band), reasons, headline: c.pain ? `${meta.headline}. Избегай движений, которые вызывают боль` : meta.headline, volumeFactor: meta.volumeFactor, rirDelta: meta.rirDelta, factors };
 }
 
 function hardSetShare(s: WorkoutSession): number {
