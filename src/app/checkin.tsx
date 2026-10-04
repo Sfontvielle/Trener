@@ -1,16 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { DailyCheckIn } from '@/types';
 import { colors, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, T } from '@/components/ui';
 import { Field, NumberStepper, Scale5, Toggle } from '@/components/inputs';
-import { Ring } from '@/components/charts';
+import { DurationWheel } from '@/components/WheelPicker';
+import { useHealth } from '@/stores/health';
+import { CATEGORY_LABEL, readinessCategory, sleepBaseline, sleepMinutesOf, withSleep } from '@/features/science/recovery';
 import { useCheckins } from '@/stores/checkins';
 import { useWorkouts } from '@/stores/workouts';
 import { computeReadiness } from '@/features/recovery/readiness';
-import { formatHours, today } from '@/utils/date';
+import { formatSleep, today } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { MODE_LABEL } from '@/features/training/today';
@@ -24,7 +26,16 @@ export default function CheckIn() {
   const existing = useCheckins((s) => s.byDate[d]);
   const save = useCheckins((s) => s.save);
   const sessions = useWorkouts((s) => s.sessions);
-  const [c, setC] = useState<DailyCheckIn>(() => existing ?? { date: d, sleepHours: 7.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() });
+  // Сон из Apple Health за прошедшую ночь — подставляется, пока человек не изменил значение вручную
+  const healthDay = useHealth((s) => s.days[d]);
+  const healthMin = healthDay?.sleepHours ? Math.round(healthDay.sleepHours * 60) : undefined;
+  const [c, setC] = useState<DailyCheckIn>(() => {
+    if (existing) return existing.sleepMinutes !== undefined ? existing : withSleep(existing, sleepMinutesOf(existing), existing.sleepSource ?? 'manual');
+    const base: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() };
+    return healthMin ? withSleep(base, healthMin, 'health') : withSleep(base, 450, 'manual');
+  });
+  // Синк Apple Health завершился после открытия экрана: обновляем только не тронутое вручную значение
+  if (healthMin && !existing && c.sleepSource !== 'manual' && c.sleepMinutes !== healthMin) setC(withSleep(c, healthMin, 'health'));
   const [saved, setSaved] = useState(false);
   // Взвешивание прямо в чек-ине: одно утреннее действие вместо двух
   const weights = useBody((s) => s.weights);
@@ -34,37 +45,44 @@ export default function CheckIn() {
   const [kg, setKg] = useState(todayWeight?.kg ?? lastKg);
   const [showHealth, setShowHealth] = useState(!!(existing?.hrvMs || existing?.restingHr));
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
-  const r = useMemo(() => computeReadiness(c, { sessions }), [c, sessions]);
+  const checkins = useCheckins((s) => s.byDate);
+  const healthDays = useHealth((s) => s.days);
+  const r = useMemo(() => computeReadiness(c, { sessions, sleepBaseline: sleepBaseline(d, checkins, healthDays) }), [c, sessions, d, checkins, healthDays]);
+  const cat = r.category ?? readinessCategory(r.score, r.band);
+  const catColor = cat === 'high' || cat === 'normal' ? colors.accent : cat === 'reduced' ? colors.warning : colors.danger;
   const tw = useTodayWorkout();
 
   if (saved) {
     return (
       <Screen>
         <Header title="Готовность" />
-        <View style={{ alignItems: 'center', gap: space.md, marginTop: space.lg }}>
-          <Ring size={140} stroke={11} progress={r.score / 100} color={r.band === 'go' ? colors.accent : r.band === 'reduce' ? colors.warning : colors.danger}>
-            <T v="num" style={{ fontSize: 44 }}>
-              {r.score}
-            </T>
-            <T v="small">из 100</T>
-          </Ring>
-          <T v="h1" style={{ textAlign: 'center' }}>
+        <View style={{ alignItems: 'center', gap: space.sm, marginTop: space.lg }}>
+          <T v="caption">Готовность</T>
+          <T v="display" color={catColor} style={{ textAlign: 'center' }}>
+            {CATEGORY_LABEL[cat]}
+          </T>
+          <T v="h3" style={{ textAlign: 'center' }}>
             {r.headline}
           </T>
         </View>
         <Card style={{ marginTop: space.xl }}>
-          <T v="caption">Что повлияло</T>
+          <T v="caption">Почему</T>
+          {(r.reasons?.length ? r.reasons : ['показатели в пределах твоей обычной нормы']).map((x) => (
+            <T key={x} v="body" style={{ paddingVertical: 4 }}>
+              • {x[0].toUpperCase() + x.slice(1)}
+            </T>
+          ))}
           {r.factors.slice(0, 6).map((f) => (
-            <View key={f.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 }}>
-              <T v="body">
-                {f.label} · <T v="small">{f.detail}</T>
-              </T>
-              <T v="body" color={f.impact < -2 ? colors.warning : f.impact > 2 ? colors.accent : colors.textDim} style={{ fontWeight: '800' }}>
-                {f.impact > 0 ? '+' : ''}
-                {f.impact}
+            <View key={f.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+              <T v="small">{f.label}</T>
+              <T v="small" color={f.impact < -2 ? colors.warning : f.impact > 2 ? colors.accent : colors.textDim}>
+                {f.detail}
               </T>
             </View>
           ))}
+          <T v="small" style={{ marginTop: 6, fontSize: 11 }}>
+            Категория — правило {BRAND} по сну, самочувствию, нагрузке и данным часов относительно твоей личной нормы. Это не медицинское измерение.
+          </T>
         </Card>
         <Card style={{ marginTop: space.md }} tone={tw.mode !== 'normal' ? 'warning' : 'accent'}>
           <T v="caption">Сегодняшняя тренировка</T>
@@ -93,8 +111,24 @@ export default function CheckIn() {
       <Header title="Утренний чек-ин" subtitle="30 секунд — и план подстроится" />
       <View style={{ gap: space.xl }}>
         <View style={{ gap: 8 }}>
-          <T v="h3">Сколько спал?</T>
-          <NumberStepper value={c.sleepHours} onChange={(v) => set({ sleepHours: v })} step={0.25} decimals={2} min={0} max={14} unit={`ч  (${formatHours(c.sleepHours)})`} />
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <T v="h3">Сколько спал?</T>
+            <T v="h3" color={colors.accent} testID="sleep-value">
+              {formatSleep(sleepMinutesOf(c))}
+            </T>
+          </View>
+          <DurationWheel minutes={sleepMinutesOf(c)} onChange={(m) => setC((x) => withSleep(x, m, 'manual'))} testID="sleep-wheel" />
+          {c.sleepSource === 'health' ? (
+            <T v="small" style={{ textAlign: 'center' }}>
+              Источник: Apple Health · можно изменить
+            </T>
+          ) : healthMin && healthMin !== c.sleepMinutes ? (
+            <Pressable accessibilityRole="button" onPress={() => setC((x) => withSleep(x, healthMin, 'health'))} style={{ alignSelf: 'center', padding: 4 }}>
+              <T v="small" color={colors.accent}>
+                Apple Health: {formatSleep(healthMin)} — подставить
+              </T>
+            </Pressable>
+          ) : null}
         </View>
         <View style={{ gap: 8 }}>
           <T v="h3">Качество сна</T>
@@ -131,7 +165,7 @@ export default function CheckIn() {
           {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
         </View>
         <Button
-          title={`Сохранить · готовность ${r.score}`}
+          title={`Сохранить · ${CATEGORY_LABEL[cat].toLowerCase()} готовность`}
           size="lg"
           icon="checkmark"
           onPress={() => {

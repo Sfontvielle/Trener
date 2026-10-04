@@ -40,3 +40,14 @@ export function sleepBaseline(date: ISODate, checkins: Record<string, DailyCheck
   }
   return vals.length >= 5 ? Math.round(median(vals) * 100) / 100 : undefined;
 }
+
+/** Сон в минутах из чек-ина: новое поле или пересчёт из старого sleepHours (миграция «на чтении») */
+export function sleepMinutesOf(c: { sleepHours: number; sleepMinutes?: number }): number {
+  return c.sleepMinutes ?? Math.round(c.sleepHours * 60);
+}
+
+/** Запись сна в чек-ин: минуты — источник истины, часы — производное для старого кода */
+export function withSleep<T extends { sleepHours: number }>(c: T, minutes: number, source: 'manual' | 'health'): T & { sleepMinutes: number; sleepSource: 'manual' | 'health' } {
+  const m = Math.max(0, Math.min(24 * 60, Math.round(minutes)));
+  return { ...c, sleepMinutes: m, sleepHours: Math.round((m / 60) * 1000) / 1000, sleepSource: source };
+}

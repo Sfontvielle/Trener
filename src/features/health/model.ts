@@ -14,7 +14,7 @@ export interface HealthDay {
   workouts?: { start: number; minutes: number; kcal?: number; strength: boolean }[];
 }
 
-export type HealthStatus = 'unsupported' | 'needs_dev_build' | 'unavailable' | 'not_connected' | 'connected' | 'denied';
+
 
 export interface HealthContext {
   sleepHours?: number;
