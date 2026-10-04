@@ -52,7 +52,8 @@ export default function LabReviewScreen() {
     useLabDraft.getState().set(null);
     haptic.success();
     toast(`Сохранено: ${rep.results.length} показателей`, 'checkmark-circle');
-    router.replace('/labs');
+    if (router.canGoBack()) router.back();
+    else router.replace('/labs');
   };
 
   return (

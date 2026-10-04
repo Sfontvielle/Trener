@@ -58,7 +58,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   const plan = await page.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
   const routes = [
     '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=library', '/progress',
-    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach',
+    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/labs', '/labs/hct', '/labs/review', '/health-monitor',
     '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan',
     '/exercise/bench_press', `/workout/${session.id}`, `/workout/preview?templateId=${plan.templates[0].id}`, '/workout/builder', '/onboarding',
   ];
@@ -124,6 +124,9 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
     profile: () => monkey('/profile'),
     checkin: () => monkey('/checkin'),
     food: () => monkey('/food/add'),
+    labs: () => monkey('/labs'),
+    health: () => monkey('/health-monitor'),
+    weekly: () => monkey('/weekly-review'),
     onboarding: async () => {
       // Онбординг: шаг «Здоровье» — каждый «+» открывает выбор, выбор и сохранение без ошибок
       const p2 = await ctx.newPage();
@@ -161,7 +164,9 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await monkey('/workout/active');
     },
   };
-  for (const [k, fn] of Object.entries(groups)) if (!ONLY || ONLY === k) await fn();
+  // Онбординг очищает хранилище общего контекста — запускается последним
+  const order = Object.keys(groups).sort((a, b) => (a === 'onboarding' ? 1 : 0) - (b === 'onboarding' ? 1 : 0));
+  for (const k of order) if (!ONLY || ONLY === k) await groups[k]();
 
   console.log(problems.length ? `ПРОБЛЕМЫ (${problems.length}):\n${[...new Set(problems)].join('\n')}` : 'Ошибок не найдено');
   await browser.close();

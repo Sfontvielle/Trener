@@ -741,6 +741,142 @@ const check = async (name, fn) => {
     assert.equal(await page.getByText('Поиск продукта', { exact: true }).count(), 0, 'закрыт свайпом');
   });
 
+  await check('41. RYNJI COACH — СЕГОДНЯ: план дня, фокус и «Почему?» с данными и уверенностью', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const block = page.getByTestId('coach-today');
+    if (await block.count()) {
+      const t = await block.innerText();
+      assert.match(t, /RYNJI COACH — СЕГОДНЯ/);
+      assert.match(t, /ккал · Б \d+ · Ж \d+ · У \d+/, 'КБЖУ дня');
+      await page.getByLabel('Почему? Объяснение решений тренера').click();
+      await page.waitForTimeout(700);
+      const why = await page.getByTestId('coach-why').innerText();
+      assert.match(why, /Уверенность:/);
+      assert.match(why, /ккал/);
+      await shot('coach-why');
+      await page.getByLabel('Закрыть').last().click();
+      await page.waitForTimeout(400);
+    } else {
+      assert.ok(await page.getByText('Продолжить тренировку').count(), 'идёт тренировка — блок плана заменён продолжением');
+    }
+  });
+
+  await check('42. Анализы: вставка текста → «Проверьте распознанные данные» → правка → сохранение → история и изменения', async () => {
+    const paste = async (text) => {
+      await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1200);
+      await dismiss();
+      await page.getByText('Добавить', { exact: true }).first().click();
+      await page.waitForTimeout(600);
+      await page.getByText('Вставить текст анализов').click();
+      await page.waitForTimeout(700);
+      await page.getByTestId('lab-paste').fill(text);
+      await page.getByText('Распознать', { exact: true }).click();
+      await page.waitForTimeout(1000);
+      assert.ok(await page.getByText('Проверьте распознанные данные').isVisible(), 'экран проверки обязателен');
+    };
+    await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
+    // Любое значение можно исправить до сохранения
+    await page.getByLabel('Значение, строка 3').fill('31');
+    await page.getByText('Подтвердить и сохранить').click();
+    await page.waitForTimeout(1000);
+    let t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /Гематокрит/);
+    assert.match(t, /31/);
+    await paste('ИНВИТРО\nДата взятия образца: 01.09.2026\nГематокрит (HCT) 48,1 % 39 - 49\nХолестерин ЛПНП 3,5 ммоль/л < 3,0 H\nАЛТ 31 Ед/л < 41');
+    await page.getByText('Подтвердить и сохранить').click();
+    await page.waitForTimeout(1000);
+    const ch = await page.getByTestId('lab-changes').innerText();
+    assert.match(ch, /Что изменилось с прошлого анализа/i);
+    assert.match(ch, /↑ 2,1 п\.п\./);
+    assert.match(ch, /↑ 0,4/);
+    await shot('labs');
+    await page.getByLabel(/^Гематокрит: 48,1/).click();
+    await page.waitForTimeout(900);
+    t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /референс вашей лаборатории: 39 – 49/);
+    await shot('lab-marker');
+  });
+
+  await check('43. Здоровье: давление по среднему, Enhanced — история и граница безопасности', async () => {
+    await page.goto(`${URL}/health-monitor`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    for (const [s1, d1] of [[146, 94], [148, 95]]) {
+      await page.getByText('Записать', { exact: true }).click();
+      await page.waitForTimeout(500);
+      await page.getByTestId('bp-sys').fill(String(s1));
+      await page.getByTestId('bp-dia').fill(String(d1));
+      await page.getByText('Сохранить', { exact: true }).last().click();
+      await page.waitForTimeout(600);
+    }
+    let t = await page.getByTestId('health-signals').innerText();
+    assert.match(t, /≥140\/90/);
+    assert.match(t, /обсудить/);
+    await page.getByText('Режим Enhanced (AAS)').click();
+    await page.waitForTimeout(400);
+    t = await page.getByTestId('enhanced-card').innerText();
+    assert.match(t, /Не составляет циклы/);
+    assert.match(t, /Нормальные анализы не означают, что AAS безопасны/);
+    await page.getByText('Добавить запись').click();
+    await page.waitForTimeout(500);
+    await page.getByLabel('Вещество', { exact: true }).fill('Тестовая запись');
+    await page.getByText('Сохранить', { exact: true }).last().click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('enhanced-card').innerText(), /Тестовая запись/);
+    await shot('health');
+    // Сигнал давления виден на главной и запрещает повышение нагрузки
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    assert.match(await page.getByTestId('coach-alerts').innerText(), /Давление/);
+  });
+
+  await check('44. Отчёт недели: метрики и решения тренера (что/почему/данные/уверенность)', async () => {
+    await page.goto(`${URL}/weekly-review`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    const t = await page.evaluate(() => document.body.innerText);
+    for (const x of ['ВЕС, Δ', 'ТАЛИЯ, Δ', 'КАЛОРИИ, СР.', 'ШАГИ/ДЕНЬ', 'ТРЕНИРОВКИ', 'СИЛА', 'СОН, СР.']) assert.ok(t.toUpperCase().includes(x), x);
+    if (await page.getByTestId('weekly-decisions').count()) {
+      const d = await page.getByTestId('weekly-decisions').innerText();
+      assert.match(d, /Решения тренера на неделю/i);
+      assert.match(d, /Уверенность:/);
+      assert.match(d, /Нагрузку не повышаем/, 'давление ≥140/90 — без повышения нагрузки');
+    }
+  });
+
+  await check('45. Питание: «Почему такие КБЖУ?»; цель: пресеты темпа с предупреждением', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByLabel('Почему такие КБЖУ?').click();
+    await page.waitForTimeout(700);
+    const w = await page.getByTestId('macro-why').innerText();
+    assert.match(w, /1,6–2,2 г\/кг/);
+    assert.match(w, /Уверенность:/);
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(400);
+    await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByText('Цель', { exact: true }).first().click();
+    await page.waitForTimeout(700);
+    const pr = await page.getByTestId('rate-presets').innerText();
+    assert.match(pr, /Консервативный/);
+    assert.match(pr, /Сбалансированный/);
+    assert.match(pr, /Более быстрый набор/);
+    assert.match(pr, /РЕКОМЕНДУЕМ/);
+    assert.ok(!/гарантир/i.test(pr));
+    await page.getByLabel(/^Более быстрый набор/).click();
+    await page.waitForTimeout(300);
+    assert.match(await page.getByTestId('rate-warning').innerText(), /риск лишнего жира/);
+    await page.getByLabel(/^Сбалансированный/).click();
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(400);
+  });
+
   await check('14. Тема сохраняется после перезапуска', async () => {
     await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
