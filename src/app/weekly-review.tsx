@@ -47,7 +47,7 @@ export default function WeeklyReviewScreen() {
     [profile, plan, target, sessions, entries, weights, metrics, checkins, health],
   );
   const proposals = useMemo<ProgramProposal[]>(() => (profile && review ? analyzeProgram({ profile, plan, sessions, checkins, readinessAvg: review.avgReadiness }) : []), [profile, plan, sessions, checkins, review]);
-  const calories = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal }) : null), [profile, target, weights, entries, adjustments]);
+  const calories = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, entries, adjustments, metrics, sessions]);
 
   if (!profile || !review) return null;
   const w = review.week;

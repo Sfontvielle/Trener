@@ -14,6 +14,7 @@ import { useNutrition, mealForHour, MEAL_LABEL, waterTarget } from '@/stores/nut
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useBody } from '@/stores/body';
+import { useWorkouts } from '@/stores/workouts';
 import { GOAL_SHORT } from '@/features/nutrition/targets';
 import { dayProgress, macroState, macrosFor, type MacroState } from '@/features/nutrition/status';
 import { stateColor } from '@/components/macroColor';
@@ -44,6 +45,8 @@ export default function Nutrition() {
   const allEntries = useNutrition((s) => s.entries);
   const adjustments = usePlan((s) => s.adjustments);
   const weights = useBody((s) => s.weights);
+  const metrics = useBody((s) => s.metrics);
+  const sessions = useWorkouts((s) => s.sessions);
   const [edit, setEdit] = useState<FoodEntry | null>(null);
   const [moreMeals, setMoreMeals] = useState(false);
   const [addFor, setAddFor] = useState<MealSlot | null>(null);
@@ -69,7 +72,7 @@ export default function Nutrition() {
     return suggestMeals({ remaining: nut.remaining, profile, todayEntries: nut.entries, recentProducts });
   }, [profile, nut.remaining, nut.entries, recent, products, isToday]);
 
-  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal }) : null), [profile, target, weights, allEntries, adjustments]);
+  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, allEntries, adjustments, metrics, sessions]);
 
   if (!profile || !target) return <Screen tabBar><EmptyState icon="nutrition-outline" title="Нет плана питания" text={`Заполни профиль — ${BRAND} рассчитает КБЖУ.`} /></Screen>;
 

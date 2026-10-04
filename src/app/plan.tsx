@@ -8,6 +8,7 @@ import { confirm, toast } from '@/components/Dialog';
 import { usePlan } from '@/stores/plan';
 import { useProfile } from '@/stores/profile';
 import { useBody } from '@/stores/body';
+import { useWorkouts } from '@/stores/workouts';
 import { useNutrition } from '@/stores/nutrition';
 import { PlanOverview, PlanWhy } from '@/features/profile/PlanSummary';
 import { applyCalorieDelta, applyProfile } from '@/features/profile/applyProfile';
@@ -23,8 +24,10 @@ export default function PlanScreen() {
   const overrides = usePlan((s) => s.overrides);
   const profile = useProfile((s) => s.profile);
   const weights = useBody((s) => s.weights);
+  const metrics = useBody((s) => s.metrics);
+  const sessions = useWorkouts((s) => s.sessions);
   const entries = useNutrition((s) => s.entries);
-  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal }) : null), [profile, target, weights, entries, adjustments]);
+  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, entries, adjustments, metrics, sessions]);
   const todayOverride = overrides[today()];
 
   if (!plan || !target || !profile) {

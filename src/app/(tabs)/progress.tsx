@@ -61,7 +61,7 @@ export default function Progress() {
   const rate = useMemo(() => weeklyRate(trend, 21), [trend]);
   const change = shown.length >= 2 ? shown[shown.length - 1].trend - shown[0].trend : 0;
   const goalRate = profile ? targetWeeklyChangeKg(profile, trend.length ? trend[trend.length - 1].trend : profile.weightKg) : 0;
-  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal }) : null), [profile, target, weights, entries, adjustments]);
+  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, entries, adjustments, metrics, sessions]);
 
   const month = workoutsInRange(sessions, addDays(d, -29), d);
   const adh = useMemo(() => adherence(sessions, plan, 28), [sessions, plan]);

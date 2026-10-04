@@ -1,10 +1,26 @@
 import type { CalcStep, GoalType, NutritionTarget, UserProfile } from '@/types';
 import { clamp, round } from '@/utils/format';
+import { BRAND } from '@/config/brand';
 
 /**
- * Стартовый расчёт КБЖУ. Это адаптивный baseline, а не «идеальная формула»:
- * после 2–3 недель данных FORM корректирует калории по реальному тренду веса (adaptive.ts).
+ * Стартовый расчёт КБЖУ — только начальная оценка (initial estimate). Дальше калории корректируются по
+ * фактическим данным пользователя: тренд веса, талия, силовые, дневник (adaptive.ts → science/calories.ts).
+ *
+ * Основания (подробно — docs/SCIENCE.md):
+ *  • основной обмен — Mifflin–St Jeor (Mifflin 1990; точнее других формул по Frankenfield 2005);
+ *  • бытовая активность — множитель по шагам/работе (ЭВРИСТИКА RYNJI, близкая к классическим PAL 1.2–1.6);
+ *  • тренировки — MET силовой ~3.5–6 (Compendium 2024) → ~0.07 ккал/кг/мин сверх покоя (ЭВРИСТИКА-усреднение);
+ *  • набор — 0.25–0.5% массы/нед (Iraki 2019), профицит ограничен 150–500 ккал; сушка — ≤1%/нед, дефицит ≤25%;
+ *  • белок 1.6–2.2 г/кг (Morton 2018; ISSN 2017), на сушке выше (Helms 2014);
+ *  • жиры ≥20–35% энергии (AMDR, IOM 2005) — берём не меньше 22% и не меньше ~0.8 г/кг;
+ *  • клетчатка 14 г на 1000 ккал (Adequate Intake, IOM 2005);
+ *  • углеводы — остаток энергии.
  */
+
+/** Клетчатка: 14 г на 1000 ккал (IOM Adequate Intake), округление до 5 г */
+export function fiberTarget(kcal: number): number {
+  return Math.max(20, Math.round((kcal * 14) / 1000 / 5) * 5);
+}
 
 export const GOAL_LABEL: Record<GoalType, string> = {
   bulk: 'Набор мышечной массы',
@@ -77,7 +93,7 @@ export function computeNutritionTarget(
   const steps: CalcStep[] = [];
 
   const bmr = bmrMifflin(profile, w);
-  steps.push({ label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора' });
+  steps.push({ label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора (оценка, точность ±10% у большинства людей)' });
 
   const nt = nonTrainingFactor(profile);
   const neat = bmr * nt.factor;
@@ -100,7 +116,7 @@ export function computeNutritionTarget(
   const kgPerWeek = targetWeeklyChangeKg(profile, w);
   if (profile.goal === 'bulk') {
     goalDelta = clamp((kgPerWeek * 7700) / 7, 150, 500);
-    steps.push({ label: 'Профицит', value: `+${round(goalDelta, 10)} ккал`, note: `Цель +${kgPerWeek.toFixed(2)} кг/нед (${profile.ratePctPerWeek}% массы)` });
+    steps.push({ label: 'Профицит', value: `+${round(goalDelta, 10)} ккал (~${Math.round((goalDelta / tdee) * 100)}%)`, note: `Контролируемый набор: +${kgPerWeek.toFixed(2)} кг/нед (${profile.ratePctPerWeek}% массы; ориентир 0,25–0,5%/нед — Iraki 2019). ${BRAND} будет отслеживать тренд веса, талию и силовые и при необходимости корректировать калорийность` });
   } else if (profile.goal === 'cut') {
     goalDelta = -clamp((-kgPerWeek * 7700) / 7, 250, tdee * 0.25);
     steps.push({ label: 'Дефицит', value: `${round(goalDelta, 10)} ккал`, note: `Цель ${kgPerWeek.toFixed(2)} кг/нед, не больше 25% от расхода` });
@@ -120,15 +136,18 @@ export function computeNutritionTarget(
   const protein = round(pBase * PROTEIN_PER_KG[profile.goal], 5);
   const fat = round(Math.max(w * FAT_PER_KG[profile.goal], (kcal * 0.22) / 9), 5);
   const carbs = Math.max(60, round((kcal - protein * 4 - fat * 9) / 4, 5));
-  steps.push({ label: 'Белок', value: `${protein} г`, note: `${PROTEIN_PER_KG[profile.goal]} г/кг${pBase !== w ? ' (от референсного веса)' : ''}` });
+  steps.push({ label: 'Белок', value: `${protein} г`, note: `${PROTEIN_PER_KG[profile.goal]} г/кг${pBase !== w ? ' (от референсного веса)' : ''}; диапазон 1,6–2,2 г/кг (Morton 2018)` });
   steps.push({ label: 'Жиры', value: `${fat} г`, note: `≥${FAT_PER_KG[profile.goal]} г/кг и ≥22% калорий` });
   steps.push({ label: 'Углеводы', value: `${carbs} г`, note: 'Остаток калорий' });
+  const fiber = fiberTarget(kcal);
+  steps.push({ label: 'Клетчатка', value: `${fiber} г`, note: '14 г на 1000 ккал (IOM)' });
 
   return {
     kcal,
     protein,
     fat,
     carbs,
+    fiber,
     tdee: round(tdee, 10),
     bmr: round(bmr, 10),
     source,

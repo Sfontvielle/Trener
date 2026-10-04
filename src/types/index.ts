@@ -119,6 +119,8 @@ export interface NutritionTarget {
   protein: number;
   fat: number;
   carbs: number;
+  /** Клетчатка, г (14 г на 1000 ккал, IOM). Старые цели без поля — считаются через fiberTarget() */
+  fiber?: number;
   /** Расчётный TDEE (формула или адаптивный по факту) */
   tdee: number;
   bmr: number;
@@ -366,6 +368,10 @@ export interface ReadinessResult {
   factors: { label: string; impact: number; detail: string }[];
   /** health — без чек-ина, по данным Apple Health */
   source?: 'checkin' | 'health';
+  /** Категория для интерфейса (балл — внутренний, не показывается как «точный процент») */
+  category?: 'high' | 'normal' | 'reduced' | 'low';
+  /** Причины простыми словами, в сравнении с личной нормой */
+  reasons?: string[];
 }
 
 // ─── Exercises ──────────────────────────────────────────────────────────────
@@ -476,6 +482,8 @@ export interface Recommendation {
   sets: number;
   targetRir: number;
   action: 'increase' | 'hold' | 'reps' | 'decrease' | 'deload' | 'new';
+  /** Коротко для интерфейса: «+2,5 кг», «+1 повтор», «Оставить 50 кг» */
+  delta?: string;
   rationale: string;
 }
 
