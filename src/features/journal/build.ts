@@ -7,7 +7,7 @@ import { readinessLabel } from '@/features/science/insights';
 import { sleepMinutesOf } from '@/features/science/recovery';
 
 /**
- * Дневник дня: FORM собирает его сам из уже существующих данных — пользователю не нужно ничего вести.
+ * Дневник дня: RYNJI собирает его сам из уже существующих данных — пользователю не нужно ничего вести.
  * Ручные только заметки.
  */
 export type JournalKind = 'checkin' | 'weight' | 'meal' | 'workout_planned' | 'workout_active' | 'workout_done' | 'pr' | 'plan' | 'health' | 'note';

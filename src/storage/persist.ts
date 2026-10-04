@@ -3,7 +3,7 @@ import { createJSONStorage, type PersistOptions } from 'zustand/middleware';
 import { BRAND } from '@/config/brand';
 
 /**
- * Локальное хранилище FORM.
+ * Локальное хранилище RYNJI. Префикс ключей `form.` исторический — не меняется, иначе пропадут сохранённые данные.
  * Каждая сущность — отдельный ключ AsyncStorage (`form.<name>.v<version>`), а не один большой JSON.
  * Слой изолирован: для перехода на SQLite (expo-sqlite) достаточно заменить `storage` на
  * адаптер с тем же интерфейсом getItem/setItem/removeItem — сторы и экраны не меняются.

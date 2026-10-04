@@ -325,7 +325,7 @@ export function PickerField({ label, value, onChange, category, placeholder, hin
         <T v="caption">{label}</T>
         <AddPill label="Выбрать" onPress={() => setOpen(true)} a11y={`Выбрать: ${label}`} />
       </View>
-      <Field placeholder={placeholder} value={value} onChangeText={onChange} multiline maxLength={maxLength} hint={hint} />
+      <Field accessibilityLabel={label} placeholder={placeholder} value={value} onChangeText={onChange} multiline maxLength={maxLength} hint={hint} />
       <CategoryPicker visible={open} category={category} value={items} onClose={() => setOpen(false)} onSave={(v) => onChange(joinItems(v))} />
     </View>
   );

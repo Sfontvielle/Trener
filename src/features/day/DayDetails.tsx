@@ -41,9 +41,11 @@ export function useDaySummary(date: ISODate | null): DaySummary | null {
 export function DayDetailsSheet({ date, onClose }: { date: ISODate | null; onClose: () => void }) {
   const s = useDaySummary(date);
   const title = date ? `${WEEKDAYS_SHORT[weekdayIndex(date)]}, ${formatDayLong(date)}` : '';
-  const sub = date ? relativeDay(date) : undefined;
+  // «Сегодня» / «Вчера» — полезная подпись; для старых дат она повторяет заголовок
+  const rel = date ? relativeDay(date) : undefined;
+  const sub = rel && !/\d/.test(rel) ? rel : undefined;
   return (
-    <Sheet visible={!!date} onClose={onClose} title={title} subtitle={sub !== title ? sub : undefined}>
+    <Sheet visible={!!date} onClose={onClose} title={title} subtitle={sub}>
       {s ? <DayDetails s={s} onClose={onClose} /> : null}
     </Sheet>
   );

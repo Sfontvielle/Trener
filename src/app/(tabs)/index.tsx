@@ -65,7 +65,7 @@ const NOTE_CHIPS = ['Плохо спал', 'Мало времени на тре�
 
 /**
  * Главная — дневник и центр управления дня. Самое важное сверху, порядок карточек зависит от времени:
- * утро — готовность и план; после тренировки — результаты; вечер — итог дня. Остальное FORM пишет в
+ * утро — готовность и план; после тренировки — результаты; вечер — итог дня. Остальное RYNJI пишет в
  * дневник сам (чек-ин, вес, еда, тренировка, рекорды, изменения плана, Apple Health).
  */
 export default function Home() {
@@ -732,7 +732,7 @@ function Badge({ text }: { text: string }) {
   );
 }
 
-/** Вечером: итог дня одним взглядом и вывод FORM */
+/** Вечером: итог дня одним взглядом и вывод RYNJI */
 function DaySummary({ workout, kcal, protein, steps, workoutDone, restDay }: { workout: string; kcal: [number, number] | null; protein: [number, number] | null; steps?: number; workoutDone: boolean; restDay: boolean }) {
   const kOk = kcal ? Math.abs(kcal[0] - kcal[1]) / kcal[1] <= 0.1 : false;
   const pOk = protein ? protein[0] >= protein[1] * 0.9 : false;

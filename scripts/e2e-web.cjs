@@ -37,12 +37,50 @@ const check = async (name, fn) => {
       await op.getByLabel('Как тебя зовут?').fill('Тест');
       for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
       assert.ok(await op.getByText('Здоровье и особенности').isVisible(), 'шаг здоровья');
-      await op.getByLabel('Хронические ограничения').fill('протрузия L5, гипертония');
+      await op.getByLabel('Хронические ограничения', { exact: true }).fill('протрузия L5, гипертония');
       await op.waitForTimeout(300);
       const t = await op.evaluate(() => document.body.innerText);
       assert.match(t, /Поясница: не назначать/);
       assert.match(t, /без отказа/);
-      for (let i = 0; i < 3; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
+      // A1. Каждый «+» открывает селектор своей категории (поиск, популярное, Отмена/Сохранить)
+      const health = { 'Выбрать: Травмы': 'Травмы', 'Выбрать: Хронические ограничения': 'Хронические ограничения', 'Выбрать: Движения, вызывающие боль': 'Движения, вызывающие боль', 'Выбрать: Ограничения от врача или физиотерапевта': 'Ограничения от врача', 'Добавить: Аллергии': 'Аллергии', 'Добавить: Непереносимости': 'Непереносимости', 'Добавить: Запрещённые продукты': 'Запрещённые продукты' };
+      const openPicker = async (btn, title) => {
+        await op.getByLabel(btn, { exact: true }).click();
+        await op.waitForTimeout(600);
+        assert.ok(await op.getByText(title, { exact: true }).last().isVisible(), `${btn} → «${title}»`);
+        assert.ok(await op.getByLabel('Поиск', { exact: true }).last().isVisible(), `${btn}: поиск`);
+        assert.ok(await op.getByText('Популярное', { exact: true }).last().isVisible(), `${btn}: популярное`);
+      };
+      for (const [btn, title] of Object.entries(health)) {
+        await openPicker(btn, title);
+        await op.getByText('Отмена', { exact: true }).last().click();
+        await op.waitForTimeout(500);
+      }
+      // Выбор + свой вариант + сохранение; повторное открытие показывает текущее состояние
+      await openPicker('Добавить: Аллергии', 'Аллергии');
+      await op.getByText('Арахис', { exact: true }).last().click();
+      await op.getByLabel('Поиск', { exact: true }).last().fill('Киноа');
+      await op.getByLabel('Добавить «Киноа»').click();
+      await op.getByText('Сохранить', { exact: true }).last().click();
+      await op.waitForTimeout(600);
+      assert.ok(await op.getByLabel('Удалить Арахис').isVisible() && (await op.getByLabel('Удалить Киноа').isVisible()), 'выбранные аллергены на форме');
+      await openPicker('Добавить: Аллергии', 'Аллергии');
+      assert.ok(await op.getByLabel('Убрать Арахис').isVisible(), 'лист помнит выбор');
+      await op.getByText('Отмена', { exact: true }).last().click();
+      await op.waitForTimeout(500);
+      await openPicker('Выбрать: Травмы', 'Травмы');
+      await op.getByText('Плечо', { exact: true }).last().click();
+      await op.getByText('Сохранить', { exact: true }).last().click();
+      await op.waitForTimeout(500);
+      assert.match(await op.getByLabel('Травмы', { exact: true }).inputValue(), /Плечо/);
+      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
+      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
+      for (const [btn, title] of Object.entries({ 'Добавить: Любимые продукты': 'Любимые продукты', 'Добавить: Не ешь / не любишь': 'Не ешь / не любишь' })) {
+        await openPicker(btn, title);
+        await op.getByText('Отмена', { exact: true }).last().click();
+        await op.waitForTimeout(500);
+      }
+      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
       await op.getByText('Начать с RYNJI').click();
       await op.waitForTimeout(1500);
       assert.ok(await op.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'после онбординга — главная');
@@ -146,8 +184,12 @@ const check = async (name, fn) => {
     await page.waitForTimeout(1500);
     const tech = await page.getByLabel('Техника выполнения').boundingBox();
     assert.ok(tech && tech.y < 300, `кнопка «Техника» вверху: y=${tech && tech.y}`);
-    const cta = await page.getByText(/^Завершить подход \d$|^Далее: |^Завершить тренировку/).first().boundingBox();
+    const cta = await page.getByText(/^Завершить подход \d$|^Далее: |^Завершить тренировку/i).first().boundingBox();
     assert.ok(cta && cta.y + cta.height <= 956, `CTA на экране: y=${cta && cta.y}`);
+    // Техника не занимает основной экран: только кнопка; разбор — в отдельном листе
+    const main = await page.evaluate(() => document.body.innerText);
+    assert.ok(!/Положение тела|Частые ошибки/.test(main), 'техника не на основном экране');
+    assert.match(main, /Упражнение \d+ из \d+/);
     await shot('workout');
   });
 
@@ -346,15 +388,18 @@ const check = async (name, fn) => {
     for (let i = 0; i < 6; i++) {
       const b = page.getByText(/^Завершить подход \d+$/);
       if (!(await b.count())) break;
+      const last = (await page.getByText(/^Завершить подход \d+$/).first().innerText()) === 'Завершить подход 2';
       await b.first().click();
       await page.waitForTimeout(250);
+      if (last) break; // после последнего подхода «Пропустить» не нажимаем: отдыха быть не должно
       const skip = page.getByText('Пропустить');
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
     await page.getByText('Легко', { exact: true }).first().click().catch(() => {});
-    const fin = page.getByText('Завершить тренировку', { exact: true });
-    assert.ok(await fin.last().isVisible(), 'главная кнопка сменилась на «Завершить тренировку»');
+    // CTA появляется сразу после последнего подхода — без ожидания таймера отдыха
+    const fin = page.getByText('ЗАВЕРШИТЬ ТРЕНИРОВКУ', { exact: true });
+    assert.ok(await fin.last().isVisible(), 'главная кнопка сменилась на «ЗАВЕРШИТЬ ТРЕНИРОВКУ»');
     await fin.last().click();
     await page.waitForTimeout(500);
     assert.ok(await page.getByText('Все упражнения выполнены').last().isVisible());
@@ -392,7 +437,7 @@ const check = async (name, fn) => {
     assert.ok(!/Сохранить копию|Восстановить/.test(t), 'бэкап убран из профиля');
     await page.getByText('Здоровье и особенности', { exact: true }).click();
     await page.waitForTimeout(700);
-    await page.getByLabel('Травмы').fill('Правое плечо — боль в жиме над головой');
+    await page.getByLabel('Травмы', { exact: true }).fill('Правое плечо — боль в жиме над головой');
     await page.waitForTimeout(300);
     assert.ok(await page.getByText('Что будет учтено').isVisible(), 'превью правил');
     assert.match(await page.evaluate(() => document.body.innerText), /Плечо: не назначать — жим над головой/);
@@ -421,6 +466,102 @@ const check = async (name, fn) => {
     await page.waitForTimeout(1000);
     assert.match(await page.evaluate(() => document.body.innerText), /вывод тренера|прошлая неделя пустая/i);
     await shot('review');
+  });
+
+  await check('30. Сон 7 ч 43 мин: колесо часы+минуты сохраняется в минутах', async () => {
+    await page.goto(`${URL}/checkin`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const spin = async (id, idx) => {
+      await page.evaluate(([tid, i]) => {
+        const root = document.querySelector(`[data-testid="${tid}"]`);
+        const sc = [...root.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10 && getComputedStyle(d).overflowY !== 'visible');
+        sc.scrollTop = i * 40;
+        sc.dispatchEvent(new Event('scroll'));
+      }, [id, idx]);
+      await page.waitForTimeout(600);
+    };
+    await spin('sleep-wheel-h', 7);
+    await spin('sleep-wheel-m', 43);
+    assert.equal((await page.getByTestId('sleep-value').innerText()).trim(), '7 ч 43 мин');
+    await page.getByText(/^Сохранить · /).click();
+    await page.waitForTimeout(800);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('form.checkins')));
+    const today = Object.values(saved.state.byDate).sort((a, b) => b.createdAt - a.createdAt)[0];
+    assert.equal(today.sleepMinutes, 463);
+    assert.equal(saved.version, 2);
+    assert.match(await page.evaluate(() => document.body.innerText), /Высокая|Нормальная|Сниженная|Низкая/, 'категория вместо %');
+  });
+
+  await check('31. Тап по всей карточке «Завтрак» открывает «Добавить в Завтрак»; сводка с клетчаткой', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const t = await page.evaluate(() => document.body.innerText);
+    for (const k of ['Белки', 'Углеводы', 'Жиры', 'Клетчатка']) assert.match(t, new RegExp(k, 'i'), k);
+    const card = await page.getByTestId('meal-breakfast').boundingBox();
+    // Тап в середину нижней строки карточки, а не по маленькому «+»
+    await page.mouse.click(card.x + card.width * 0.4, card.y + card.height - 8);
+    await page.waitForTimeout(800);
+    assert.ok(await page.getByText('Добавить в Завтрак', { exact: true }).isVisible(), 'лист «Добавить в Завтрак»');
+    for (const o of ['Поиск продукта', 'Сканировать штрихкод', 'Недавние', 'Частые продукты', 'Мои блюда']) assert.ok(await page.getByText(o, { exact: true }).count(), o);
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(500);
+  });
+
+  await check('32. Календарь: тап по старой дате показывает именно этот день', async () => {
+    const sess = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((s) => s.status === 'completed').sort((a, b) => a.startedAt - b.startedAt)[0]);
+    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    // Неделя с числами и подсветкой сегодня
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    assert.match(await page.getByTestId(`day-${iso}`).getAttribute('aria-label'), /сегодня/);
+    await page.getByLabel('Открыть календарь месяца').click();
+    await page.waitForTimeout(500);
+    for (let i = 0; i < 3 && !(await page.getByTestId(`day-${sess.date}`).count()); i++) {
+      await page.getByLabel('Предыдущий месяц').click();
+      await page.waitForTimeout(400);
+    }
+    await page.getByTestId(`day-${sess.date}`).first().click();
+    await page.waitForTimeout(800);
+    const det = await page.getByTestId('day-details').innerText();
+    assert.ok(det.includes(sess.name), `в истории дня «${sess.name}»`);
+    await shot('day-details');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(500);
+  });
+
+  await check('33. Главная: быстрые действия, шаги «X / цель», замеры в один тап', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    for (const l of ['+ Еда', '+ Замеры', 'Check-in']) assert.ok(await page.getByLabel(l, { exact: true }).isVisible(), l);
+    assert.ok(await page.getByTestId('measure-card').isVisible(), 'карточка замеров');
+    await page.getByLabel('+ Замеры', { exact: true }).click();
+    await page.waitForTimeout(700);
+    assert.ok(await page.getByText('Талия · на уровне пупка, на выдохе').isVisible(), 'лист замеров: талия');
+    await page.getByText('Сохранить', { exact: true }).last().click();
+    await page.waitForTimeout(800);
+    await shot('home-v2');
+  });
+
+  await check('34. Старые сохранённые данные (v1, без новых полей) открываются', async () => {
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    await page.evaluate((day) => {
+      localStorage.setItem('form.checkins', JSON.stringify({ state: { byDate: { [day]: { date: day, sleepHours: 6.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() } } }, version: 1 }));
+    }, iso);
+    await page.goto(`${URL}/checkin`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    assert.equal((await page.getByTestId('sleep-value').innerText()).trim(), '6 ч 30 мин');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('form.checkins')));
+    assert.equal(saved.version, 2, 'миграция записала v2');
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    assert.match(await page.evaluate(() => document.body.innerText), /Клетчатка/i);
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {
