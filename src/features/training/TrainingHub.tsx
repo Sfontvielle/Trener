@@ -66,7 +66,7 @@ export function TrainingHub() {
           {tw.kind === 'workout' && tw.template ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                <T v="h1" numberOfLines={1} style={{ flexShrink: 1 }}>
+                <T v="h1" numberOfLines={2} style={{ flexShrink: 1 }}>
                   {tw.template.name}
                 </T>
                 <T v="small">~{tw.estMinutes} мин</T>

@@ -26,6 +26,7 @@ import { addDays, daysBetween, relativeDay, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
+import { WaterSheet } from '@/features/nutrition/WaterSheet';
 import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday, usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { MealIcon } from '@/features/nutrition/MealIcon';
@@ -194,7 +195,7 @@ export default function Nutrition() {
                   }}
                   style={styles.quick}
                 >
-                  <T v="small" color={colors.text} numberOfLines={1} style={{ fontWeight: '700', maxWidth: 150 }}>
+                  <T v="small" color={colors.text} numberOfLines={2} style={{ fontWeight: '700', maxWidth: 150 }}>
                     {f.product.name}
                   </T>
                   <T v="small" style={{ fontSize: 11 }}>
@@ -323,7 +324,7 @@ export default function Nutrition() {
                 </View>
                 {o.items.map((it) => (
                   <View key={it.product.id} style={{ flexDirection: 'row' }}>
-                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={1}>
+                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={2}>
                       {it.product.name}
                     </T>
                     <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
@@ -355,6 +356,7 @@ export default function Nutrition() {
 
 /** Вода за день: +250 / +500 одним тапом, ориентир — от веса и тренировки */
 function WaterRow({ date }: { date: string }) {
+  const [open, setOpen] = useState(false);
   const ml = useNutrition((s) => s.water[date] ?? 0);
   const w = useProfile((s) => s.profile?.weightKg ?? 75);
   const goal = waterTarget(w, false);
@@ -364,13 +366,14 @@ function WaterRow({ date }: { date: string }) {
   };
   return (
     <View style={styles.water}>
+      <WaterSheet visible={open} onClose={() => setOpen(false)} date={date} />
       <Icon name="water-outline" size={20} color={colors.protein} />
-      <View style={{ flex: 1, gap: 4 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Вода: изменить объём" onPress={() => setOpen(true)} style={{ flex: 1, gap: 4 }}>
         <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
           Вода {ml >= 1000 ? `${String(Math.round(ml / 50) / 20).replace('.', ',')} л` : `${ml} мл`} <T v="small">из ~{String(goal / 1000).replace('.', ',')} л</T>
         </T>
         <Bar progress={ml / goal} color={colors.protein} height={4} />
-      </View>
+      </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Минус 250 мл воды" disabled={!ml} onPress={() => add(-250)} style={[styles.waterBtn, !ml && { opacity: 0.4 }]} hitSlop={4}>
         <Icon name="remove" size={18} />
       </Pressable>

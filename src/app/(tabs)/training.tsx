@@ -208,7 +208,7 @@ function TodayTab({ bottom }: { bottom: number }) {
                         return (
                           <Pressable key={i} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} style={styles.exRow}>
                             {ex ? <ExerciseThumb ex={ex} size={30} /> : null}
-                            <T v="body" numberOfLines={1} style={{ flex: 1, fontSize: 15 }}>
+                            <T v="body" numberOfLines={2} style={{ flex: 1, fontSize: 15 }}>
                               {ex?.name}
                             </T>
                             <T v="small">
@@ -465,7 +465,7 @@ function TemplateCard({ t, editable, customs }: { t: WorkoutTemplate; editable: 
             return (
               <Pressable key={`${pe.exerciseId}-${i}`} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} accessibilityRole="button">
                 {ex ? <ExerciseThumb ex={ex} size={34} /> : null}
-                <T v="small" color={colors.text} numberOfLines={1} style={{ flex: 1 }}>
+                <T v="small" color={colors.text} numberOfLines={2} style={{ flex: 1 }}>
                   {ex?.name}
                 </T>
                 <T v="small">

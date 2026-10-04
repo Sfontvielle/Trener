@@ -116,7 +116,8 @@ export function Button({
       hitSlop={size === 'sm' ? 6 : 0}
       style={({ pressed }) => [
         styles.btn,
-        { backgroundColor: bg, height: h, paddingHorizontal: size === 'sm' ? 14 : 20 },
+        // minHeight: длинный текст (например «Далее: Тяга горизонтального блока…») переносится, а не обрезается
+        { backgroundColor: bg, minHeight: h, paddingVertical: 6, paddingHorizontal: size === 'sm' ? 14 : 20 },
         variant === 'outline' && { borderWidth: 1, borderColor: colors.borderStrong },
         full && { alignSelf: 'stretch' },
         (disabled || loading) && { opacity: 0.45 },
@@ -129,7 +130,7 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={size === 'sm' ? 16 : 19} color={fg} /> : null}
-          <Text numberOfLines={1} style={[styles.btnText, { color: fg, fontSize: size === 'sm' ? 14 : size === 'lg' ? 17 : 16 }]}>
+          <Text numberOfLines={2} style={[styles.btnText, { color: fg, fontSize: size === 'sm' ? 14 : size === 'lg' ? 17 : 16, textAlign: 'center', flexShrink: 1 }]}>
             {title}
           </Text>
         </>

@@ -258,7 +258,7 @@ const check = async (name, fn) => {
     // «Сегодня»: главное действие и метрики дня — на первом экране
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    for (const l of ['Калории, открыть питание', 'Вода: добавить стакан 250 мл', 'Шаги', 'Сон, чек-ин', 'Прогресс к цели']) assert.ok(await page.getByLabel(l).count(), l);
+    for (const l of ['Калории, открыть питание', 'Вода: добавить или уменьшить', 'Шаги', 'Сон, чек-ин', 'Прогресс к цели']) assert.ok(await page.getByLabel(l).count(), l);
     await shot('home');
   });
 
@@ -685,6 +685,60 @@ const check = async (name, fn) => {
     assert.match(det, /Питание/);
     assert.match(det, /ккал/);
     await shot('diary');
+  });
+
+  await check('39. Вода: увеличить и уменьшить в листе с главной', async () => {
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    await page.getByLabel('Вода: добавить или уменьшить').click();
+    await page.waitForTimeout(700);
+    const amount = async () => (await page.getByTestId('water-amount').innerText()).trim();
+    const a0 = await amount();
+    await page.getByLabel('Увеличить на 250 мл').click();
+    await page.waitForTimeout(200);
+    await page.getByLabel('Увеличить на 250 мл').click();
+    await page.waitForTimeout(200);
+    const a1 = await amount();
+    assert.notEqual(a1, a0, 'увеличилось');
+    await page.getByLabel('Уменьшить на 250 мл').click();
+    await page.waitForTimeout(200);
+    assert.notEqual(await amount(), a1, 'уменьшилось');
+    // Лист закрывается свайпом вниз за шапку
+    const head = await page.getByText('Ориентир', { exact: false }).last().boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
+    await touch('touchStart', head.y);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', head.y + i * 30); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByTestId('water-amount').count(), 0, 'лист закрыт свайпом');
+  });
+
+  await check('40. «Добавить в Завтрак»: лист со списком стягивается пальцем за содержимое', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByTestId('meal-lunch').click();
+    await page.waitForTimeout(800);
+    const row = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    assert.ok(row, 'лист открыт');
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
+    // Короткое движение — лист следует за пальцем и возвращается
+    await touch('touchStart', row.y + 5);
+    for (let i = 1; i <= 3; i++) { await touch('touchMove', row.y + 5 + i * 15); await page.waitForTimeout(30); }
+    const mid = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    assert.ok(mid && mid.y > row.y + 10, `следует за пальцем: ${row.y} → ${mid && mid.y}`);
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(700);
+    const back = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    assert.ok(back && Math.abs(back.y - row.y) < 3, 'вернулся без прыжка');
+    await touch('touchStart', row.y + 5);
+    for (let i = 1; i <= 14; i++) { await touch('touchMove', row.y + 5 + i * 30); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByText('Поиск продукта', { exact: true }).count(), 0, 'закрыт свайпом');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

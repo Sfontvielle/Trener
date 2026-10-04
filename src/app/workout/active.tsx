@@ -6,7 +6,7 @@ import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise, Workout
 import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
-import { SideDrawer } from '@/components/SideDrawer';
+import { DrawerScroll, SideDrawer } from '@/components/SideDrawer';
 import { confirm, toast, useDialog } from '@/components/Dialog';
 import { useWorkouts, hasProgress } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
@@ -508,7 +508,7 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
         </View>
       }
     >
-      <ScrollView contentContainerStyle={{ gap: 6, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+      <DrawerScroll contentContainerStyle={{ gap: 6, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
         {items.map((it) => {
           const ex = getExercise(it.we.exerciseId, customs);
           const full = it.total > 0 && it.done === it.total;
@@ -530,7 +530,7 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
             </Pressable>
           );
         })}
-      </ScrollView>
+      </DrawerScroll>
     </SideDrawer>
   );
 }
@@ -546,7 +546,7 @@ function SwapSuggestions({ exerciseId, onPick }: { exerciseId: string; onPick: (
       {alts.map((a) => (
         <Pressable key={a.id} onPress={() => onPick(a)} style={styles.alt}>
           <Icon name="swap-horizontal" size={16} color={colors.accent} />
-          <T v="body" numberOfLines={1} style={{ flex: 1 }}>
+          <T v="body" numberOfLines={2} style={{ flex: 1 }}>
             {a.name}
           </T>
         </Pressable>
