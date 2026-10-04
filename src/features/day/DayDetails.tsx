@@ -157,7 +157,7 @@ function Block({ icon, title, right, children }: { icon: IconName; title: string
     <View style={styles.block}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Icon name={icon} size={18} color={colors.accent} />
-        <T v="h3" style={{ flex: 1, fontSize: 16 }} numberOfLines={1}>
+        <T v="h3" style={{ flex: 1, fontSize: 16 }} numberOfLines={2}>
           {title}
         </T>
         {right ? <T v="small">{right}</T> : null}

@@ -47,6 +47,7 @@ import { dayInsights, readinessLabel } from '@/features/science/insights';
 import { sleepBaseline } from '@/features/science/recovery';
 import { BASIS_LABEL } from '@/features/science/sources';
 import { QuickMeasureSheet } from '@/features/progress/QuickMeasureSheet';
+import { WaterSheet } from '@/features/nutrition/WaterSheet';
 import { measurementDue } from '@/features/progress/reminders';
 import { missedWorkoutProposal } from '@/features/training/schedule';
 import { TrainingCalendar } from '@/features/day/Calendar';
@@ -101,6 +102,7 @@ export default function Home() {
   const [measureOpen, setMeasureOpen] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
+  const [waterOpen, setWaterOpen] = useState(false);
   const [dayOpen, setDayOpen] = useState<string | null>(null);
   const [shiftHidden, setShiftHidden] = useState(false);
   const daySrc = useDaySources();
@@ -182,11 +184,6 @@ export default function Home() {
   const waterGoal = waterTarget(trend?.w ?? profile.weightKg, trainingDay);
   const shownJournal = allJournal ? journal : journal.slice(-5);
 
-  const addWater = (ml: number) => {
-    useNutrition.getState().addWater(d, ml);
-    haptic.light();
-    toast(`Вода +${ml} мл`, 'water-outline', { label: 'Отменить', onPress: () => useNutrition.getState().addWater(d, -ml) });
-  };
   const reactTo = (i: LocalInsight, status: 'accepted' | 'dismissed') => {
     if (i.key) useCoach.getState().recordAdvice({ key: i.key, date: d, text: i.text, status });
   };
@@ -270,7 +267,7 @@ export default function Home() {
             a11y="Калории, открыть питание"
           />
           <Tile label="Белок" value={target ? `${Math.round(nut.eaten.protein)}` : '—'} sub={target ? `из ${target.protein} г` : ''} progress={target ? nut.eaten.protein / target.protein : undefined} color={colors.protein} icon="egg-outline" onPress={() => router.push('/nutrition')} a11y="Белок, открыть питание" />
-          <Tile label="Вода" value={water < 1000 ? `${water} мл` : `${String(Math.round(water / 50) / 20).replace('.', ',')} л`} sub={`из ${String(waterGoal / 1000).replace('.', ',')} л · тап +250`} progress={water / waterGoal} color={colors.protein} icon="water-outline" onPress={() => addWater(250)} onLongPress={() => water > 0 && addWater(-250)} a11y="Вода: добавить стакан 250 мл" />
+          <Tile label="Вода" value={water < 1000 ? `${water} мл` : `${String(Math.round(water / 50) / 20).replace('.', ',')} л`} sub={`из ${String(waterGoal / 1000).replace('.', ',')} л · тап — изменить`} progress={water / waterGoal} color={colors.protein} icon="water-outline" onPress={() => setWaterOpen(true)} a11y="Вода: добавить или уменьшить" />
           <Tile
             label="Шаги"
             value={health?.steps !== undefined && steps ? `${fmtNum(health.steps)} / ${fmtNum(steps.target)}` : '—'}
@@ -449,6 +446,7 @@ export default function Home() {
       <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">
         <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); setTimeout(() => setDayOpen(x), 250); }} />
       </Sheet>
+      <WaterSheet visible={waterOpen} onClose={() => setWaterOpen(false)} date={d} />
       <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
       <QuickMeasureSheet visible={measureOpen} onClose={() => setMeasureOpen(false)} date={d} />
       <Sheet visible={stepsOpen} onClose={() => setStepsOpen(false)} title="Шаги" subtitle={steps ? `Цель ${fmtNum(steps.target)} · ${BASIS_LABEL[steps.basis.kind]}` : undefined}>

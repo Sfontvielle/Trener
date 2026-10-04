@@ -142,7 +142,7 @@ export default function SessionDetail() {
           <T v="caption">Относительно прошлого раза</T>
           {progress.map((p) => (
             <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <T v="body" style={{ flex: 1, fontSize: 14 }} numberOfLines={1}>
+              <T v="body" style={{ flex: 1, fontSize: 14 }} numberOfLines={2}>
                 {p.name}
               </T>
               <T v="body" style={{ fontWeight: '800', fontSize: 14 }} color={p.up ? colors.accent : p.text === '=' ? colors.textDim : colors.warning}>

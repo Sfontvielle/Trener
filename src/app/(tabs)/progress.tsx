@@ -301,7 +301,7 @@ export default function Progress() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
               {lifts.map((id) => (
                 <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: id === liftId }} onPress={() => setLift(id)} style={{ paddingHorizontal: 12, height: 32, borderRadius: radius.pill, justifyContent: 'center', backgroundColor: id === liftId ? colors.accent : colors.surface2 }}>
-                  <T v="small" color={id === liftId ? colors.onAccent : colors.text} style={{ fontWeight: '700' }} numberOfLines={1}>
+                  <T v="small" color={id === liftId ? colors.onAccent : colors.text} style={{ fontWeight: '700' }} numberOfLines={2}>
                     {getExercise(id, customs)?.name ?? id}
                   </T>
                 </Pressable>
@@ -371,7 +371,7 @@ export default function Progress() {
             <Card key={r.exerciseId} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: r.exerciseId } })} style={{ paddingVertical: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <T v="body" style={{ fontWeight: '700' }} numberOfLines={1}>
+                  <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
                     {r.name}
                   </T>
                   <T v="small">

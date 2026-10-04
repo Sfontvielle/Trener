@@ -284,7 +284,7 @@ function ExList({ title, empty, items, onRemove, onAdd }: { title: string; empty
         {items.map((it) => (
           <View key={it.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40 }}>
             <View style={{ flex: 1 }}>
-              <T v="body" style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+              <T v="body" style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={2}>
                 {getExercise(it.id)?.name ?? it.id}
               </T>
               {it.sub ? <T v="small">{it.sub}</T> : null}

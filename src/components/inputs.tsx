@@ -6,11 +6,13 @@ import { haptic } from '@/services/haptics';
 import { parseDecimal } from '@/utils/format';
 import { useEnsureVisible } from './keyboard';
 
-export function Field({ label, hint, error, style, ...rest }: TextInputProps & { label?: string; hint?: string; error?: string; style?: StyleProp<ViewStyle> }) {
+/** accessory — кнопка ВНУТРИ поля справа (например «+» выбора из списка) */
+export function Field({ label, hint, error, style, accessory, ...rest }: TextInputProps & { label?: string; hint?: string; error?: string; style?: StyleProp<ViewStyle>; accessory?: React.ReactNode }) {
   const ensure = useEnsureVisible();
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <T v="caption">{label}</T> : null}
+      <View>
       <TextInput
         placeholderTextColor={colors.muted}
         selectionColor={colors.accent}
@@ -25,8 +27,10 @@ export function Field({ label, hint, error, style, ...rest }: TextInputProps & {
           rest.onContentSizeChange?.(e);
           if (rest.multiline) ensure();
         }}
-        style={[styles.input, !!error && { borderColor: colors.danger }, rest.multiline && { minHeight: 88, height: undefined, maxHeight: 180, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' }]}
+        style={[styles.input, !!error && { borderColor: colors.danger }, rest.multiline && { minHeight: 88, height: undefined, maxHeight: 180, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' }, !!accessory && { paddingRight: 52 }]}
       />
+      {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
+      </View>
       {error ? (
         <T v="small" color={colors.danger}>
           {error}
@@ -186,6 +190,7 @@ export function Toggle({ value, onChange, label, sub }: { value: boolean; onChan
 }
 
 const styles = themed({
+  accessory: { position: 'absolute', right: 6, top: 6 },
   input: {
     height: 50,
     borderRadius: radius.md,

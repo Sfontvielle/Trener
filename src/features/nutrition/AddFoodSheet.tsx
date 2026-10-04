@@ -201,7 +201,7 @@ function ProductRow({ p, grams, onAdd, onOpen }: { p: FoodProduct; grams: number
   return (
     <View style={styles.prow}>
       <Pressable style={{ flex: 1 }} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${p.name}, выбрать порцию`}>
-        <T v="body" numberOfLines={1} style={{ fontWeight: '600' }}>
+        <T v="body" numberOfLines={2} style={{ fontWeight: '600' }}>
           {p.name}
         </T>
         <T v="small" style={{ fontSize: 12 }}>

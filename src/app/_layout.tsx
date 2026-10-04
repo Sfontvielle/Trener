@@ -3,6 +3,7 @@ import { ActivityIndicator, Animated, AppState, Platform, View } from 'react-nat
 import { Stack, router, useNavigationContainerRef, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SystemUI from 'expo-system-ui';
 import { colors } from '@/theme';
 import { useHydrated } from '@/stores/hydration';
@@ -127,14 +128,14 @@ export default function RootLayout() {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
   }, [theme.key]);
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider key={theme.key} style={{ backgroundColor: colors.bg }}>
         <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
         <Gate />
         <DialogHost />
       </SafeAreaProvider>
       <ThemeFade themeKey={theme.key} />
-    </View>
+    </GestureHandlerRootView>
   );
 }
 

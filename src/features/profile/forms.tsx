@@ -297,19 +297,37 @@ export function FoodSection({ p, set }: { p: UserProfile; set: Setter }) {
 export function TagInput({ label, values, onChange, category }: { label: string; values: string[]; onChange: (v: string[]) => void; category: PickerCategory }) {
   const [open, setOpen] = useState(false);
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 6 }}>
       <T v="caption">{label}</T>
-      <View style={styles.wrap}>
-        {values.map((v) => (
-          <Pressable key={v} accessibilityLabel={`Удалить ${v}`} onPress={() => onChange(values.filter((x) => x !== v))} style={styles.tag}>
-            <T v="small" color={colors.onAccent} style={{ fontWeight: '700' }}>
-              {v}
+      {/* Поле целиком: выбранное — чипами внутри, «+» внутри справа; тап по полю открывает выбор */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Добавить: ${label}`}
+        onPress={() => {
+          haptic.tap();
+          setOpen(true);
+        }}
+        style={({ pressed }) => [styles.tagField, pressed && { opacity: 0.85 }]}
+      >
+        <View style={[styles.wrap, { flex: 1 }]}>
+          {values.map((v) => (
+            <Pressable key={v} accessibilityLabel={`Удалить ${v}`} onPress={() => onChange(values.filter((x) => x !== v))} style={styles.tag} hitSlop={4}>
+              <T v="small" color={colors.onAccent} style={{ fontWeight: '700' }}>
+                {v}
+              </T>
+              <Icon name="close" size={14} color={colors.onAccent} />
+            </Pressable>
+          ))}
+          {!values.length ? (
+            <T v="body" color={colors.muted} style={{ alignSelf: 'center', fontSize: 16 }}>
+              Выбрать из списка или вписать своё
             </T>
-            <Icon name="close" size={14} color={colors.onAccent} />
-          </Pressable>
-        ))}
-        <AddPill label={values.length ? 'Добавить' : `Выбрать`} onPress={() => setOpen(true)} a11y={`Добавить: ${label}`} />
-      </View>
+          ) : null}
+        </View>
+        <View style={styles.inlineAdd}>
+          <Icon name="add" size={22} color={colors.accent} />
+        </View>
+      </Pressable>
       <CategoryPicker visible={open} category={category} value={values} onClose={() => setOpen(false)} onSave={onChange} />
     </View>
   );
@@ -320,36 +338,37 @@ export function PickerField({ label, value, onChange, category, placeholder, hin
   const [open, setOpen] = useState(false);
   const items = splitItems(value);
   return (
-    <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <T v="caption">{label}</T>
-        <AddPill label="Выбрать" onPress={() => setOpen(true)} a11y={`Выбрать: ${label}`} />
-      </View>
-      <Field accessibilityLabel={label} placeholder={placeholder} value={value} onChangeText={onChange} multiline maxLength={maxLength} hint={hint} />
+    <View style={{ gap: 6 }}>
+      {/* Подпись переносится на новую строку, ничего не уезжает за край */}
+      <T v="caption">{label}</T>
+      <Field
+        accessibilityLabel={label}
+        placeholder={placeholder}
+        value={value}
+        onChangeText={onChange}
+        multiline
+        maxLength={maxLength}
+        hint={hint}
+        accessory={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Выбрать: ${label}`}
+            onPress={() => {
+              haptic.tap();
+              setOpen(true);
+            }}
+            hitSlop={6}
+            style={({ pressed }) => [styles.inlineAdd, pressed && { opacity: 0.7 }]}
+          >
+            <Icon name="add" size={22} color={colors.accent} />
+          </Pressable>
+        }
+      />
       <CategoryPicker visible={open} category={category} value={items} onClose={() => setOpen(false)} onSave={(v) => onChange(joinItems(v))} />
     </View>
   );
 }
 
-function AddPill({ label, onPress, a11y }: { label: string; onPress: () => void; a11y: string }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y}
-      onPress={() => {
-        haptic.tap();
-        onPress();
-      }}
-      hitSlop={6}
-      style={({ pressed }) => [styles.addPill, pressed && { opacity: 0.7 }]}
-    >
-      <Icon name="add" size={16} color={colors.accent} />
-      <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
-        {label}
-      </T>
-    </Pressable>
-  );
-}
 
 const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -357,6 +376,7 @@ const styles = themed({
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
-  addPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 32, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim },
+  tagField: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingLeft: space.md, paddingRight: 6, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  inlineAdd: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   rules: { gap: 4, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
 });
