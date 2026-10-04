@@ -548,6 +548,8 @@ export interface Macros {
   protein: number;
   fat: number;
   carbs: number;
+  /** Клетчатка, г. undefined = неизвестно (не 0!) — у многих продуктов в базах её нет */
+  fiber?: number;
 }
 
 export interface FoodProduct {

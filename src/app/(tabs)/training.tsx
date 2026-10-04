@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Exercise, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
+import type { Exercise, ISODate, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
@@ -28,12 +28,14 @@ import { doneFineVolume } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
 import { ExerciseList } from '@/features/exercises/ExerciseList';
 import { WeekStrip } from '@/features/profile/PlanSummary';
+import { TrainingCalendar } from '@/features/day/Calendar';
+import { DayDetailsSheet, useDaySources } from '@/features/day/DayDetails';
 import { checkDeload, deloadDates, DELOAD_FACTOR, DELOAD_RIR, isDeloadActive } from '@/features/training/deload';
 import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
-import { addDays, formatDayShort, relativeDay, startOfWeek, today, weekdayIndex as weekdayIndexOf, WEEKDAYS_SHORT } from '@/utils/date';
+import { addDays, formatDayShort, relativeDay, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
 import { BRAND } from '@/config/brand';
 
 type Seg = 'today' | 'plan' | 'history' | 'library';
@@ -86,8 +88,6 @@ function TodayTab({ bottom }: { bottom: number }) {
   // Прямые подходы по детальным группам: сделано с понедельника / запланировано на неделю
   const week = useMemo(() => doneFineVolume(sessions, startOfWeek(d), d, customs), [sessions, d, customs]);
   const planned = useMemo(() => (plan ? planVolume(plan, customs) : null), [plan, customs]);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(d), i)), [d]);
-  const doneDays = new Set(sessions.filter((s) => s.status === 'completed').map((s) => s.date));
   const checkins = useCheckins((s) => s.byDate);
   const overrides = usePlan((s) => s.overrides);
   const adjustments = usePlan((s) => s.adjustments);
@@ -95,6 +95,8 @@ function TodayTab({ bottom }: { bottom: number }) {
   const deloadActive = isDeloadActive(overrides);
   const [deloadPlanOpen, setDeloadPlanOpen] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
+  const [dayOpen, setDayOpen] = useState<ISODate | null>(null);
+  const daySrc = useDaySources();
   const volGroups = VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
     const target = Math.round(planned?.[g] ?? 0);
     return { g, p: target ? Math.round(week[g] ?? 0) / target : 0 };
@@ -105,6 +107,8 @@ function TodayTab({ bottom }: { bottom: number }) {
       data={[]}
       renderItem={null}
       ListFooterComponent={
+        <>
+        <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
         <Sheet visible={volOpen} onClose={() => setVolOpen(false)} title="Объём за неделю" subtitle="Прямые рабочие подходы с понедельника · сделано / план">
           <View style={{ gap: 10 }}>
             {VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
@@ -127,29 +131,13 @@ function TodayTab({ bottom }: { bottom: number }) {
             })}
           </View>
         </Sheet>
+        </>
       }
       contentContainerStyle={{ paddingBottom: bottom }}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
         <View style={{ gap: space.md }}>
-          <T v="caption">Эта неделя</T>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {weekDays.map((wd, i) => {
-              const planned = plan?.schedule[i];
-              const done = doneDays.has(wd);
-              const isToday = wd === d;
-              return (
-                <View key={wd} style={[styles.day, planned && { borderColor: colors.borderStrong }, isToday && { borderColor: colors.accent }]}>
-                  <T v="small" style={{ fontSize: 11 }} color={isToday ? colors.accent : colors.textDim}>
-                    {WEEKDAYS_SHORT[i]}
-                  </T>
-                  <View style={[styles.dayDot, done ? { backgroundColor: colors.accent } : planned ? { backgroundColor: colors.surface3 } : null]}>
-                    {done ? <Icon name="checkmark" size={12} color={colors.onAccent} /> : null}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+          <TrainingCalendar today={d} src={daySrc} onSelect={setDayOpen} />
 
           {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" onAction={resumeActive} /> : null}
           {deloadActive ? (

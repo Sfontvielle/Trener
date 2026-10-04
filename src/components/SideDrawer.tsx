@@ -16,7 +16,7 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
   const [mounted, setMounted] = useState(visible);
   const [anim] = useState(() => new Animated.Value(0));
   const [drag] = useState(() => new Animated.Value(0));
-  const live = useRef({ onClose, w: panelW, closing: false });
+  const live = useRef({ onClose, w: panelW, closing: false, offset: 0 });
   useEffect(() => {
     live.current.onClose = onClose;
     live.current.w = panelW;
@@ -27,14 +27,23 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
   const [pan] = useState(() => {
     const release = (_e: unknown, g: PanResponderGestureState) => {
       if (live.current.closing) return;
-      if (g.dx > live.current.w * 0.3 || (g.vx > 0.5 && g.dx > 20)) {
+      const dx = Math.max(0, g.dx - live.current.offset);
+      if (dx > live.current.w * 0.3 || (g.vx > 0.4 && dx > 16)) {
         live.current.closing = true;
-        Animated.timing(drag, { toValue: live.current.w, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
+        // Длительность — по оставшемуся пути и скорости броска: панель «уезжает» с той же скоростью, что и палец
+        const left = live.current.w - dx;
+        const v = Math.max(0.8, g.vx); // px/ms
+        Animated.timing(drag, { toValue: live.current.w, duration: Math.max(90, Math.min(220, left / v)), easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => live.current.onClose());
       } else Animated.spring(drag, { toValue: 0, velocity: g.vx, damping: 26, stiffness: 300, overshootClamping: true, useNativeDriver: true }).start();
     };
     return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_e, g) => g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderMove: (_e, g) => drag.setValue(Math.max(0, g.dx)),
+      // Порог небольшой, а смещение порога вычитается — панель не «прыгает» на 10 pt в начале жеста
+      onMoveShouldSetPanResponderCapture: (_e, g) => g.dx > 6 && Math.abs(g.dx) > Math.abs(g.dy) * 1.3,
+      onPanResponderGrant: (_e, g) => {
+        drag.stopAnimation();
+        live.current.offset = g.dx;
+      },
+      onPanResponderMove: (_e, g) => drag.setValue(Math.max(0, g.dx - live.current.offset)),
       onPanResponderRelease: release,
       onPanResponderTerminate: release,
       onPanResponderTerminationRequest: () => false,
