@@ -55,7 +55,18 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await page.waitForTimeout(300);
     }
   };
-  const errorScreen = async () => (await page.getByText('Что-то пошло не так').count()) > 0;
+  const logBox = async (pg = page) => {
+    try {
+      return (await pg.locator('#error-toast div').filter({ hasText: /\S/ }).first().innerText({ timeout: 300 })).trim();
+    } catch {
+      return '';
+    }
+  };
+  const errorScreen = async () => {
+    const lb = await logBox();
+    if (lb) problems.push(`[ошибка React в консоли @ ${where}] ${lb.slice(0, 200)}`);
+    return (await page.getByText('Что-то пошло не так').count()) > 0;
+  };
 
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.find((s) => s.status === 'completed'));
   const plan = await page.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);

@@ -28,7 +28,7 @@ export function CoachFeed({ items, onAction, onDismiss }: { items: FeedItem[]; o
         const t = TONE[it.tone];
         return (
           <FadeIn key={it.id} delay={60 * i}>
-            <View style={[styles.card, it.tone === 'urgent' && { borderColor: colors.danger }]} accessible={false}>
+            <View style={[styles.card, it.tone === 'urgent' && { borderColor: colors.danger }]}>
               <View style={[styles.icon, { backgroundColor: t.bg }]}>
                 <Icon name={it.icon as IconName} size={16} color={t.color} />
               </View>

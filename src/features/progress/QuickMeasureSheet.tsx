@@ -11,6 +11,7 @@ import { useProfile } from '@/stores/profile';
 import { haptic } from '@/services/haptics';
 import { METRIC_META } from './metrics';
 import type { BodyMetric, ISODate } from '@/types';
+import { afterModalClose } from '@/components/modalGate';
 
 type Kind = BodyMetric['kind'];
 const EXTRA: Kind[] = ['chest', 'arm', 'thigh', 'hips', 'bodyfat'];
@@ -80,7 +81,7 @@ export function QuickMeasureSheet({ visible, onClose, date }: { visible: boolean
           size="sm"
           onPress={() => {
             onClose();
-            setTimeout(() => router.push('/measurements'), 250);
+            afterModalClose(() => router.push('/measurements'));
           }}
         />
       </View>

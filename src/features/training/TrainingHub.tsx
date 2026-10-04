@@ -13,6 +13,7 @@ import { openCustomBuilder, openGenerated, resumeActive, startTodayPlanned } fro
 import { useProfile } from '@/stores/profile';
 import { formatDayShort } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { afterModalClose } from '@/components/modalGate';
 
 const MINUTES = [30, 45, 60, 75, 90];
 
@@ -50,7 +51,7 @@ export function TrainingHub() {
   const run = (fn: () => void) => {
     close();
     setGenOpen(false);
-    setTimeout(fn, 220);
+    afterModalClose(fn);
   };
   const doneSets = active ? active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0) : 0;
 

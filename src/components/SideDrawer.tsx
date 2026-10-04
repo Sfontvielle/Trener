@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GH, GestureRoot, SafeDetector } from './gestures';
+import { useModalPresence } from './useModalPresence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
@@ -14,7 +15,6 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const panelW = Math.min(380, Math.round(width * 0.86));
-  const [mounted, setMounted] = useState(visible);
   const [anim] = useState(() => new Animated.Value(0));
   const [drag] = useState(() => new Animated.Value(0));
   const live = useRef({ onClose, w: panelW, closing: false });
@@ -83,23 +83,23 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
     return { pan, native, handlers: undefined };
   });
 
-  if (visible && !mounted) setMounted(true);
-  useEffect(() => {
-    if (visible) {
+  const { mounted, shown, onDismiss } = useModalPresence(
+    visible,
+    () => {
       live.current.closing = false;
       drag.setValue(0);
       Animated.timing(anim, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    } else if (mounted) {
+    },
+    (done) => {
       live.current.closing = true;
-      Animated.timing(anim, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setMounted(false));
-    }
-  }, [visible, anim, drag, mounted]);
-
+      Animated.timing(anim, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => done());
+    },
+  );
   if (!mounted) return null;
   const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [panelW, 0] });
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, panelW], outputRange: [1, 0], extrapolate: 'clamp' }));
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <Modal visible={shown} onDismiss={onDismiss} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <GestureRoot style={{ flex: 1 }}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть список" />

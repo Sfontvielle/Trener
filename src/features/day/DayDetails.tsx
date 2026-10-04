@@ -17,6 +17,7 @@ import { METRIC_META } from '@/features/progress/metrics';
 import { formatDayLong, formatSleep, relativeDay, today, WEEKDAYS_SHORT, weekdayIndex } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 import { buildDaySummary, type DaySources, type DaySummary } from './summary';
+import { afterModalClose } from '@/components/modalGate';
 
 const FEEL: Record<string, string> = { easy: 'легко', ok: 'нормально', hard: 'тяжело', max: 'до отказа' };
 const fmt1 = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',');
@@ -89,7 +90,7 @@ export function DayDetails({ s, onClose }: { s: DaySummary; onClose?: () => void
               accessibilityRole="button"
               onPress={() => {
                 onClose?.();
-                router.push({ pathname: '/workout/[id]', params: { id: w.id } });
+                afterModalClose(() => router.push({ pathname: '/workout/[id]', params: { id: w.id } }));
               }}
             >
               <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
@@ -165,7 +166,7 @@ export function DayDetails({ s, onClose }: { s: DaySummary; onClose?: () => void
           accessibilityRole="button"
           onPress={() => {
             onClose?.();
-            router.push('/labs');
+            afterModalClose(() => router.push('/labs'));
           }}
         >
           <Block icon="flask-outline" title={`Анализы${l.lab ? ` · ${l.lab}` : ''}`} right="›">

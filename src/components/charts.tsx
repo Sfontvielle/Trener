@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, StyleProp, View, ViewStyle } from 'react-native';
+import { Animated, Easing, Platform, StyleProp, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { colors } from '@/theme';
 import { T } from './ui';
@@ -229,7 +229,12 @@ export function ActivityRings({ rings, size = 64, stroke = 7, label }: { rings: 
           return (
             <React.Fragment key={i}>
               <Circle cx={c} cy={c} r={r} stroke={r0.color} strokeOpacity={0.18} strokeWidth={stroke} fill="none" />
-              <AnimatedCircle cx={c} cy={c} r={r} stroke={r0.color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [len, len * (1 - p)] })} />
+              {Platform.OS === 'web' ? (
+                // Web: Animated-обёртка передаёт в <circle> лишний атрибут — рисуем сразу итоговое значение
+                <Circle cx={c} cy={c} r={r} stroke={r0.color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} strokeDashoffset={len * (1 - p)} />
+              ) : (
+                <AnimatedCircle cx={c} cy={c} r={r} stroke={r0.color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [len, len * (1 - p)] })} />
+              )}
             </React.Fragment>
           );
         })}

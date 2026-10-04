@@ -1,4 +1,5 @@
 import React, { useEffect, useState} from 'react';
+import { useModalPresence } from './useModalPresence';
 import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { create } from 'zustand';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,11 +48,17 @@ export function toast(text: string, icon?: IconName, action?: ToastAction) {
 }
 
 export function DialogHost() {
-  const dialog = useDialog((s) => s.dialog);
+  const live = useDialog((s) => s.dialog);
   const hide = useDialog((s) => s.hide);
+  // Последний показанный диалог держим на время анимации закрытия; открытие — через очередь окон (modalGate)
+  const [kept, setKept] = useState<typeof live>(null);
+  if (live && live !== kept) setKept(live);
+  const dialog = live ?? kept;
+  const { mounted, shown, onDismiss } = useModalPresence(!!live, () => {}, (done) => done());
   return (
     <>
-      <Modal visible={!!dialog} transparent animationType="fade" onRequestClose={hide}>
+      {mounted ? (
+      <Modal visible={shown} onDismiss={onDismiss} transparent animationType="fade" onRequestClose={hide}>
         <View style={styles.backdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={hide} />
           {dialog ? (
@@ -82,6 +89,7 @@ export function DialogHost() {
           ) : null}
         </View>
       </Modal>
+      ) : null}
       <ToastView />
     </>
   );
