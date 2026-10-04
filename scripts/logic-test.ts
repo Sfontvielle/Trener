@@ -549,7 +549,8 @@ test('Т10. «Повышенное восстановление» не даёт 
 
 test('Т11–12. Apple Health: отказ — приложение работает; данные есть — попадают в готовность с личной базой', async () => {
   // В node (как в Expo Go) нативного модуля нет: статус «нужна сборка», чтение — пустое, без исключений
-  assert.equal(healthAvailability(), 'needs_dev_build');
+  // В node нативного модуля нет (как в сборке без HealthKit): статус «модуль отсутствует», чтение — пустое, без исключений
+  assert.equal(healthAvailability(), 'module_missing');
   assert.deepEqual(await fetchHealthDays(7), []);
   const d = today();
   const c: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, createdAt: 0 };
