@@ -32,6 +32,7 @@ import { METRIC_META } from '@/features/progress/metrics';
 import { BRAND } from '@/config/brand';
 import { CATEGORY_LABEL, categoryForScore } from '@/features/science/recovery';
 import { useLabs } from '@/stores/labs';
+import { PhotoCompare } from '@/features/progress/PhotoCompare';
 import { healthFlags } from '@/features/labs/analysis';
 
 type Range = '7' | '30' | '90' | 'all';
@@ -64,7 +65,7 @@ export default function Progress() {
     const from = addDays(d, -Number(range) + 1);
     return trend.filter((p) => p.date >= from);
   }, [trend, range, d]);
-  const points = useMemo(() => shown.map((p) => ({ x: daysBetween(shown[0].date, p.date), y: p.trend, raw: p.raw })), [shown]);
+  const points = useMemo(() => shown.map((p) => ({ x: daysBetween(shown[0].date, p.date), y: p.trend, raw: p.raw, date: p.date })), [shown]);
   const rate = useMemo(() => weeklyRate(trend, 21), [trend]);
   const change = shown.length >= 2 ? shown[shown.length - 1].trend - shown[0].trend : 0;
   const goalRate = profile ? targetWeeklyChangeKg(profile, trend.length ? trend[trend.length - 1].trend : profile.weightKg) : 0;
@@ -263,7 +264,7 @@ export default function Progress() {
         {waist.length >= 2 ? (
           <>
             <T v="caption">Талия, см</T>
-            <TrendChart points={waist.map((p) => ({ x: daysBetween(waist[0].date, p.date), y: p.value, raw: p.value }))} unit="см" labels={[formatDayShort(waist[0].date), formatDayShort(waist[waist.length - 1].date)]} height={140} />
+            <TrendChart points={waist.map((p) => ({ x: daysBetween(waist[0].date, p.date), y: p.value, raw: p.value, date: p.date }))} unit="см" labels={[formatDayShort(waist[0].date), formatDayShort(waist[waist.length - 1].date)]} height={140} />
           </>
         ) : null}
         {Object.keys(latestMetrics).length ? (
@@ -293,6 +294,7 @@ export default function Progress() {
         ) : (
           <T v="small">Талия и другие замеры показывают изменения тела точнее весов. Записывай раз в 1–2 недели.</T>
         )}
+        <PhotoCompare photos={photos} />
         {photos.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
             {(photos.length > 1 ? [photos[0], ...photos.slice(-5).filter((x) => x !== photos[0])] : photos).map((ph, i) => (
@@ -325,7 +327,7 @@ export default function Progress() {
               ))}
             </ScrollView>
             {liftPts.length >= 2 ? (
-              <TrendChart points={liftPts.map((p) => ({ x: daysBetween(liftPts[0].date, p.date), y: p.value, raw: p.value }))} labels={[formatDayShort(liftPts[0].date), formatDayShort(liftPts[liftPts.length - 1].date)]} height={150} />
+              <TrendChart points={liftPts.map((p) => ({ x: daysBetween(liftPts[0].date, p.date), y: p.value, raw: p.value, date: p.date }))} labels={[formatDayShort(liftPts[0].date), formatDayShort(liftPts[liftPts.length - 1].date)]} height={150} />
             ) : (
               <T v="small">Нужно минимум 2 тренировки с весом в этом упражнении.</T>
             )}
@@ -412,7 +414,7 @@ export default function Progress() {
 
       <SectionTitle title="Восстановление · 7 дней" />
       <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, columnGap: 12, justifyContent: 'space-between', marginBottom: 10 }}>
           <Stat label="Готовность, неделя" value={readiness7.some((x) => x) ? CATEGORY_LABEL[categoryForScore(readiness7.filter((x) => x).reduce((a, b) => a + b, 0) / readiness7.filter((x) => x).length)] : '—'} />
           <Stat label="Сон, ср." value={avgSleep ? formatHours(avgSleep) : '—'} unit={avgSleep ? 'ч' : undefined} />
           <Stat label="Чек-инов" value={`${sleep.length}/7`} />

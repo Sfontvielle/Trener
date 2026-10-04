@@ -59,7 +59,13 @@ export interface LinePoint {
   x: number; // индекс/время
   y: number;
   raw?: number;
+  /** Дата точки (YYYY-MM-DD) — показывается при касании графика */
+  date?: string;
 }
+
+const fmtVal = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',');
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const fmtDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}` : '');
 
 const pad = { l: 8, r: 40, t: 12, b: 20 };
 
@@ -67,6 +73,7 @@ const pad = { l: 8, r: 40, t: 12, b: 20 };
 /** band — референсный диапазон [низ, верх] (полупрозрачная полоса); undefined-граница = край графика */
 export function TrendChart({ points, height = 170, unit = 'кг', labels, band, emptyText }: { points: LinePoint[]; height?: number; unit?: string; labels?: [string, string]; band?: [number | undefined, number | undefined]; emptyText?: string }) {
   const [w, setW] = useState(0);
+  const [sel, setSel] = useState<number | null>(null);
   const data = useMemo(() => {
     if (points.length < 2 || !w) return null;
     const vals: number[] = points.flatMap((p) => (p.raw !== undefined ? [p.y, p.raw] : [p.y]));
@@ -90,8 +97,37 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
     return { X, Y, d, area, min, max, bandRect };
   }, [points, w, height, band]);
 
+  // Касание / ведение пальцем — ближайшая точка: значение и дата. Вертикальная прокрутка страницы не блокируется
+  const pick = (x: number) => {
+    if (!data) return;
+    let best = 0;
+    let bd = Infinity;
+    points.forEach((p, i) => {
+      const dd = Math.abs(data.X(p.x) - x);
+      if (dd < bd) {
+        bd = dd;
+        best = i;
+      }
+    });
+    setSel(best);
+  };
+  const sp = sel !== null && data ? points[Math.min(sel, points.length - 1)] : null;
+  const tipX = sp && data ? Math.max(0, Math.min(w - 130, data.X(sp.x) - 65)) : 0;
   return (
-    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }}>
+    <View
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      style={{ height }}
+      onStartShouldSetResponder={() => !!data}
+      onResponderGrant={(e) => pick(e.nativeEvent.locationX)}
+      onResponderMove={(e) => pick(e.nativeEvent.locationX)}
+      onResponderTerminationRequest={() => true}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={points.length ? `График, ${points.length} точек: от ${fmtVal(points[0].raw ?? points[0].y)} до ${fmtVal(points[points.length - 1].raw ?? points[points.length - 1].y)} ${unit}` : 'График'}
+      accessibilityValue={sp ? { text: `${fmtVal(sp.raw ?? sp.y)} ${unit}${sp.date ? `, ${fmtDate(sp.date)}` : ''}` } : undefined}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => setSel((cur) => Math.max(0, Math.min(points.length - 1, (cur ?? points.length - 1) + (e.nativeEvent.actionName === 'increment' ? 1 : -1))))}
+    >
       {data ? (
         <Svg width={w} height={height}>
           <Defs>
@@ -117,6 +153,12 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
           {points.map((p, i) => (p.raw !== undefined ? <Circle key={i} cx={data.X(p.x)} cy={data.Y(p.raw)} r={2.6} fill={colors.muted} /> : null))}
           <Path d={data.d} stroke={colors.accent} strokeWidth={2.5} fill="none" strokeLinejoin="round" strokeLinecap="round" />
           <Circle cx={data.X(points[points.length - 1].x)} cy={data.Y(points[points.length - 1].y)} r={4.5} fill={colors.accent} />
+          {sp ? (
+            <>
+              <Line x1={data.X(sp.x)} x2={data.X(sp.x)} y1={pad.t} y2={height - pad.b} stroke={colors.textDim} strokeWidth={1} />
+              <Circle cx={data.X(sp.x)} cy={data.Y(sp.raw ?? sp.y)} r={6} fill={colors.surface} stroke={colors.accent} strokeWidth={2.5} />
+            </>
+          ) : null}
           {labels ? (
             <>
               <SvgText x={pad.l} y={height - 4} fill={colors.muted} fontSize={11}>
@@ -133,6 +175,16 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
           <T v="small">{points.length < 2 ? (emptyText ?? 'Нужно минимум 2 взвешивания') : ''}</T>
         </View>
       )}
+      {sp ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: tipX, width: 130, alignItems: 'center' }} testID="chart-tip">
+          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.surface3, borderWidth: 1, borderColor: colors.border }}>
+            <T v="small" color={colors.text} style={{ fontWeight: '800', fontSize: 12, textAlign: 'center' }}>
+              {fmtVal(sp.raw ?? sp.y)} {unit}
+              {sp.date ? ` · ${fmtDate(sp.date)}` : ''}
+            </T>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -153,6 +205,35 @@ export function MiniBars({ values, max, height = 48, highlightLast = true, color
           }}
         />
       ))}
+    </View>
+  );
+}
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/** Кольца дня (как «Активность»): тренировка, белок, шаги. progress 0…1, анимация заполнения */
+export function ActivityRings({ rings, size = 64, stroke = 7, label }: { rings: { progress: number; color: string }[]; size?: number; stroke?: number; label?: string }) {
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(v, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [v]);
+  const c = size / 2;
+  return (
+    <View accessible accessibilityRole="image" accessibilityLabel={label} style={{ width: size, height: size }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        {rings.map((r0, i) => {
+          const r = c - stroke / 2 - i * (stroke + 2);
+          if (r <= stroke) return null;
+          const len = 2 * Math.PI * r;
+          const p = Math.max(0, Math.min(1, r0.progress));
+          return (
+            <React.Fragment key={i}>
+              <Circle cx={c} cy={c} r={r} stroke={r0.color} strokeOpacity={0.18} strokeWidth={stroke} fill="none" />
+              <AnimatedCircle cx={c} cy={c} r={r} stroke={r0.color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${len} ${len}`} strokeDashoffset={v.interpolate({ inputRange: [0, 1], outputRange: [len, len * (1 - p)] })} />
+            </React.Fragment>
+          );
+        })}
+      </Svg>
     </View>
   );
 }

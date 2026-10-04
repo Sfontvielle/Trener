@@ -203,7 +203,7 @@ export function BodySection({ p, set }: { p: UserProfile; set: Setter }) {
   );
 }
 
-export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
+export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Setter; compact?: boolean }) {
   const toggleEq = (e: Equipment) => set({ equipment: p.equipment.includes(e) ? p.equipment.filter((x) => x !== e) : [...p.equipment, e] });
   const toggleDay = (d: number) => {
     const next = p.preferredDays.includes(d) ? p.preferredDays.filter((x) => x !== d) : [...p.preferredDays, d];
@@ -220,14 +220,16 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
             { v: 'advanced', label: 'Продвинутый' },
           ]}
           value={p.level}
-          onChange={(v) => set({ level: v })}
+          onChange={(v) => set(compact ? { level: v, trainingYears: v === 'beginner' ? 0 : v === 'intermediate' ? 2 : 5 } : { level: v })}
         />
       </View>
-      <NumberStepper label="Стаж тренировок, лет" value={p.trainingYears} onChange={(v) => set({ trainingYears: v })} step={0.5} decimals={1} min={0} max={40} />
+      {compact ? null : <NumberStepper label="Стаж тренировок, лет" value={p.trainingYears} onChange={(v) => set({ trainingYears: v })} step={0.5} decimals={1} min={0} max={40} />}
       <View style={{ gap: 6 }}>
         <T v="caption">Сколько дней в неделю реально можешь</T>
         <Opt items={[2, 3, 4, 5, 6].map((v) => ({ v, label: String(v) }))} value={p.daysPerWeek} onChange={(v) => set({ daysPerWeek: v, preferredDays: p.preferredDays.length === v ? p.preferredDays : [] })} />
       </View>
+      {compact ? null : (
+      <>
       <View style={{ gap: 6 }}>
         <T v="caption">Длительность тренировки</T>
         <Opt items={[45, 60, 75, 90].map((v) => ({ v, label: `${v} мин` }))} value={[45, 60, 75, 90].reduce((a, b) => (Math.abs(b - p.sessionMinutes) < Math.abs(a - p.sessionMinutes) ? b : a))} onChange={(v) => set({ sessionMinutes: v })} />
@@ -243,6 +245,8 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           {p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? `Выбрано ${p.preferredDays.length}, нужно ${p.daysPerWeek} — иначе ${BRAND} расставит дни сам.` : `Если не выбрать — ${BRAND} равномерно распределит тренировки.`}
         </T>
       </View>
+      </>
+      )}
       <View style={{ gap: 6 }}>
         <T v="caption">Где тренируешься</T>
         <Opt
@@ -254,6 +258,11 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           onChange={(v) => set({ location: v, equipment: v === 'gym' ? GYM_EQUIPMENT : HOME_DEFAULT })}
         />
       </View>
+      {compact ? (
+        <T v="small" style={{ fontSize: 12 }}>
+          {p.location === 'gym' ? 'Считаем, что в зале есть штанга, гантели, тренажёры и блоки.' : 'Дома: гантели, турник и резинки.'} Уточнить оборудование можно позже.
+        </T>
+      ) : (
       <View style={{ gap: 6 }}>
         <T v="caption">Доступное оборудование</T>
         <View style={styles.wrap}>
@@ -262,6 +271,7 @@ export function TrainingSection({ p, set }: { p: UserProfile; set: Setter }) {
           ))}
         </View>
       </View>
+      )}
     </View>
   );
 }

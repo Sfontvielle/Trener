@@ -36,12 +36,21 @@ const check = async (name, fn) => {
   {
     const octx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
     const op = await octx.newPage();
-    await check('0. Онбординг: шаг «Здоровье», введённые ограничения сразу превращаются в правила', async () => {
+    await check('0. Короткий онбординг (5 шагов) → «Дополни профиль: здоровье» в ленте → ограничения сразу превращаются в правила', async () => {
       await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
       await op.getByLabel('Как тебя зовут?').fill('Тест');
+      assert.match(await op.evaluate(() => document.body.innerText), /1 \/ 5/);
       for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
-      assert.ok(await op.getByText('Здоровье и особенности').isVisible(), 'шаг здоровья');
+      assert.match(await op.evaluate(() => document.body.innerText), /вот твой старт/);
+      await op.getByText('Начать с RYNJI').click();
+      await op.waitForTimeout(1500);
+      assert.ok(await op.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'после онбординга — главная');
+      // Остальное — позже: лента предлагает заполнить здоровье
+      assert.match(await op.getByTestId('coach-feed').innerText(), /Дополни профиль: здоровье/);
+      await op.getByLabel('Заполнить: Дополни профиль: здоровье и ограничения').click();
+      await op.waitForTimeout(1500);
+      assert.ok(await op.getByText('Здоровье и особенности').last().isVisible(), 'открыт раздел здоровья');
       await op.getByLabel('Хронические ограничения', { exact: true }).fill('протрузия L5, гипертония');
       await op.waitForTimeout(300);
       const t = await op.evaluate(() => document.body.innerText);
@@ -78,17 +87,22 @@ const check = async (name, fn) => {
       await op.getByText('Сохранить', { exact: true }).last().click();
       await op.waitForTimeout(500);
       assert.match(await op.getByLabel('Травмы', { exact: true }).inputValue(), /Плечо/);
-      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
-      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
+      await op.getByText('Сохранить и пересчитать').click();
+      await op.waitForTimeout(1000);
+      // Раздел заполнен — лента предлагает следующий, а не здоровье
+      await op.goto(URL, { waitUntil: 'networkidle' });
+      await op.waitForTimeout(1500);
+      const feed = await op.getByTestId('coach-feed').innerText();
+      assert.ok(!/Дополни профиль: здоровье/.test(feed), 'здоровье больше не предлагается');
+      assert.match(feed, /Дополни профиль: оборудование/);
+      // Питание: пикеры любимых и нелюбимых продуктов
+      await op.goto(`${URL}/profile?edit=food`, { waitUntil: 'networkidle' });
+      await op.waitForTimeout(1500);
       for (const [btn, title] of Object.entries({ 'Добавить: Любимые продукты': 'Любимые продукты', 'Добавить: Не ешь / не любишь': 'Не ешь / не любишь' })) {
         await openPicker(btn, title);
         await op.getByText('Отмена', { exact: true }).last().click();
         await op.waitForTimeout(500);
       }
-      await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350);
-      await op.getByText('Начать с RYNJI').click();
-      await op.waitForTimeout(1500);
-      assert.ok(await op.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'после онбординга — главная');
     });
     await octx.close();
   }

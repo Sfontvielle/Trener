@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
@@ -70,6 +70,18 @@ export default function Profile() {
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
+  // Переход с главной («Дополни профиль»): сразу открыть нужный раздел
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !profile || !edit || !(edit in TITLES)) return;
+    opened.current = true;
+    const t = setTimeout(() => {
+      setDraft({ ...profile });
+      setSection(edit as Exclude<Section, null>);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [edit, profile]);
 
   const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify' | 'weeklyReview', v: boolean) => {
     if (v && Platform.OS !== 'web') {
@@ -88,6 +100,10 @@ export default function Profile() {
   const save = () => {
     if (!draft) return;
     const r = applyProfile(draft);
+    // Раздел заполнен — больше не предлагать его на главной
+    const done = section === 'training' ? 'equipment' : section;
+    const pend = useProfile.getState().settings.setupPending;
+    if (pend?.length) updateSettings({ setupPending: pend.filter((x) => x !== done) });
     setSection(null);
     toast(r.planRebuilt ? 'План тренировок и питание пересчитаны' : r.targetChanged ? 'КБЖУ пересчитаны' : 'Сохранено');
   };

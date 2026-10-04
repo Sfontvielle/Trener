@@ -5,6 +5,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Icon, Segmented, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
+import { DateField } from '@/components/DateField';
 import { toast } from '@/components/Dialog';
 import { useLabDraft } from '@/stores/labDraft';
 import { useLabs } from '@/stores/labs';
@@ -14,12 +15,6 @@ import { draftIssues, emptyRow, reportFromDraft, type DraftRow, type LabDraft } 
 import { haptic } from '@/services/haptics';
 import { today } from '@/utils/date';
 
-const toRu = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : iso);
-const toIso = (ru: string) => {
-  const m = ru.trim().match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ru.trim();
-};
-
 /**
  * «Проверьте распознанные данные» — обязательный шаг. Распознанное (OCR, модель, разбор текста) может ошибаться,
  * поэтому ни одно значение не сохраняется как факт без подтверждения. Любое поле можно исправить.
@@ -27,11 +22,11 @@ const toIso = (ru: string) => {
 export default function LabReviewScreen() {
   const initial = useLabDraft((s) => s.draft);
   const [d, setD] = useState<LabDraft | null>(initial);
-  const [dateText, setDateText] = useState(toRu(initial?.date ?? today()));
+  const [date, setDate] = useState(initial?.date ?? today());
   useEffect(() => {
     if (!initial) router.replace('/labs');
   }, [initial]);
-  const issues = useMemo(() => (d ? draftIssues({ ...d, date: toIso(dateText) }) : []), [d, dateText]);
+  const issues = useMemo(() => (d ? draftIssues({ ...d, date }) : []), [d, date]);
   if (!d) return null;
 
   const update = (key: string, patch: Partial<DraftRow>) =>
@@ -47,7 +42,7 @@ export default function LabReviewScreen() {
   const low = d.rows.filter((r) => r.confidence === 'low').length;
 
   const save = () => {
-    const rep = reportFromDraft({ ...d, date: toIso(dateText) });
+    const rep = reportFromDraft({ ...d, date });
     useLabs.getState().add(rep);
     useLabDraft.getState().set(null);
     haptic.success();
@@ -64,7 +59,7 @@ export default function LabReviewScreen() {
           <Banner icon="eye-outline" tone={low ? 'warning' : 'info'} text={`Распознано показателей: ${d.rows.length}. Сверьте с бланком название, значение, единицы и референс${low ? ` — ${low} строк(и) стоит проверить особенно внимательно` : ''}.`} />
         ) : null}
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Field label="Дата анализа" value={dateText} onChangeText={setDateText} placeholder="ДД.ММ.ГГГГ" keyboardType="numbers-and-punctuation" style={{ flex: 1 }} testID="lab-date" />
+          <DateField label="Дата анализа" value={date} onChange={setDate} testID="lab-date" />
           <Field label="Лаборатория" value={d.lab} onChangeText={(lab) => setD({ ...d, lab })} placeholder="Инвитро, Хеликс…" style={{ flex: 1.3 }} />
         </View>
 

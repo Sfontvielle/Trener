@@ -5,6 +5,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, Card, Icon, T } from '@/components/ui';
 import { Field, Toggle } from '@/components/inputs';
+import { DateField } from '@/components/DateField';
 import { TrendChart } from '@/components/charts';
 import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
@@ -19,12 +20,6 @@ import { haptic } from '@/services/haptics';
 
 const LEVEL_COLOR: Record<SignalLevel, string> = { urgent: colors.danger, doctor: colors.warning, monitor: colors.warning, info: colors.textDim };
 const LEVEL_LABEL: Record<SignalLevel, string> = { urgent: 'срочно', doctor: 'обсудить с врачом', monitor: 'наблюдать', info: 'информация' };
-
-const toRu = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-const toIso = (ru: string) => {
-  const m = ru.trim().match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
-};
 
 /**
  * Здоровье: давление, пульс покоя, анализы и (по желанию) режим Enhanced/AAS.
@@ -44,7 +39,7 @@ export default function HealthMonitorScreen() {
   const [sys, setSys] = useState('');
   const [dia, setDia] = useState('');
   const [pulse, setPulse] = useState('');
-  const [aas, setAas] = useState({ substance: '', start: toRu(today()), end: '', dose: '', note: '' });
+  const [aas, setAas] = useState({ substance: '', start: today(), end: '', dose: '', note: '' });
 
   const signals = useMemo(() => healthMonitor({ enhanced: en.enabled, bp: en.bp, health, labs, weights, metrics, sex }), [en.enabled, en.bp, health, labs, weights, metrics, sex]);
   const bps = useMemo(() => bpSummary(en.bp), [en.bp]);
@@ -53,7 +48,7 @@ export default function HealthMonitorScreen() {
   const bpPoints = useMemo(() => {
     const pts = en.bp.slice(-30);
     const x0 = pts[0]?.date;
-    return pts.map((p) => ({ x: x0 ? daysBetween(x0, p.date) : 0, y: p.systolic }));
+    return pts.map((p) => ({ x: x0 ? daysBetween(x0, p.date) : 0, y: p.systolic, date: p.date }));
   }, [en.bp]);
 
   const saveBp = () => {
@@ -72,14 +67,18 @@ export default function HealthMonitorScreen() {
   };
 
   const saveAas = () => {
-    const start = toIso(aas.start);
+    const start = aas.start;
     if (!aas.substance.trim() || !start) {
-      toast('Укажите название и дату начала (ДД.ММ.ГГГГ)', 'alert-circle');
+      toast('Укажите название и дату начала', 'alert-circle');
       return;
     }
-    en.addAas({ substance: aas.substance.trim(), startDate: start, endDate: toIso(aas.end) || undefined, doseNote: aas.dose.trim() || undefined, note: aas.note.trim() || undefined });
+    if (aas.end && aas.end < start) {
+      toast('Окончание раньше начала', 'alert-circle');
+      return;
+    }
+    en.addAas({ substance: aas.substance.trim(), startDate: start, endDate: aas.end || undefined, doseNote: aas.dose.trim() || undefined, note: aas.note.trim() || undefined });
     haptic.success();
-    setAas({ substance: '', start: toRu(today()), end: '', dose: '', note: '' });
+    setAas({ substance: '', start: today(), end: '', dose: '', note: '' });
     setAasOpen(false);
   };
 
@@ -241,8 +240,8 @@ export default function HealthMonitorScreen() {
         <View style={{ gap: 10 }}>
           <Field label="Вещество" value={aas.substance} onChangeText={(substance) => setAas({ ...aas, substance })} placeholder="Название" />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Field label="Начало" value={aas.start} onChangeText={(start) => setAas({ ...aas, start })} placeholder="ДД.ММ.ГГГГ" keyboardType="numbers-and-punctuation" style={{ flex: 1 }} />
-            <Field label="Окончание" value={aas.end} onChangeText={(end) => setAas({ ...aas, end })} placeholder="необязательно" keyboardType="numbers-and-punctuation" style={{ flex: 1 }} />
+            <DateField label="Начало" value={aas.start} onChange={(start) => setAas({ ...aas, start })} />
+            <DateField label="Окончание" value={aas.end} onChange={(end) => setAas({ ...aas, end })} placeholder="необязательно" optional />
           </View>
           <Field label="Доза — как записываете вы" value={aas.dose} onChangeText={(dose) => setAas({ ...aas, dose })} placeholder="ваша запись" hint="Только для вашей истории. RYNJI не оценивает и не рекомендует дозировки." />
           <Field label="Заметка" value={aas.note} onChangeText={(note) => setAas({ ...aas, note })} multiline />

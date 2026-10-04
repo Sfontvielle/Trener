@@ -131,7 +131,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
     health: () => monkey('/health-monitor'),
     weekly: () => monkey('/weekly-review'),
     onboarding: async () => {
-      // Онбординг: шаг «Здоровье» — каждый «+» открывает выбор, выбор и сохранение без ошибок
+      // Короткий онбординг (5 шагов), затем раздел «Здоровье» из ленты — каждый «+» открывает выбор, выбор и сохранение без ошибок
       const p2 = await ctx.newPage();
       p2.on('pageerror', (e) => problems.push(`[pageerror @ onboarding] ${e.message}`));
       await p2.evaluate(() => localStorage.clear()).catch(() => {});
@@ -141,6 +141,10 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await p2.waitForTimeout(1200);
       await p2.getByLabel('Как тебя зовут?').fill('Тест');
       for (let i = 0; i < 4; i++) { await p2.getByText('Далее', { exact: true }).click(); await p2.waitForTimeout(300); }
+      await p2.getByText('Начать с RYNJI').click();
+      await p2.waitForTimeout(1500);
+      await p2.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
+      await p2.waitForTimeout(1500);
       const btns = await p2.evaluate(() => [...document.querySelectorAll('[aria-label^="Выбрать:"],[aria-label^="Добавить:"]')].map((e) => e.getAttribute('aria-label')));
       for (const b of btns) {
         where = `onboarding «${b}»`;

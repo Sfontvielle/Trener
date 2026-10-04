@@ -33,7 +33,7 @@ export default function MarkerScreen() {
   if (!b) return <Screen><Header title="Показатель" /><EmptyState icon="flask-outline" title="Показатель не найден" /></Screen>;
 
   const x0 = series[0]?.date;
-  const points = series.map((p) => ({ x: x0 ? daysBetween(x0, p.date) : 0, y: p.value }));
+  const points = series.map((p) => ({ x: x0 ? daysBetween(x0, p.date) : 0, y: p.value, date: p.date }));
   const unit = series[series.length - 1]?.unit ?? b.unit;
 
   return (

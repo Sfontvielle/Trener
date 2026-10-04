@@ -2,6 +2,7 @@ import React, { memo, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -23,9 +24,32 @@ export function Icon({ name, size = 20, color = colors.text, style }: { name: Ic
 
 type Variant = keyof typeof type;
 
+/**
+ * Динамический шрифт iOS: текст растёт вместе с системной настройкой размера. Предел роста зависит от роли:
+ * основной текст — до ×1,6 (читаемость важнее), заголовки уже крупные — до ×1,2–1,35, чтобы не ломать вёрстку.
+ */
+export const MAX_SCALE: Record<Variant, number> = { display: 1.2, h1: 1.2, h2: 1.35, h3: 1.35, body: 1.6, bodyDim: 1.6, small: 1.6, caption: 1.5, num: 1.3 } as Record<Variant, number>;
+
+// Веб-проверка вёрстки при крупном шрифте: localStorage 'rynji.fontScale' = 1.5 (имитация настройки iPhone)
+const SIM_SCALE = (() => {
+  try {
+    if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return 1;
+    const v = parseFloat(localStorage.getItem('rynji.fontScale') ?? '');
+    return Number.isFinite(v) && v > 1 ? v : 1;
+  } catch {
+    return 1;
+  }
+})();
+
+function simulate(st: TextStyle, k: number): TextStyle {
+  return { ...st, ...(st.fontSize ? { fontSize: st.fontSize * k } : null), ...(st.lineHeight ? { lineHeight: st.lineHeight * k } : null) };
+}
+
 export function T({ v = 'body', color, style, children, ...rest }: TextProps & { v?: Variant; color?: string }) {
+  const max = MAX_SCALE[v] ?? 1.4;
+  const st: StyleProp<TextStyle> = [type[v] as TextStyle, color ? { color } : null, style];
   return (
-    <Text {...rest} style={[type[v] as TextStyle, color ? { color } : null, style]} maxFontSizeMultiplier={1.3}>
+    <Text {...rest} style={SIM_SCALE > 1 ? simulate(StyleSheet.flatten(st), Math.min(SIM_SCALE, max)) : st} maxFontSizeMultiplier={max}>
       {children}
     </Text>
   );

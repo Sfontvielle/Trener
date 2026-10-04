@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise, WorkoutSession } from '@/types';
@@ -35,6 +35,7 @@ import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel 
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
+import { prefersReducedMotion } from '@/components/motion';
 
 /** Обработчик свайпа текущего экрана тренировки (экран один — модульная переменная безопасна) */
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
@@ -475,15 +476,43 @@ function AnimatedBar({ progress }: { progress: number }) {
   );
 }
 
-/** Новый рекорд: короткая «премиальная» плашка (scale + fade), без конфетти */
+/** Новый рекорд: «празднование» — плашка с пружиной, пульс кубка и разлёт искр; вибрация — haptic.record() */
+const SPARKS = Array.from({ length: 10 }, (_, i) => (i / 10) * Math.PI * 2);
 function PrBanner({ text, top }: { text: string; top: number }) {
   const [a] = useState(() => new Animated.Value(0));
+  const [burst] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    Animated.sequence([Animated.spring(a, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }), Animated.delay(2200), Animated.timing(a, { toValue: 0, duration: 260, useNativeDriver: true })]).start();
-  }, [a]);
+    AccessibilityInfo.announceForAccessibility?.(`Новый рекорд: ${text}`);
+    if (prefersReducedMotion()) {
+      a.setValue(1);
+      const t = setTimeout(() => Animated.timing(a, { toValue: 0, duration: 200, useNativeDriver: true }).start(), 2400);
+      return () => clearTimeout(t);
+    }
+    Animated.parallel([
+      Animated.sequence([Animated.spring(a, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }), Animated.delay(2200), Animated.timing(a, { toValue: 0, duration: 260, useNativeDriver: true })]),
+      Animated.timing(burst, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, [a, burst, text]);
+  const cup = a.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.6, 1.25, 1] });
   return (
     <Animated.View pointerEvents="none" style={[styles.pr, { top, opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
-      <Icon name="trophy" size={22} color={colors.onAccent} />
+      <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
+        {SPARKS.map((ang, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.spark,
+              {
+                opacity: burst.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 0] }),
+                transform: [{ translateX: burst.interpolate({ inputRange: [0, 1], outputRange: [0, Math.cos(ang) * 34] }) }, { translateY: burst.interpolate({ inputRange: [0, 1], outputRange: [0, Math.sin(ang) * 34] }) }],
+              },
+            ]}
+          />
+        ))}
+        <Animated.View style={{ transform: [{ scale: cup }] }}>
+          <Icon name="trophy" size={22} color={colors.onAccent} />
+        </Animated.View>
+      </View>
       <View style={{ flexShrink: 1 }}>
         <T v="caption" color={colors.onAccent}>
           Новый рекорд
@@ -966,6 +995,7 @@ const styles = themed({
   navDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   barTrack: { height: 4, backgroundColor: colors.surface3 },
   barFill: { height: 4, backgroundColor: colors.accent },
+  spark: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: colors.onAccent },
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4, borderRadius: radius.sm },
