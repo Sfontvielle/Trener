@@ -1,5 +1,6 @@
-import type { Exercise, ExerciseSet, ReadinessBand, Recommendation, WorkoutSession } from '@/types';
+import type { Exercise, ExerciseSet, ReadinessBand, Recommendation, WorkoutSession , GymSetup } from '@/types';
 import { fmtWeight } from '@/utils/format';
+import { DEFAULT_GYM, equipmentStep, loadKind, roundToEquipment } from './equipment';
 
 /**
  * Progressive overload — двойная прогрессия (ACSM 2009: когда выполняешь на 1–2 повтора больше цели
@@ -89,9 +90,17 @@ export function recommend(args: {
   band?: ReadinessBand;
   volumeFactor?: number;
   rirDelta?: number;
+  /** Оборудование зала — рекомендуются только реально выставляемые веса */
+  gym?: GymSetup;
 }): Recommendation {
   const { repMin, repMax, history, band } = args;
-  const ex = { ...args.exercise, increment: effectiveIncrement(args.exercise.increment, history) };
+  const gym = args.gym ?? DEFAULT_GYM;
+  // Шаг: реальный шаг оборудования → уточняется по весам, которые человек реально ставил
+  const lk = loadKind(args.exercise);
+  // Тренажёры: берём больший из шага стека и шага упражнения (жим ногами прибавляют по 5 кг на сторону)
+  const baseStep = lk === 'none' ? args.exercise.increment : lk === 'machine' ? Math.max(equipmentStep(args.exercise, gym), args.exercise.increment) : equipmentStep(args.exercise, gym);
+  const ex = { ...args.exercise, increment: effectiveIncrement(baseStep, history) };
+  const fit = (w: number, dir: 'up' | 'down') => (loadKind(ex) === 'none' ? w : roundToEquipment(w, args.exercise, gym, dir));
   const vf = args.volumeFactor ?? 1;
   const sets = Math.max(1, Math.round(args.plannedSets * vf));
   const rirDelta = args.rirDelta ?? (band === 'light' ? 1 : band === 'recover' ? 2 : 0);
@@ -146,7 +155,7 @@ export function recommend(args: {
     if (lowReadiness) {
       return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Готов к +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
     }
-    const next = roundTo(top + ex.increment, ex.increment >= 2 ? ex.increment / 2 : 0.5);
+    const next = fit(roundTo(top + ex.increment, ex.increment >= 2 ? ex.increment / 2 : 0.5), 'up');
     return { weight: next, repMin, repMax, sets, targetRir, action: 'increase', delta: `+${fmtWeight(next - top)} кг`, rationale: `Прошлый раз ${w(top)} × ${lastStr} с запасом — пробуем ${w(next)}.` };
   }
   if (allTop && !ok) {
@@ -156,7 +165,7 @@ export function recommend(args: {
   if (below >= 2 || (atTop.length === 1 && below === 1)) {
     const prevFailed = prevEntry && prevTop === top && prevEntry.sets.filter((s) => s.weight === top && s.reps < repMin).length >= 2;
     if (prevFailed) {
-      const next = Math.max(0, roundTo(top * 0.92, ex.increment >= 2 ? ex.increment / 2 : 0.5));
+      const next = Math.max(0, fit(roundTo(top * 0.92, ex.increment >= 2 ? ex.increment / 2 : 0.5), 'down'));
       return { weight: next, repMin, repMax, sets, targetRir, action: 'decrease', delta: `−${fmtWeight(top - next)} кг`, rationale: `Две тренировки подряд ниже ${repMin} повторов на ${w(top)}. Снизим до ${w(next)} и наберём повторы заново.` };
     }
     return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Прошлый раз ${w(top)} × ${lastStr} — ниже диапазона. Не повышаем, цель — ${repMin}+ во всех подходах.` };

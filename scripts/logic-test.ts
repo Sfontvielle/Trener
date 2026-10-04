@@ -8,8 +8,8 @@ import type { CoachAction, DailyCheckIn, WorkoutExercise, ExerciseSet, MovementR
 import { computeNutritionTarget , bmrMifflin, fiberTarget } from '../src/features/nutrition/targets';
 import { reviewCalories } from '../src/features/nutrition/adaptive';
 import { weightTrend, weeklyRate } from '../src/features/progress/weightTrend';
-import { effectiveIncrement, recommend } from '../src/features/training/progression';
-import { computeReadiness } from '../src/features/recovery/readiness';
+import { effectiveIncrement, recommend, workingSets } from '../src/features/training/progression';
+import { computeReadiness , negativeSignals } from '../src/features/recovery/readiness';
 import { alternativesFor, generatePlan, isAvailable, plannedWeeklySets } from '../src/features/training/planGenerator';
 import { excludeExercise, getPrefs, includeExercise, markDiscomfort, toggleFavorite, withPrefs } from '../src/features/training/engine/prefs';
 import { checkAllowed, progressStatus, scoreExercise } from '../src/features/training/engine/scoring';
@@ -47,6 +47,14 @@ import { goalProgress } from '../src/features/progress/goal';
 import { techniqueFor } from '../src/features/exercises/technique';
 import { KB_SOURCES } from '../src/features/coach/local/kbSources';
 import { BRAND } from '../src/config/brand';
+import { estimateMaintenance } from '../src/features/science/maintenance';
+import { DEFAULT_GYM, equipmentStep, isAchievable, plateLayout, roundToEquipment } from '../src/features/training/equipment';
+import { warmupPlan , warmupSets, platesPerSide } from '../src/features/training/warmup';
+import { autoregulate } from '../src/features/training/autoreg';
+import { missedWorkoutProposal, muscleOverlap } from '../src/features/training/schedule';
+import { lastPortion, usualMeal , frequentProducts, sameMealYesterday } from '../src/features/nutrition/quick';
+import { dedupeWorkouts, pickDailyWeight, stepsFromSources } from '../src/features/health/dedupe';
+import { measurementDue } from '../src/features/progress/reminders';
 import { migrateCheckins } from '../src/stores/checkins';
 import { localInsights } from '../src/features/coach/insights';
 import { macrosFor, sumFiber, sumMacros, fiberLabel } from '../src/features/nutrition/status';
@@ -61,10 +69,8 @@ import { LOCAL_FOODS } from '../src/data/foods';
 import { mapOffProduct } from '../src/services/foodApi';
 import { PICKER_CATALOG, joinItems, splitItems, toggleItem } from '../src/features/profile/pickerCatalog';
 
-import { warmupSets, platesPerSide } from '../src/features/training/warmup';
 import { checkDeload } from '../src/features/training/deload';
 import { lastWeekSummary } from '../src/features/progress/weekly';
-import { frequentProducts, sameMealYesterday } from '../src/features/nutrition/quick';
 
 const base: UserProfile = {
   name: 'Тест', sex: 'male', age: 30, heightCm: 180, weightKg: 80, goal: 'bulk', ratePctPerWeek: 0.35, level: 'intermediate', trainingYears: 2,
@@ -1170,4 +1176,166 @@ test('Шаг весов учится по истории: стек 5 кг → +5
   assert.equal(effectiveIncrement(2.5, [h(52.5), h(50)]), 2.5);
   const r = recommend({ exercise: ex, plannedSets: 2, repMin: 8, repMax: 10, targetRir: 2, history: [h(50), h(45)] });
   assert.equal(r.weight, 55);
+});
+
+// ─── Итерация «меньше ручного ввода» ────────────────────────────────────────
+
+const days = (n: number, ref = today()) => Array.from({ length: n }, (_, i) => addDays(ref, -n + i));
+const food = (date: string, kcal: number, meal: 'breakfast' | 'lunch' | 'dinner' | 'snack' = 'lunch', productId = 'p', grams = 100) => ({ id: `${date}-${productId}-${meal}`, date, productId, name: productId, grams, macros: { kcal, protein: 0, fat: 0, carbs: 0 }, meal, createdAt: new Date(`${date}T08:00:00`).getTime() });
+
+test('Персональный maintenance: ест ~2800 и вес стабилен 4 недели → расход ≈ 2800; мало данных → null', () => {
+  const ds = days(28);
+  const entries = ds.map((d) => food(d, 2800));
+  const weights: WeightEntry[] = ds.filter((_, i) => i % 2 === 0).map((d, i) => ({ id: `w${i}`, date: d, kg: 80 + (i % 2 ? 0.3 : -0.3), createdAt: 0 }));
+  const m = estimateMaintenance(entries, weights)!;
+  assert.ok(m, 'оценка есть');
+  assert.ok(Math.abs(m.kcal - 2800) <= 100, String(m.kcal));
+  assert.equal(m.confidence, 'high');
+  assert.match(m.text, /расход ≈/);
+  // Набирает 0,25 кг/нед при 2800 → расход ≈ 2800 − 275
+  const gaining: WeightEntry[] = ds.map((d, i) => ({ id: `g${i}`, date: d, kg: 80 + (0.25 / 7) * i, createdAt: 0 }));
+  const g = estimateMaintenance(entries, gaining)!;
+  assert.ok(Math.abs(g.kcal - 2525) <= 50, String(g.kcal));
+  assert.equal(estimateMaintenance(entries.slice(-7), weights), null, '7 дней — мало');
+  // Неполные дни (перекус записан, остальное нет) не занижают оценку
+  const partial = [...entries, ...days(28).filter((_, i) => i % 9 === 0).map((d) => ({ ...food(d, 300, 'snack', 'x'), id: `x${d}` }))];
+  assert.ok(Math.abs(estimateMaintenance(partial, weights)!.kcal - m.kcal) <= 150);
+});
+
+test('Калории по тренду веса: плато 3 недели при хорошем дневнике → +150 с понятной причиной', () => {
+  const baseIn = { goal: 'bulk' as const, targetKgPerWeek: 0.3, waistCmPerWeek: null, waistDays: 0, strength: 'progressing' as const, coverage: 0.85, daysSinceLastChange: 30, bodyWeightKg: 80 };
+  const flat = decideCalories({ ...baseIn, actualKgPerWeek: 0.02, trendDays: 21 });
+  assert.equal(flat.deltaKcal, 150);
+  assert.match(flat.summary, /Вес практически не меняется 3 нед\. при хорошем соблюдении питания.*Увеличить цель на 150 ккал\./);
+  const short = decideCalories({ ...baseIn, actualKgPerWeek: 0.02, trendDays: 12 });
+  assert.equal(short.action, 'hold', 'меньше 3 недель и силовые растут — ждём');
+  assert.ok(Math.abs(decideCalories({ ...baseIn, strength: 'unknown', actualKgPerWeek: 0.9 }).deltaKcal) <= 200, 'без скачков');
+});
+
+test('Калории по весу + талии: понятный итог одной фразой', () => {
+  const baseIn = { goal: 'bulk' as const, targetKgPerWeek: 0.3, strength: 'progressing' as const, coverage: 0.9, daysSinceLastChange: 30, bodyWeightKg: 80, trendDays: 21 };
+  const ok = decideCalories({ ...baseIn, actualKgPerWeek: 0.3, waistCmPerWeek: 0.05, waistDays: 28 });
+  assert.equal(ok.summary, 'Вес растёт в целевом диапазоне, талия стабильна, силовые показатели растут. Калории менять не нужно.');
+  const fat = decideCalories({ ...baseIn, strength: 'unknown', actualKgPerWeek: 0.7, waistCmPerWeek: 0.8, waistDays: 28 });
+  assert.equal(fat.deltaKcal, -150);
+  assert.equal(fat.summary, 'Вес растёт, талия также увеличивается. Снизить цель на 150 ккал.');
+});
+
+test('Оборудование: только реальные веса — штанга, гантели, тренажёр, раскладка блинов', () => {
+  const bench = getExercise('bench_press')!;
+  const db = getExercise('db_bench_press')!;
+  const lat = getExercise('lat_pulldown')!;
+  assert.equal(roundToEquipment(81.7, bench), 82.5);
+  assert.ok(isAchievable(82.5, bench) && !isAchievable(81.7, bench));
+  assert.equal(roundToEquipment(23, db, DEFAULT_GYM, 'up'), 24, 'гантели 20 → 22 → 24');
+  assert.equal(roundToEquipment(52.5, lat, DEFAULT_GYM, 'up'), 55);
+  assert.equal(roundToEquipment(52.5, lat, DEFAULT_GYM, 'down'), 50);
+  assert.deepEqual(plateLayout(82.5, bench)?.perSide, [25, 5, 1.25]);
+  const myGym = { ...DEFAULT_GYM, plates: [20, 10, 5] };
+  assert.equal(plateLayout(82.5, bench, myGym), null, 'без «блинчиков» 1,25 — не набирается');
+  assert.equal(roundToEquipment(82.5, bench, myGym), 80);
+  assert.equal(equipmentStep(bench, myGym), 10);
+  // Прогрессия не рекомендует невыставляемый вес
+  const h = [{ date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 2, sets: [set(80, 10, { rir: 2 }), set(80, 10, { rir: 2 })] }];
+  assert.equal(recommend({ exercise: bench, plannedSets: 2, repMin: 8, repMax: 10, targetRir: 2, history: h, gym: myGym }).weight, 90);
+  const dh = [{ date: addDays(today(), -3), repMin: 8, repMax: 12, plannedSets: 2, sets: [set(22, 12, { rir: 2 }), set(22, 12, { rir: 2 })] }];
+  assert.equal(recommend({ exercise: db, plannedSets: 2, repMin: 8, repMax: 12, targetRir: 2, history: dh }).weight, 24);
+});
+
+test('Разминка: по весу, опыту, разогреву и привычке; не считается рабочим объёмом', () => {
+  const sq = getExercise('back_squat')!;
+  assert.deepEqual(warmupPlan({ ex: sq, workWeight: 100 }).map((x) => x.weight), [20, 50, 70, 85]);
+  assert.deepEqual(warmupPlan({ ex: sq, workWeight: 100, level: 'beginner' }).map((x) => x.weight), [20, 50, 70]);
+  assert.deepEqual(warmupPlan({ ex: sq, workWeight: 100, warmedSimilar: true }), [{ weight: 70, reps: 3 }]);
+  assert.deepEqual(warmupPlan({ ex: sq, workWeight: 100, previousCount: 2 }).map((x) => x.weight), [70, 85]);
+  assert.deepEqual(warmupPlan({ ex: sq, workWeight: 30 }), [], 'лёгкий вес — без разминки');
+  assert.deepEqual(warmupPlan({ ex: getExercise('lateral_raise')!, workWeight: 100 }), [], 'изоляция');
+  for (const w of warmupPlan({ ex: sq, workWeight: 97.5 })) assert.ok(isAchievable(w.weight, sq), `${w.weight} выставляется`);
+  assert.equal(workingSets([set(20, 10, { warmup: true }), set(100, 5)]).length, 1);
+});
+
+test('Авторегуляция: 80×10 @RIR4 → +шаг; 80×6 @RIR0 → снизить; ниже цели, но с запасом — вес оставить', () => {
+  const we = (sets: ExerciseSet[]) => ({ id: 'w', exerciseId: 'bench_press', repMin: 8, repMax: 10, targetRir: 2, restSec: 120, plannedSets: 3, sets }) as WorkoutExercise;
+  const up = autoregulate(we([set(80, 10, { rir: 4 }), set(80, 0, { done: false }), set(80, 0, { done: false })]), 2.5);
+  assert.equal(up?.kind, 'increase');
+  assert.equal(up && 'weight' in up ? up.weight : 0, 82.5);
+  const down = autoregulate(we([set(80, 6, { rir: 0 }), set(80, 0, { done: false })]), 2.5);
+  assert.equal(down?.kind, 'decrease');
+  assert.equal(down && 'weight' in down ? down.weight : 0, 75);
+  assert.equal(autoregulate(we([set(80, 7, { rir: 3 }), set(80, 0, { done: false })]), 2.5)?.kind, 'keep');
+  assert.equal(autoregulate(we([set(80, 9, { rir: 2 }), set(80, 0, { done: false })]), 2.5), null, 'по плану');
+  assert.equal(autoregulate(we([set(80, 10, { rir: 4 })]), 2.5), null, 'подходов не осталось');
+});
+
+test('Готовность осторожно: один HRV ниже базы — по плану; совокупность признаков — облегчение', () => {
+  const c: DailyCheckIn = { date: today(), sleepHours: 7.8, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, hrvMs: 40, createdAt: 0 };
+  const one = computeReadiness(c, { sessions: [], hrvBaseline: 62, sleepBaseline: 7.8 });
+  assert.equal(one.band, 'go');
+  assert.match(one.headline, /Один показатель/);
+  const many = computeReadiness({ ...c, sleepHours: 5.5, energy: 2, hrvMs: 40 }, { sessions: [], hrvBaseline: 62, sleepBaseline: 7.8 });
+  assert.notEqual(many.band, 'go');
+  assert.ok(negativeSignals({ ...c, sleepHours: 4.5 }, {}, []) >= 2, 'сон < 5 ч — сильный признак');
+});
+
+test('Перенос пропущенной тренировки: последовательность сохраняется, те же мышцы не подряд', () => {
+  const plan = generatePlan({ ...base, daysPerWeek: 4 });
+  // Найти тренировочный день, за которым следует отдых, и день отдыха после тренировки
+  let slotThenRest: string | undefined;
+  let restAfterSlot: string | undefined;
+  for (let i = 0; i < 14; i++) {
+    const d = addDays(today(), i);
+    const s1 = !!plan.schedule[weekdayIndex(d)];
+    const s2 = !!plan.schedule[weekdayIndex(addDays(d, 1))];
+    if (s1 && !s2 && !slotThenRest) slotThenRest = d;
+    if (!s1 && !!plan.schedule[weekdayIndex(addDays(d, -1))] && !restAfterSlot) restAfterSlot = d;
+  }
+  const evening = missedWorkoutProposal({ date: slotThenRest!, hour: 21, plan, sessions: [], overrides: {} })!;
+  assert.equal(evening.kind, 'tomorrow');
+  assert.match(evening.text, /Перенести её на завтра\?/);
+  assert.equal(evening.overrides[0].mode, 'rest');
+  assert.equal(evening.overrides[1].templateId, evening.template.id, 'завтра (по плану отдых) — перенесённая');
+  assert.equal(missedWorkoutProposal({ date: slotThenRest!, hour: 10, plan, sessions: [], overrides: {} }), null, 'днём не предлагаем');
+  const morning = missedWorkoutProposal({ date: restAfterSlot!, hour: 8, plan, sessions: [], overrides: {} })!;
+  assert.equal(morning.kind, 'today');
+  assert.equal(morning.overrides[0].templateId, morning.template.id);
+  // Пересечение мышц: шаблон сам с собой — 1
+  assert.equal(muscleOverlap(plan.templates[0], plan.templates[0]), 1);
+});
+
+test('Питание: «обычный завтрак» из повторяющейся комбинации; последняя порция', () => {
+  const ref = today();
+  const prods = { oats: { id: 'oats', name: 'Овсянка', per100: { kcal: 370, protein: 13, fat: 7, carbs: 60 }, source: 'local' as const }, cott: { id: 'cott', name: 'Творог', per100: { kcal: 120, protein: 17, fat: 5, carbs: 2 }, source: 'local' as const }, egg: { id: 'egg', name: 'Яйцо', per100: { kcal: 155, protein: 13, fat: 11, carbs: 1 }, source: 'local' as const } };
+  const es = [1, 2, 3, 4].flatMap((i) => [food(addDays(ref, -i), 300, 'breakfast', 'oats', i === 4 ? 60 : 80), food(addDays(ref, -i), 240, 'breakfast', 'cott', 200)]);
+  es.push(food(addDays(ref, -2), 155, 'breakfast', 'egg', 100));
+  const u = usualMeal(es as never, prods as never, ref, 'breakfast')!;
+  assert.deepEqual(u.items.map((x) => x.product.id).sort(), ['cott', 'oats']);
+  assert.equal(u.items.find((x) => x.product.id === 'oats')!.grams, 80, 'медиана порции');
+  assert.equal(u.days, 4);
+  assert.equal(usualMeal(es.slice(0, 4) as never, prods as never, ref, 'breakfast'), null, 'мало дней');
+  const eatenToday = [...es, food(ref, 1, 'breakfast', 'oats'), food(ref, 1, 'breakfast', 'cott')];
+  assert.equal(usualMeal(eatenToday as never, prods as never, ref, 'breakfast'), null, 'уже съеден');
+  assert.deepEqual(lastPortion('rice', { rice: 180 }, [], { grams: 100 }), { grams: 180, source: 'last' });
+  assert.deepEqual(lastPortion('chicken', {}, [food(ref, 1, 'lunch', 'chicken', 220) as never], undefined), { grams: 220, source: 'last' }, 'из истории');
+  assert.deepEqual(lastPortion('new', {}, [], { grams: 30 }), { grams: 30, source: 'serving' });
+});
+
+test('Apple Health без дублей: сон, тренировки из двух приложений, вес, шаги', () => {
+  const h = 3600_000;
+  assert.equal(mergedMinutes([[0, 2 * h], [h, 3 * h], [5 * h, 6 * h]]), 240, 'iPhone + Watch — объединение');
+  const ws = dedupeWorkouts([{ start: 0, minutes: 60, strength: true }, { start: 5 * 60000, minutes: 50, kcal: 300, strength: false, source: 'Strava' }, { start: 3 * h, minutes: 30, strength: false }]);
+  assert.equal(ws.length, 2);
+  assert.equal(ws[0].kcal, 300, 'оставлена запись с энергией');
+  assert.equal(ws[0].strength, true);
+  assert.equal(pickDailyWeight([{ at: 2000, kg: 81 }, { at: 1000, kg: 80.4 }]), 80.4, 'утреннее');
+  assert.equal(stepsFromSources([{ source: 'iPhone', count: 5000 }, { source: 'Watch', count: 4800 }, { source: 'iPhone', count: 1000 }]), 6000, 'максимум по источникам, не сумма');
+});
+
+test('Напоминания о замерах: вес часто, талия раз в неделю, обхваты реже, одно за раз', () => {
+  const ref = today();
+  const w = (d: number): WeightEntry => ({ id: `w${d}`, date: addDays(ref, -d), kg: 80, createdAt: 0 });
+  assert.equal(measurementDue([], [], ref)?.kind, 'weight');
+  assert.equal(measurementDue([w(5), w(6), w(7)], [], ref)?.kind, 'weight', '5 дней без веса');
+  assert.equal(measurementDue([w(1), w(2), w(3)], [], ref)?.text, 'Пора обновить замер талии');
+  assert.equal(measurementDue([w(1), w(2), w(3)], [{ id: 'm', date: addDays(ref, -3), kind: 'waist', value: 84 }], ref), null);
+  assert.equal(measurementDue([w(1), w(2), w(3)], [{ id: 'm', date: addDays(ref, -3), kind: 'waist', value: 84 }, { id: 'a', date: addDays(ref, -30), kind: 'arm', value: 38 }], ref)?.kind, 'arm');
 });

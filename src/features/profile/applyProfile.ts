@@ -1,3 +1,5 @@
+import { estimateMaintenance } from '@/features/science/maintenance';
+import { useNutrition } from '@/stores/nutrition';
 import type { UserProfile } from '@/types';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
@@ -37,7 +39,10 @@ export function applyProfile(next: UserProfile, opts: { force?: boolean } = {}):
 
   const trendW = latestTrendWeight(useBody.getState().weights) ?? next.weightKg;
   const adj = goalChanged ? 0 : planState.target?.adjustmentKcal ?? 0;
-  const target = needTarget ? computeNutritionTarget(next, { weightKg: trendW, adjustmentKcal: adj }) : planState.target!;
+  // Персональный расход по фактическим данным заменяет формулу, когда накопилось 2+ недели данных.
+  // Только при «чистом» пересчёте (adj = 0): иначе прежние корректировки учлись бы дважды.
+  const mt = adj === 0 ? estimateMaintenance(useNutrition.getState().entries, useBody.getState().weights) : null;
+  const target = needTarget ? computeNutritionTarget(next, { weightKg: trendW, adjustmentKcal: adj, observedTdee: mt?.kcal, observedConfidence: mt?.confidence }) : planState.target!;
 
   if (needPlan) {
     const ws = useWorkouts.getState();
@@ -68,4 +73,22 @@ export function applyCalorieDelta(delta: number, reason: string, source: 'adapti
   const target = computeNutritionTarget(profile, { weightKg: trendW, adjustmentKcal: (ps.target.adjustmentKcal ?? 0) + delta });
   ps.setTarget(target);
   ps.addAdjustment({ kind: 'calories', summary: `${delta > 0 ? '+' : ''}${delta} ккал/день: ${reason}`, source, deltaKcal: delta });
+}
+
+/**
+ * Перекалибровать цель по персональному расходу: формула заменяется фактическими данными,
+ * накопленные корректировки сбрасываются (они уже «внутри» фактического расхода).
+ */
+export function recalibrateCalories(): { ok: boolean; message: string } {
+  const profile = useProfile.getState().profile;
+  const ps = usePlan.getState();
+  if (!profile || !ps.target) return { ok: false, message: 'Нет плана питания' };
+  const mt = estimateMaintenance(useNutrition.getState().entries, useBody.getState().weights);
+  if (!mt) return { ok: false, message: 'Пока мало данных: нужно 2+ недели дневника и взвешиваний' };
+  const trendW = latestTrendWeight(useBody.getState().weights) ?? profile.weightKg;
+  const target = computeNutritionTarget(profile, { weightKg: trendW, adjustmentKcal: 0, observedTdee: mt.kcal, observedConfidence: mt.confidence });
+  const delta = target.kcal - ps.target.kcal;
+  ps.setTarget(target);
+  ps.addAdjustment({ kind: 'calories', summary: `Калибровка по фактическому расходу ~${mt.kcal} ккал: ${delta > 0 ? '+' : ''}${delta} ккал`, source: 'adaptive', deltaKcal: delta });
+  return { ok: true, message: `Цель: ${target.kcal} ккал (${delta > 0 ? '+' : ''}${delta})` };
 }

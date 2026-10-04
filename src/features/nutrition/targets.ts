@@ -86,7 +86,7 @@ const FAT_PER_KG: Record<GoalType, number> = { bulk: 0.9, cut: 0.8, recomp: 0.85
 
 export function computeNutritionTarget(
   profile: UserProfile,
-  opts: { weightKg?: number; adjustmentKcal?: number; observedTdee?: number } = {},
+  opts: { weightKg?: number; adjustmentKcal?: number; observedTdee?: number; observedConfidence?: 'medium' | 'high' } = {},
 ): NutritionTarget {
   const w = opts.weightKg ?? profile.weightKg;
   const adj = opts.adjustmentKcal ?? 0;
@@ -105,10 +105,11 @@ export function computeNutritionTarget(
   let tdee = neat + train;
   let source: NutritionTarget['source'] = 'formula';
   if (opts.observedTdee && opts.observedTdee > 1200) {
-    // Смешиваем формулу и фактический расход (по дневнику + тренду веса)
-    tdee = tdee * 0.3 + opts.observedTdee * 0.7;
+    // Смешиваем формулу и фактический расход (дневник + тренд веса): чем больше данных, тем больше вес факта
+    const wObs = opts.observedConfidence === 'high' ? 0.85 : 0.6;
+    tdee = tdee * (1 - wObs) + opts.observedTdee * wObs;
     source = 'adaptive';
-    steps.push({ label: 'Фактический расход', value: `${round(opts.observedTdee, 10)} ккал`, note: 'По дневнику питания и тренду веса, вес 70%' });
+    steps.push({ label: 'Ваш фактический расход', value: `${round(opts.observedTdee, 10)} ккал`, note: `По дневнику питания и тренду веса (вес в расчёте ${Math.round(wObs * 100)}%). Формула — только стартовая оценка` });
   }
   steps.push({ label: 'Расход за сутки', value: `${round(tdee, 10)} ккал` });
 

@@ -1,5 +1,6 @@
 import type { BodyMetric, FoodEntry, ISODate, PlanAdjustment, UserProfile, WeightEntry, WorkoutSession } from '@/types';
-import { decideCalories, KCAL_PER_KG } from '@/features/science/calories';
+import { decideCalories } from '@/features/science/calories';
+import { estimateMaintenance, type MaintenanceEstimate } from '@/features/science/maintenance';
 import { waistTrend } from '@/features/science/bodyTrend';
 import type { Basis } from '@/features/science/sources';
 import { progressStatus } from '@/features/training/engine/scoring';
@@ -19,6 +20,10 @@ export interface CalorieReview {
   loggingCoverage: number;
   /** Пошаговое обоснование решения (из science/calories) */
   reasons: string[];
+  /** Итог одной фразой: «Вес растёт в целевом диапазоне, талия стабильна… Калории менять не нужно.» */
+  summary: string;
+  /** Персональная оценка расхода по фактическим данным (null — мало данных) */
+  maintenance: MaintenanceEstimate | null;
   basis: Basis;
 }
 
@@ -50,7 +55,9 @@ export function reviewCalories(args: {
   for (const e of entries) if (e.date > since && e.date < now) loggedDays.set(e.date, (loggedDays.get(e.date) ?? 0) + e.macros.kcal);
   const fullDays = [...loggedDays.values()].filter((k) => k > targetKcal * 0.5);
   const coverage = fullDays.length / 13;
-  const observedTdee = rate && coverage >= 0.7 ? avg(fullDays) - (rate.kgPerWeek * KCAL_PER_KG) / 7 : undefined;
+  // Персональный расход — отдельная оценка по 2–4 неделям (регрессия веса + полные дни дневника)
+  const maintenance = estimateMaintenance(entries, weights, now);
+  const observedTdee = maintenance?.kcal;
 
   // Таймер «ждём эффекта» запускают только изменения калорий (не перестройка тренировок)
   const lastCal = adjustments.filter((a) => a.kind === 'calories' && (a.deltaKcal !== 0 || a.source === 'goal_change')).sort((a, b) => b.createdAt - a.createdAt)[0];
@@ -67,6 +74,7 @@ export function reviewCalories(args: {
     coverage,
     daysSinceLastChange: daysSinceAdj,
     bodyWeightKg: currentW,
+    trendDays: rate?.days,
   });
 
   if (d.action === 'insufficient') {
@@ -79,6 +87,8 @@ export function reviewCalories(args: {
       detail: n === 0 ? `Взвешивайся утром 3–4 раза в неделю — через 2 недели ${BRAND} сверит калории с реальным трендом.` : `Есть ${n} ${n === 1 ? 'замер' : 'замера(ов)'}. Нужно ≥5 взвешиваний за 10+ дней, чтобы увидеть тренд.`,
       loggingCoverage: coverage,
       reasons: d.reasons,
+      summary: d.summary,
+      maintenance,
       basis: d.basis,
     };
   }
@@ -98,6 +108,8 @@ export function reviewCalories(args: {
     observedTdee,
     loggingCoverage: coverage,
     reasons: d.reasons,
+    summary: d.summary,
+    maintenance,
     basis: d.basis,
   };
 }
@@ -111,9 +123,6 @@ export function strengthSignal(sessions: WorkoutSession[]): 'progressing' | 'sta
   return st.filter((x) => x.status === 'progressing').length >= st.length / 2 ? 'progressing' : 'stalled';
 }
 
-function avg(a: number[]): number {
-  return a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
-}
 
 function isoFromMs(ms: number): ISODate {
   const d = new Date(ms);

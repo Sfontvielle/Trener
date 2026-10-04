@@ -13,7 +13,8 @@ import type { Basis } from './sources';
  *    зависит от состава ткани), поэтому используется только для перевода расхождения темпа в ккал.
  * Эвристики RYNJI (не из источников напрямую, а инженерные правила):
  *  • допуск темпа ±50% от цели (шум тренда при 3–4 взвешиваниях в неделю);
- *  • шаг корректировки 100–200 ккал, не чаще раза в 14 дней;
+ *  • шаг корректировки обычно 150 ккал (200 — при большом расхождении, 100 — при неполном дневнике), не чаще раза в 14 дней;
+ *  • набор: вес стоит ≥3 недели при дневнике ≥70% → +150 ккал (даже если силовые растут);
  *  • талия ≥1 см на 1 кг набора за 3+ недели → набор замедляем, даже если вес «в плане»;
  *  • вес стоит, но силовые растут → сначала ждём ещё неделю (рекомпозиция/вода), а не добавляем еду.
  */
@@ -34,23 +35,31 @@ export interface CalorieDecisionInput {
   coverage: number;
   daysSinceLastChange: number;
   bodyWeightKg: number;
+  /** Сколько дней покрывает тренд веса (для правила «стоит 3 недели») */
+  trendDays?: number;
 }
 
 export interface CalorieDecision {
   action: CalorieAction;
   deltaKcal: number;
   reasons: string[];
+  /** Короткий итог одной фразой: вес + талия + силовые + действие */
+  summary: string;
   basis: Basis;
 }
 
 export const KCAL_PER_KG = 7700;
 const MIN_DAYS_BETWEEN = 14;
-const step = (kcal: number) => Math.sign(kcal) * Math.min(200, Math.max(100, Math.round(Math.abs(kcal) / 50) * 50));
+/**
+ * Шаг изменения: обычно 150 ккал; 200 — только при большом расхождении темпа (> 2 допусков); 100 — при неполном дневнике.
+ * ЭВРИСТИКА RYNJI: маленькие объяснимые шаги, эффект оценивается через 2 недели.
+ */
+const step = (kcal: number, big: boolean) => Math.sign(kcal) * (big ? 200 : 150);
 const kg = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(2).replace('.', ',')} кг/нед`;
 
 export function decideCalories(i: CalorieDecisionInput): CalorieDecision {
   const basis: Basis = { kind: 'heuristic', sources: ['iraki2019', 'helms2023', 'hall2008', 'frankenfield2005'], note: 'темпы — из обзоров; допуски и шаги — правила RYNJI' };
-  if (i.actualKgPerWeek === null) return { action: 'insufficient', deltaKcal: 0, reasons: ['Нужно ≥5 взвешиваний за 10+ дней — пока решения по одному весу не принимаются.'], basis };
+  if (i.actualKgPerWeek === null) return { action: 'insufficient', deltaKcal: 0, reasons: ['Нужно ≥5 взвешиваний за 10+ дней — пока решения по одному весу не принимаются.'], summary: 'Пока мало взвешиваний — калории не меняем, по одному весу решения не принимаются.', basis };
   const r = i.actualKgPerWeek;
   const t = i.targetKgPerWeek;
   const tol = Math.max(0.1, Math.abs(t) * 0.5, i.bodyWeightKg * 0.0012);
@@ -60,27 +69,40 @@ export function decideCalories(i: CalorieDecisionInput): CalorieDecision {
   const lowData = i.coverage < 0.5;
   if (lowData) reasons.push('Дневник питания заполнен меньше чем наполовину — точность ниже, шаги корректировки минимальные.');
 
-  const propose = (kcal: number, why: string): CalorieDecision => {
-    if (wait) return { action: 'wait', deltaKcal: 0, reasons: [...reasons, why, `Калории меняли ${i.daysSinceLastChange} дн. назад — ждём эффекта ещё ${MIN_DAYS_BETWEEN - i.daysSinceLastChange} дн.`], basis };
-    const d = lowData ? Math.sign(kcal) * 100 : step(kcal);
-    return { action: d > 0 ? 'increase' : 'decrease', deltaKcal: d, reasons: [...reasons, why], basis };
+  const waistTxt = i.waistCmPerWeek === null || i.waistDays < 14 ? '' : Math.abs(i.waistCmPerWeek) < 0.15 ? 'талия стабильна' : i.waistCmPerWeek > 0 ? 'талия увеличивается' : 'талия уменьшается';
+  const strTxt = i.strength === 'progressing' ? 'силовые показатели растут' : i.strength === 'stalled' ? 'силовые стоят' : '';
+  // Заголовок правила уже может говорить о талии — не повторяем
+  const sum = (head: string, action: string) => `${[head, /талия/.test(head) ? '' : waistTxt, strTxt].filter(Boolean).join(', ')}. ${action}`;
+  const done = (action: CalorieAction, deltaKcal: number, why: string, head: string): CalorieDecision => {
+    const act = deltaKcal ? `${deltaKcal > 0 ? 'Увеличить' : 'Снизить'} цель на ${Math.abs(deltaKcal)} ккал.` : action === 'wait' ? 'Калории недавно меняли — ждём эффекта.' : 'Калории менять не нужно.';
+    return { action, deltaKcal, reasons: [...reasons, why], summary: sum(head, act), basis };
   };
+  /** fixed — шаг задан правилом (талия, плато) и не масштабируется расхождением темпа */
+  const propose = (kcal: number, why: string, head: string, fixed = false): CalorieDecision => {
+    if (wait) return { ...done('wait', 0, why, head), reasons: [...reasons, why, `Калории меняли ${i.daysSinceLastChange} дн. назад — ждём эффекта ещё ${MIN_DAYS_BETWEEN - i.daysSinceLastChange} дн.`] };
+    const big = Math.abs(t - r) > 2 * tol;
+    const d = lowData ? Math.sign(kcal) * 100 : fixed ? kcal : step(kcal, big);
+    return done(d > 0 ? 'increase' : 'decrease', d, why, head);
+  };
+  const hold = (why: string, head: string) => done('hold', 0, why, head);
 
   if (i.goal === 'bulk') {
-    if (waistFast) return propose(-150, `Талия растёт на ${i.waistCmPerWeek!.toFixed(1).replace('.', ',')} см/нед — непропорционально весу. Замедляем набор, чтобы он шёл за счёт мышц, а не жира.`);
-    if (r > t + tol) return propose(((t - r) * KCAL_PER_KG) / 7, 'Вес растёт быстрее цели — лишний профицит в основном уходит в жир (Helms 2023).');
+    if (waistFast) return propose(-150, `Талия растёт на ${i.waistCmPerWeek!.toFixed(1).replace('.', ',')} см/нед — непропорционально весу. Замедляем набор, чтобы он шёл за счёт мышц, а не жира.`, 'Вес растёт, талия также увеличивается', true);
+    if (r > t + tol) return propose(((t - r) * KCAL_PER_KG) / 7, 'Вес растёт быстрее цели — лишний профицит в основном уходит в жир (Helms 2023).', 'Вес растёт слишком быстро');
     if (r < t - tol) {
-      if (i.strength === 'progressing' && r > -0.05) return { action: 'hold', deltaKcal: 0, reasons: [...reasons, 'Вес почти стоит, но силовые растут — подождём ещё неделю, прежде чем добавлять калории.'], basis };
-      return propose(((t - r) * KCAL_PER_KG) / 7, i.strength === 'stalled' ? 'Вес не растёт и силовые остановились — небольшое повышение калорий.' : 'Вес растёт медленнее цели — небольшое повышение калорий.');
+      const flat = Math.abs(r) < 0.1 && (i.trendDays ?? 0) >= 21 && i.coverage >= 0.7;
+      if (i.strength === 'progressing' && r > -0.05 && !flat) return hold('Вес почти стоит, но силовые растут — подождём ещё неделю, прежде чем добавлять калории.', 'Вес почти не меняется');
+      if (flat) return propose(150, 'Вес практически не меняется 3 недели при хорошем соблюдении питания — профицита нет.', `Вес практически не меняется ${Math.round((i.trendDays ?? 21) / 7)} нед. при хорошем соблюдении питания`, true);
+      return propose(((t - r) * KCAL_PER_KG) / 7, i.strength === 'stalled' ? 'Вес не растёт и силовые остановились — небольшое повышение калорий.' : 'Вес растёт медленнее цели — небольшое повышение калорий.', 'Вес растёт медленнее цели');
     }
-    return { action: 'hold', deltaKcal: 0, reasons: [...reasons, 'Средний вес растёт в целевом диапазоне. Калорийность пока менять не нужно.'], basis };
+    return hold('Средний вес растёт в целевом диапазоне. Калорийность пока менять не нужно.', 'Вес растёт в целевом диапазоне');
   }
   if (i.goal === 'cut') {
-    if (r < t - tol) return propose(((t - r) * KCAL_PER_KG) / 7, `Вес уходит быстрее цели${i.strength === 'stalled' ? ', силовые проседают' : ''} — растёт риск потери мышц (Helms 2014).`);
-    if (r > t + tol) return propose(((t - r) * KCAL_PER_KG) / 7, 'Вес снижается медленнее цели — немного уменьшим калории.');
-    return { action: 'hold', deltaKcal: 0, reasons: [...reasons, 'Вес снижается в целевом темпе.'], basis };
+    if (r < t - tol) return propose(((t - r) * KCAL_PER_KG) / 7, `Вес уходит быстрее цели${i.strength === 'stalled' ? ', силовые проседают' : ''} — растёт риск потери мышц (Helms 2014).`, 'Вес снижается слишком быстро');
+    if (r > t + tol) return propose(((t - r) * KCAL_PER_KG) / 7, 'Вес снижается медленнее цели — немного уменьшим калории.', 'Вес снижается медленнее цели');
+    return hold('Вес снижается в целевом темпе.', 'Вес снижается в целевом темпе');
   }
   // Поддержание и рекомпозиция: вес ≈ стабилен
-  if (Math.abs(r) > tol + 0.05) return propose((-r * KCAL_PER_KG) / 7, r > 0 ? 'Вес растёт при цели «стабильный вес».' : 'Вес снижается при цели «стабильный вес».');
-  return { action: 'hold', deltaKcal: 0, reasons: [...reasons, i.goal === 'recomp' && i.waistCmPerWeek !== null && i.waistCmPerWeek < 0 ? 'Вес стабилен, талия уменьшается — рекомпозиция идёт.' : 'Вес стабилен.'], basis };
+  if (Math.abs(r) > tol + 0.05) return propose((-r * KCAL_PER_KG) / 7, r > 0 ? 'Вес растёт при цели «стабильный вес».' : 'Вес снижается при цели «стабильный вес».', r > 0 ? 'Вес растёт' : 'Вес снижается');
+  return hold(i.goal === 'recomp' && i.waistCmPerWeek !== null && i.waistCmPerWeek < 0 ? 'Вес стабилен, талия уменьшается — рекомпозиция идёт.' : 'Вес стабилен.', 'Вес стабилен');
 }

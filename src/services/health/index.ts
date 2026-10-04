@@ -3,6 +3,7 @@ import type { HealthDay } from '@/features/health/model';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { addDays, toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { dedupeWorkouts, mergedMinutes, pickDailyWeight } from '@/features/health/dedupe';
 
 /**
  * Apple Health (HealthKit) через @kingstinct/react-native-healthkit.
@@ -169,15 +170,16 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
     if (d) d.hrvMs = Math.round(v.reduce((a, b) => a + b, 0) / v.length);
   }
   const mass = await safe(() => hk.queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', { ...all, unit: 'kg' }));
-  // Несколько взвешиваний за день (весы + ручные записи в «Здоровье») → берём самое раннее (утреннее, натощак)
-  const firstAt = new Map<string, number>();
+  // Несколько взвешиваний за день (весы + ручные записи в «Здоровье») → самое раннее (утреннее, натощак)
+  const massBy = new Map<string, { at: number; kg: number }[]>();
   for (const s of mass ?? []) {
     const k = toISODate(new Date(s.startDate));
-    const t = new Date(s.startDate).getTime();
+    massBy.set(k, [...(massBy.get(k) ?? []), { at: new Date(s.startDate).getTime(), kg: s.quantity }]);
+  }
+  for (const [k, list] of massBy) {
     const d = out.get(k);
-    if (!d || (firstAt.has(k) && firstAt.get(k)! <= t)) continue;
-    firstAt.set(k, t);
-    d.weightKg = Math.round(s.quantity * 10) / 10;
+    const kg = pickDailyWeight(list);
+    if (d && kg !== undefined) d.weightKg = Math.round(kg * 10) / 10;
   }
 
   // Сон: интервалы «спал» (core/deep/REM/unspecified) за ночь — относим к дате пробуждения. Пересечения источников сливаем
@@ -206,20 +208,9 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
     const type = Number(w.workoutActivityType);
     d.workouts = [...(d.workouts ?? []), { start: start.getTime(), minutes: Math.round((new Date(w.endDate).getTime() - start.getTime()) / 60000), kcal: w.totalEnergyBurned ? Math.round(w.totalEnergyBurned.quantity) : undefined, strength: type === 20 || type === 50 }];
   }
+  // Одна тренировка из нескольких приложений (Watch + Strava) — оставляем одну
+  for (const d of out.values()) if (d.workouts?.length) d.workouts = dedupeWorkouts(d.workouts);
   return [...out.values()];
 }
 
-/** Сумма объединения интервалов, мин (часы + Apple Watch пишут пересекающиеся записи сна) */
-export function mergedMinutes(ivs: [number, number][]): number {
-  const s = [...ivs].sort((a, b) => a[0] - b[0]);
-  let total = 0;
-  let cur: [number, number] | null = null;
-  for (const iv of s) {
-    if (!cur || iv[0] > cur[1]) {
-      if (cur) total += cur[1] - cur[0];
-      cur = [iv[0], iv[1]];
-    } else cur[1] = Math.max(cur[1], iv[1]);
-  }
-  if (cur) total += cur[1] - cur[0];
-  return total / 60000;
-}
+export { mergedMinutes } from '@/features/health/dedupe';

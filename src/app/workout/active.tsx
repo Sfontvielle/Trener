@@ -143,7 +143,7 @@ export default function ActiveWorkout() {
 
   const ctx = () => {
     const r = readinessFor(today(), useCheckins.getState().byDate, sessions, useHealth.getState().days);
-    return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0 };
+    return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym };
   };
 
   /** После исключения/дискомфорта — предложить замену, только если в упражнении ещё есть невыполненные подходы */
