@@ -117,4 +117,6 @@ RYNJI — фитнес-помощник и не ставит медицинск�
 ```bash
 npm test                     # логика: наука (калории, тренды, шаги), прогрессия, клетчатка, DaySummary, сон, миграции, сканер, Health, тренер
 npx expo start --web --port 8081 & node scripts/e2e-web.cjs   # UI в Expo Web (нужен Playwright)
+node scripts/crawl-web.cjs   # обход всех экранов + «нажать всё» на основных экранах (ошибки, console.error)
+npx expo export --platform ios   # проверка, что iOS-бандл собирается
 ```

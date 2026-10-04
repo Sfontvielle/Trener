@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GH, GestureRoot, SafeDetector } from './gestures';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
@@ -30,8 +30,10 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
   // Ref читается только внутри обработчиков жеста, не во время рендера
   // eslint-disable-next-line react-hooks/refs
   const [gestures] = useState(() => {
+    if (!GH) return null;
+    const { Gesture } = GH;
     const st = { active: false };
-    const native = Gesture.Native();
+    const native = Gesture.Native().runOnJS(true);
     const pan = Gesture.Pan()
       .runOnJS(true)
       .activeOffsetX(8)
@@ -81,11 +83,11 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, panelW], outputRange: [1, 0], extrapolate: 'clamp' }));
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureRoot style={{ flex: 1 }}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть список" />
       </Animated.View>
-      <GestureDetector gesture={gestures.pan}>
+      <SafeDetector gesture={gestures?.pan}>
       <Animated.View style={[styles.panel, { width: panelW, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8, transform: [{ translateX }, { translateX: drag }] }]}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
@@ -96,13 +98,13 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
           </View>
           <IconButton name="close" label="Закрыть" onPress={onClose} size={20} style={{ width: 36, height: 36 }} />
         </View>
-        <NativeCtx.Provider value={gestures.native}>
+        <NativeCtx.Provider value={gestures?.native ?? null}>
           <View style={{ flex: 1 }}>{children}</View>
         </NativeCtx.Provider>
         {footer ? <View style={{ paddingTop: space.sm }}>{footer}</View> : null}
       </Animated.View>
-      </GestureDetector>
-      </GestureHandlerRootView>
+      </SafeDetector>
+      </GestureRoot>
     </Modal>
   );
 }
@@ -122,14 +124,14 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
 }
 
 /** Прокрутка внутри шторки: одновременно со свайпом закрытия (общий нативный жест через контекст) */
-const NativeCtx = createContext<ReturnType<typeof Gesture.Native> | null>(null);
+const NativeCtx = createContext<unknown>(null);
 export function DrawerScroll(props: React.ComponentProps<typeof ScrollView>) {
   const native = useContext(NativeCtx);
   if (!native) return <ScrollView {...props} />;
   return (
-    <GestureDetector gesture={native}>
-      {/* dataSet → data-drawer-scroll в DOM; CSS-правило ниже (только веб) */}
+    <SafeDetector gesture={native}>
+      {/* dataSet → data-drawer-scroll в DOM; CSS-правило выше (только веб) */}
       <ScrollView {...props} {...({ dataSet: { drawerScroll: '1' } } as object)} />
-    </GestureDetector>
+    </SafeDetector>
   );
 }
