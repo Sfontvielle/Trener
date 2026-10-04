@@ -166,7 +166,7 @@ export default function CheckIn() {
         {/* Вес из Apple Health или уже записанный — ничего не спрашиваем */}
         {!todayWeight ? (
           <View style={{ gap: 8 }}>
-            <Toggle value={logWeight} onChange={setLogWeight} label="Взвесился утром" sub="Натощак, после туалета — для тренда веса" />
+            <Toggle value={logWeight} onChange={setLogWeight} label="Взвешивание утром" sub="Натощак, после туалета — для тренда веса" />
             {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
           </View>
         ) : null}

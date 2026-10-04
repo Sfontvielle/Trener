@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createJSONStorage, type PersistOptions } from 'zustand/middleware';
+import { AppState, Platform } from 'react-native';
+import type { PersistOptions, PersistStorage, StorageValue } from 'zustand/middleware';
 import { BRAND } from '@/config/brand';
 
 /**
@@ -10,22 +11,72 @@ import { BRAND } from '@/config/brand';
  */
 export const STORAGE_PREFIX = 'form.';
 
-const safeStorage = {
-  getItem: async (name: string) => {
+/**
+ * Запись на диск — отложенная и одна на ключ: при частых изменениях (отметка подхода, ввод веса, вода) состояние
+ * сериализуется не на каждое изменение, а один раз через WRITE_DELAY мс после последнего. На длинной истории
+ * (сотни тренировок) это убирает подтормаживания. При сворачивании приложения / закрытии страницы всё
+ * несохранённое записывается сразу (flushStorage).
+ */
+const WRITE_DELAY = 250;
+const pending = new Map<string, StorageValue<unknown>>();
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+async function writeOne(name: string, value: StorageValue<unknown>) {
+  try {
+    await AsyncStorage.setItem(name, JSON.stringify(value));
+  } catch (e) {
+    console.warn(`[${BRAND}] storage write failed`, name, e);
+  }
+}
+
+export async function flushStorage(): Promise<void> {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  const items = [...pending.entries()];
+  pending.clear();
+  await Promise.all(items.map(([k, v]) => writeOne(k, v)));
+}
+
+function schedule() {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => void flushStorage(), WRITE_DELAY);
+}
+
+let flushHooked = false;
+function hookFlush() {
+  if (flushHooked) return;
+  flushHooked = true;
+  try {
+    AppState.addEventListener('change', (st) => {
+      if (st !== 'active') void flushStorage();
+    });
+  } catch {
+    /* noop */
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => void flushStorage());
+    window.addEventListener('beforeunload', () => void flushStorage());
+  }
+}
+
+const storage: PersistStorage<unknown> = {
+  getItem: async (name) => {
+    // Несохранённое ещё значение — источник истины
+    if (pending.has(name)) return pending.get(name)!;
     try {
-      return await AsyncStorage.getItem(name);
+      const raw = await AsyncStorage.getItem(name);
+      return raw ? (JSON.parse(raw) as StorageValue<unknown>) : null;
     } catch {
       return null;
     }
   },
-  setItem: async (name: string, value: string) => {
-    try {
-      await AsyncStorage.setItem(name, value);
-    } catch (e) {
-      console.warn(`[${BRAND}] storage write failed`, name, e);
-    }
+  setItem: (name, value) => {
+    hookFlush();
+    pending.set(name, value);
+    schedule();
   },
-  removeItem: async (name: string) => {
+  removeItem: async (name) => {
+    pending.delete(name);
     try {
       await AsyncStorage.removeItem(name);
     } catch {
@@ -43,13 +94,16 @@ export function persistOptions<S, P = Partial<S>>(name: string, version: number,
   return {
     name: `${STORAGE_PREFIX}${name}`,
     version,
-    storage: createJSONStorage(() => safeStorage),
+    storage: storage as PersistStorage<P>,
     partialize: partialize as ((s: S) => P) | undefined,
     ...(migrate ? { migrate } : {}),
   } as PersistOptions<S, P>;
 }
 
 export async function clearAllData(): Promise<void> {
+  pending.clear();
+  if (timer) clearTimeout(timer);
+  timer = null;
   try {
     const keys = await AsyncStorage.getAllKeys();
     await AsyncStorage.multiRemove(keys.filter((k) => k.startsWith(STORAGE_PREFIX)));

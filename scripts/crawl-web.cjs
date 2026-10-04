@@ -13,6 +13,9 @@ const PROFILE = {
   limitations: '', avoidExerciseIds: [], likedFoods: [], dislikedFoods: [], dietRestrictions: [], activity: 'moderate', stepsPerDay: 7000,
   workStyle: 'desk', preferredTime: 'evening', preferredDays: [], createdAt: 0, updatedAt: 0,
 };
+// E2E_SEX=female — тот же прогон для женского профиля; E2E_GOAL=cut|recomp|maintain — другая цель
+if (process.env.E2E_SEX === 'female') Object.assign(PROFILE, { name: 'Анна', sex: 'female', age: 27, heightCm: 166, weightKg: 58 });
+if (process.env.E2E_GOAL) Object.assign(PROFILE, { goal: process.env.E2E_GOAL, ratePctPerWeek: process.env.E2E_GOAL === 'cut' ? 0.6 : 0 });
 // Кнопки, которые меняют/удаляют данные или уводят из приложения — не нажимаем
 const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Заполнить демо|Экспорт|Восстанов|Импорт|Поделиться|настройк|Управление доступом|Свернуть тренировку|Завершить и сохранить|Не предлагать больше|Мне не нравится|Перейти на этот сплит|Применить|Начать с RYNJI|Подключить Apple Health|Сохранить и пересчитать|Перейти на мой расход|Профиль$/i;
 
@@ -128,7 +131,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
     health: () => monkey('/health-monitor'),
     weekly: () => monkey('/weekly-review'),
     onboarding: async () => {
-      // Онбординг: шаг «Здоровье» — каждый «+» открывает выбор, выбор и сохранение без ошибок
+      // Короткий онбординг (5 шагов), затем раздел «Здоровье» из ленты — каждый «+» открывает выбор, выбор и сохранение без ошибок
       const p2 = await ctx.newPage();
       p2.on('pageerror', (e) => problems.push(`[pageerror @ onboarding] ${e.message}`));
       await p2.evaluate(() => localStorage.clear()).catch(() => {});
@@ -138,6 +141,10 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await p2.waitForTimeout(1200);
       await p2.getByLabel('Как тебя зовут?').fill('Тест');
       for (let i = 0; i < 4; i++) { await p2.getByText('Далее', { exact: true }).click(); await p2.waitForTimeout(300); }
+      await p2.getByText('Начать с RYNJI').click();
+      await p2.waitForTimeout(1500);
+      await p2.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
+      await p2.waitForTimeout(1500);
       const btns = await p2.evaluate(() => [...document.querySelectorAll('[aria-label^="Выбрать:"],[aria-label^="Добавить:"]')].map((e) => e.getAttribute('aria-label')));
       for (const b of btns) {
         where = `onboarding «${b}»`;

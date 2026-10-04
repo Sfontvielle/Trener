@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T, type IconName } from '@/components/ui';
-import { Bar } from '@/components/charts';
+import { ActivityRings, Bar } from '@/components/charts';
 import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -54,9 +54,9 @@ import { useLabs } from '@/stores/labs';
 import { useEnhanced } from '@/stores/enhanced';
 import { currentAlerts, currentCoachToday } from '@/features/coach/brief';
 import type { CoachToday } from '@/features/coach/decisions/today';
-import type { CoachAlert } from '@/features/coach/decisions/alerts';
 import { CoachWhySheet } from '@/features/coach/DecisionView';
-import { AlertsList } from '@/features/coach/AlertsList';
+import { CoachFeed } from '@/features/coach/Feed';
+import { buildFeed, dayVerdict, SETUP_SECTION } from '@/features/coach/feed';
 
 const WEEKDAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 const KIND_ICON: Record<JournalKind, IconName> = {
@@ -71,7 +71,7 @@ const KIND_ICON: Record<JournalKind, IconName> = {
   health: 'heart-outline',
   note: 'create-outline',
 };
-const NOTE_CHIPS = ['Плохо спал', 'Мало времени на тренировку', 'Поясница в порядке', 'Отличное самочувствие', 'Устал после работы'];
+const NOTE_CHIPS = ['Плохой сон', 'Мало времени на тренировку', 'Поясница в порядке', 'Отличное самочувствие', 'Усталость после работы'];
 
 /**
  * Главная — дневник и центр управления дня. Самое важное сверху, порядок карточек зависит от времени:
@@ -155,6 +155,24 @@ export default function Home() {
     [profile, plan, overrides, sessions, entries, checkins, weights, advice, d, healthDays],
   );
 
+  const setupPending = useProfile((s) => s.settings.setupPending);
+  // Кольца дня: тренировка (сделана / доля подходов / день отдыха), белок, шаги
+  const rings = useMemo(() => {
+    const doneSets = active ? active.exercises.reduce((a, e) => a + e.sets.filter((x) => x.done).length, 0) : 0;
+    const allSets = active ? active.exercises.reduce((a, e) => a + e.sets.length, 0) : 0;
+    const training = tw.kind === 'done' || tw.kind === 'rest' ? 1 : active ? (allSets ? doneSets / allSets : 0) : 0;
+    const protein = target0 ? nut.eaten.protein / target0.protein : 0;
+    const st = healthDays[d]?.steps;
+    return { training, protein, steps: st !== undefined && steps ? st / steps.target : null };
+  }, [active, tw.kind, target0, nut.eaten.protein, healthDays, d, steps]);
+  const feed = useMemo(() => {
+    const hour = new Date().getHours();
+    const done = tw.kind === 'done';
+    const evening = profile && dayMode(hour, done) === 'evening' && target0 ? dayVerdict({ workoutDone: done, restDay: tw.kind === 'rest', kcal: [nut.eaten.kcal, target0.kcal], protein: [nut.eaten.protein, target0.protein] }) : null;
+    const hidden = advice.filter((a) => a.date === d && a.status === 'dismissed').map((a) => a.key);
+    return buildFeed({ alerts, tips, shift, due, setupPending, evening, hidden });
+  }, [alerts, tips, shift, due, setupPending, profile, tw.kind, target0, nut.eaten.kcal, nut.eaten.protein, advice, d]);
+
   const insightKey = `${d}|${checkins[d]?.createdAt ?? 0}|${sessions.length}|${overrides[d]?.createdAt ?? 0}|${plan?.id ?? ''}`;
   useFocusEffect(
     useCallback(() => {
@@ -232,37 +250,9 @@ export default function Home() {
           <QuickAction icon="sunny-outline" label="Check-in" onPress={() => router.push('/checkin')} done={!!checkin} />
         </View>
 
-        {shift ? (
-          <View style={styles.notice} testID="shift">
-            <Icon name="calendar-outline" size={16} color={colors.accent} />
-            <T v="small" color={colors.text} style={{ flex: 1, fontSize: 13 }}>
-              {shift.text}
-            </T>
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={6}
-              onPress={() => {
-                const ps = usePlan.getState();
-                shift.overrides.forEach((o) => ps.setOverride(o));
-                haptic.success();
-                toast(shift.kind === 'tomorrow' ? `«${shift.template.name}» — завтра` : `«${shift.template.name}» — сегодня`);
-              }}
-            >
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                {shift.action}
-              </T>
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Скрыть" hitSlop={6} onPress={() => setShiftHidden(true)}>
-              <Icon name="close" size={14} color={colors.muted} />
-            </Pressable>
-          </View>
-        ) : null}
 
-        <Hero tw={tw} active={active} debrief={debrief} readiness={readiness} coach={coach} onWhy={() => setWhyOpen(true)} onCoachWhy={() => setCoachWhyOpen(true)} onAddFood={() => setAddFood(true)} />
+        <Hero tw={tw} active={active} debrief={debrief} readiness={readiness} coach={coach} rings={rings} onWhy={() => setWhyOpen(true)} onCoachWhy={() => setCoachWhyOpen(true)} onAddFood={() => setAddFood(true)} />
 
-        {mode === 'evening' ? (
-          <DaySummary workout={doneToday ? `${doneToday.name} ✓` : tw.kind === 'rest' ? 'День отдыха' : tw.kind === 'workout' ? 'Не выполнена' : '—'} kcal={target ? [nut.eaten.kcal, target.kcal] : null} protein={target ? [nut.eaten.protein, target.protein] : null} steps={health?.steps} workoutDone={!!doneToday} restDay={tw.kind === 'rest'} />
-        ) : null}
 
         <View style={styles.grid}>
           <Tile
@@ -290,17 +280,6 @@ export default function Home() {
           <Tile label={GOAL_LABEL[profile.goal]} value={goal?.headline ?? '—'} sub={goal?.detail ?? ''} progress={goal?.pct ?? undefined} icon="flag-outline" small onPress={() => router.push('/progress')} a11y="Прогресс к цели" />
         </View>
 
-        {due ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`${due.text}, добавить`} onPress={() => (due.kind === 'weight' ? router.push('/weight') : setMeasureOpen(true))} style={styles.notice} testID="measure-due">
-            <Icon name="body-outline" size={16} color={colors.accent} />
-            <T v="small" color={colors.text} style={{ flex: 1, fontSize: 13 }}>
-              {due.text}
-            </T>
-            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-              Добавить
-            </T>
-          </Pressable>
-        ) : null}
         <View style={styles.measure} testID="measure-card">
           <Pressable accessibilityRole="button" accessibilityLabel="Замеры: вес и талия, открыть тренд" onPress={() => router.push('/weight')} style={({ pressed }) => [{ flex: 1, gap: 4 }, pressed && { opacity: 0.8 }]}>
             <T v="caption">Замеры</T>
@@ -340,48 +319,28 @@ export default function Home() {
           <Button title="Добавить" icon="add" size="sm" variant="secondary" onPress={() => setMeasureOpen(true)} />
         </View>
 
-        <AlertsList
-          alerts={alerts}
-          onOpen={(a: CoachAlert) => {
-            if (a.target === 'labs') router.push('/labs');
-            else if (a.target === 'measure') setMeasureOpen(true);
-            else if (a.target === 'weekly') router.push('/weekly-review');
-            else if (a.target === 'health') router.push('/health-monitor');
-            else if (a.target === 'checkin') router.push('/checkin');
-            else if (a.target === 'weight') router.push('/weight');
+        <CoachFeed
+          items={feed}
+          onAction={(it, a) => {
+            if (a.kind === 'route') router.push(a.route as never);
+            else if (a.kind === 'measure') setMeasureOpen(true);
+            else if (a.kind === 'shift' && shift) {
+              const ps = usePlan.getState();
+              shift.overrides.forEach((o) => ps.setOverride(o));
+              haptic.success();
+              toast(shift.kind === 'tomorrow' ? `«${shift.template.name}» — завтра` : `«${shift.template.name}» — сегодня`);
+            } else if (a.kind === 'proposal' && it.tip?.proposal) setProposal(it.tip.proposal);
+            else if (a.kind === 'apply' && it.tip?.action) {
+              const r = applyCoachAction('', it.tip.action);
+              toast(r.message, r.ok ? 'checkmark-circle' : 'alert-circle');
+              if (r.ok) reactTo(it.tip, 'accepted');
+            } else if (a.kind === 'setup') router.push({ pathname: '/profile', params: { edit: SETUP_SECTION[a.item] } });
           }}
-          onDismiss={(a: CoachAlert) => useCoach.getState().recordAdvice({ key: a.id, date: d, text: a.title, status: 'dismissed' })}
+          onDismiss={(it) => {
+            if (it.id === 'shift') setShiftHidden(true);
+            if (it.adviceKey) useCoach.getState().recordAdvice({ key: it.adviceKey, date: d, text: it.title, status: 'dismissed' });
+          }}
         />
-
-        {tips.length ? (
-          <View style={{ gap: 8 }}>
-            <View style={styles.sectionHead}>
-              <Icon name="sparkles" size={14} color={colors.accent} />
-              <T v="caption" color={colors.accent} style={{ flex: 1 }}>
-                Предложения тренера
-              </T>
-              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push('/coach')}>
-                <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                  Спросить
-                </T>
-              </Pressable>
-            </View>
-            {tips.slice(0, 2).map((i) => (
-              <TipCard
-                key={i.key ?? i.text}
-                tip={i}
-                onDismiss={() => reactTo(i, 'dismissed')}
-                onOpenProposal={() => i.proposal && setProposal(i.proposal)}
-                onApply={() => {
-                  if (!i.action) return;
-                  const r = applyCoachAction('', i.action);
-                  toast(r.message, r.ok ? 'checkmark-circle' : 'alert-circle');
-                  if (r.ok) reactTo(i, 'accepted');
-                }}
-              />
-            ))}
-          </View>
-        ) : null}
 
         <View style={styles.journalHead}>
           <T v="caption" style={{ flex: 1 }}>
@@ -512,6 +471,7 @@ function Hero({
   debrief,
   readiness,
   coach,
+  rings,
   onWhy,
   onCoachWhy,
   onAddFood,
@@ -521,6 +481,7 @@ function Hero({
   debrief: ReturnType<typeof workoutDebrief> | null;
   readiness: ReturnType<typeof useReadiness>;
   coach: CoachToday | null;
+  rings: { training: number; protein: number; steps: number | null };
   onWhy: () => void;
   onCoachWhy: () => void;
   onAddFood: () => void;
@@ -590,6 +551,23 @@ function Hero({
       </Pressable>
     </View>
   ) : null;
+  const ringsView = (
+    <ActivityRings
+      size={60}
+      stroke={6}
+      rings={[{ progress: rings.training, color: colors.accent }, { progress: rings.protein, color: colors.protein }, ...(rings.steps !== null ? [{ progress: rings.steps, color: colors.warning }] : [])]}
+      label={`Прогресс дня: тренировка ${Math.round(rings.training * 100)}%, белок ${Math.round(rings.protein * 100)}%${rings.steps !== null ? `, шаги ${Math.round(rings.steps * 100)}%` : ''}`}
+    />
+  );
+  const titleRow = (title: React.ReactNode, sub: React.ReactNode) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, gap: 4 }}>
+        {title}
+        {sub}
+      </View>
+      {ringsView}
+    </View>
+  );
   const caption = (right?: React.ReactNode) => (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <T v="caption" color={colors.accent} style={{ flex: 1, letterSpacing: 1.5 }}>
@@ -619,13 +597,15 @@ function Hero({
     return (
       <View style={styles.hero} testID="coach-today">
         {caption()}
-        <T v="display" style={{ fontSize: 26 }} numberOfLines={1}>
-          {s.name} ✓
-        </T>
-        <T v="small">
-          Тренировка выполнена{debrief ? ` · ${debrief.minutes} мин · ${debrief.sets} подходов${debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}` : ''}
-          {tw.nextWorkout ? ` · следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''}
-        </T>
+        {titleRow(
+          <T v="display" style={{ fontSize: 26 }} numberOfLines={2}>
+            {s.name} ✓
+          </T>,
+          <T v="small">
+            Тренировка выполнена{debrief ? ` · ${debrief.minutes} мин · ${debrief.sets} подходов${debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}` : ''}
+            {tw.nextWorkout ? ` · следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''}
+          </T>,
+        )}
         <View style={styles.heroDivider} />
         {facts}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -640,12 +620,14 @@ function Hero({
     return (
       <View style={[styles.hero, { borderColor: stop ? colors.danger : colors.accentLine }]} testID="coach-today">
         {caption(tw.mode !== 'normal' || stop ? <Badge text={stop ? 'Отдых' : MODE_LABEL[tw.mode]} /> : null)}
-        <T v="display" style={{ fontSize: 28, lineHeight: 32 }} numberOfLines={2}>
-          {coach?.title ?? tw.template.name}
-        </T>
-        <T v="body" color={colors.textDim} numberOfLines={1} style={{ fontSize: 14 }}>
-          {tw.template.focus} · ~{tw.estMinutes} мин · {tw.totalSets} подходов
-        </T>
+        {titleRow(
+          <T v="display" style={{ fontSize: 28, lineHeight: 32 }} numberOfLines={2}>
+            {coach?.title ?? tw.template.name}
+          </T>,
+          <T v="body" color={colors.textDim} numberOfLines={2} style={{ fontSize: 14 }}>
+            {tw.template.focus} · ~{tw.estMinutes} мин · {tw.totalSets} подходов
+          </T>,
+        )}
         <View style={styles.heroDivider} />
         {facts}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -659,13 +641,15 @@ function Hero({
     return (
       <View style={styles.hero} testID="coach-today">
         {caption()}
-        <T v="display" style={{ fontSize: 26 }}>
-          День отдыха
-        </T>
-        <T v="small">
-          {tw.reason ?? 'Восстановление — часть плана'}
-          {tw.nextWorkout ? ` · следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''}
-        </T>
+        {titleRow(
+          <T v="display" style={{ fontSize: 26 }}>
+            День отдыха
+          </T>,
+          <T v="small">
+            {tw.reason ?? 'Восстановление — часть плана'}
+            {tw.nextWorkout ? ` · следующая: ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''}
+          </T>,
+        )}
         <View style={styles.heroDivider} />
         {facts}
         <Button title="Добавить еду" icon="add" size="lg" onPress={onAddFood} style={{ marginTop: 6 }} />
@@ -722,45 +706,6 @@ function Tile({ label, value, sub, progress, color = colors.accent, icon, onPres
   );
 }
 
-function TipCard({ tip, onDismiss, onApply, onOpenProposal }: { tip: LocalInsight; onDismiss: () => void; onApply: () => void; onOpenProposal: () => void }) {
-  const icon: IconName = tip.kind === 'health' || tip.kind === 'safety' ? 'medkit-outline' : tip.kind === 'recovery' ? 'battery-half' : tip.kind === 'progression' ? 'trending-up' : tip.kind === 'nutrition' ? 'restaurant-outline' : tip.kind === 'plan' ? 'git-branch-outline' : tip.kind === 'weight' ? 'scale-outline' : 'bulb-outline';
-  const tone = tip.kind === 'safety' || tip.kind === 'health' ? colors.warning : colors.accent;
-  return (
-    <View style={styles.tip}>
-      <View style={[styles.tipIcon, { backgroundColor: tone === colors.warning ? colors.warningDim : colors.accentDim }]}>
-        <Icon name={icon} size={16} color={tone} />
-      </View>
-      <View style={{ flex: 1, gap: 8 }}>
-        <T v="body" style={{ fontSize: 14, lineHeight: 19 }} color={colors.text}>
-          {tip.text}
-        </T>
-        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-          {tip.proposal ? (
-            <Pressable accessibilityRole="button" hitSlop={8} onPress={onOpenProposal}>
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                Подробнее
-              </T>
-            </Pressable>
-          ) : null}
-          {tip.action ? (
-            <Pressable accessibilityRole="button" hitSlop={8} onPress={onApply}>
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                {tip.action.label}
-              </T>
-            </Pressable>
-          ) : null}
-          {tip.key ? (
-            <Pressable accessibilityRole="button" hitSlop={8} onPress={onDismiss}>
-              <T v="small" style={{ fontWeight: '700' }}>
-                {tip.proposal || tip.action ? 'Не сейчас' : 'Понятно'}
-              </T>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-    </View>
-  );
-}
 
 /** Существенное изменение программы: объяснение → подтверждение → перестройка */
 function ProposalSheet({ p, onClose, onApply, onDecline }: { p: ProgramProposal | null; onClose: () => void; onApply: (p: ProgramProposal) => void; onDecline: (p: ProgramProposal) => void }) {
@@ -797,21 +742,6 @@ function ProposalSheet({ p, onClose, onApply, onDecline }: { p: ProgramProposal 
   );
 }
 
-function Card({ title, right, onPress, children, accent }: { title: string; right?: React.ReactNode; onPress?: () => void; children: React.ReactNode; accent?: boolean }) {
-  // Нажимается только заголовок: внутри карточки могут быть свои кнопки (вложенные кнопки недопустимы)
-  return (
-    <View style={[styles.card, accent && { borderColor: colors.accentLine }]}>
-      <Pressable accessibilityRole={onPress ? 'button' : undefined} onPress={onPress} disabled={!onPress} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 22 }}>
-        <T v="caption" style={{ flex: 1 }}>
-          {title}
-        </T>
-        {right}
-        {onPress && !right ? <Icon name="chevron-forward" size={16} color={colors.muted} /> : null}
-      </Pressable>
-      {children}
-    </View>
-  );
-}
 
 function Badge({ text }: { text: string }) {
   return (
@@ -819,52 +749,6 @@ function Badge({ text }: { text: string }) {
       <T v="small" color={colors.warning} style={{ fontSize: 11, fontWeight: '800' }}>
         {text}
       </T>
-    </View>
-  );
-}
-
-/** Вечером: итог дня одним взглядом и вывод RYNJI */
-function DaySummary({ workout, kcal, protein, steps, workoutDone, restDay }: { workout: string; kcal: [number, number] | null; protein: [number, number] | null; steps?: number; workoutDone: boolean; restDay: boolean }) {
-  const kOk = kcal ? Math.abs(kcal[0] - kcal[1]) / kcal[1] <= 0.1 : false;
-  const pOk = protein ? protein[0] >= protein[1] * 0.9 : false;
-  const verdict =
-    (workoutDone || restDay) && kOk && pOk
-      ? 'Хороший день. Завтра план можно оставить без изменений.'
-      : protein && !pOk
-        ? `Белка не хватило ~${Math.round(protein[1] - protein[0])} г — добери перед сном (творог, йогурт) или завтра с утра.`
-        : kcal && kcal[0] < kcal[1] * 0.85
-          ? `Недобор ~${Math.round(kcal[1] - kcal[0])} ккал — для твоей цели лучше закрыть его.`
-          : kcal && kcal[0] > kcal[1] * 1.1
-            ? 'Калорий больше цели — завтра без компенсаций, просто по плану.'
-            : 'День в рамках плана.';
-  return (
-    <Card title="Итог дня" accent>
-      <View style={{ gap: 8 }}>
-        <Row label="Тренировка" value={workout} ok={workoutDone || restDay} />
-        {kcal ? <Row label="Ккал" value={`${fmtNum(kcal[0])} / ${fmtNum(kcal[1])}`} ok={kOk} /> : null}
-        {protein ? <Row label="Белок" value={`${Math.round(protein[0])} / ${protein[1]} г`} ok={pOk} /> : null}
-        {steps ? <Row label="Шаги" value={steps.toLocaleString('ru-RU')} /> : null}
-      </View>
-      <T v="body" color={colors.text} style={{ marginTop: 4 }}>
-        <T v="body" color={colors.accent} style={{ fontWeight: '800' }}>
-          {BRAND}:{' '}
-        </T>
-        {verdict}
-      </T>
-    </Card>
-  );
-}
-
-function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <T v="body" style={{ flex: 1 }} color={colors.textDim}>
-        {label}
-      </T>
-      <T v="body" style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }}>
-        {value}
-      </T>
-      {ok !== undefined ? <Icon name={ok ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={ok ? colors.accent : colors.muted} style={{ marginLeft: 6 }} /> : null}
     </View>
   );
 }

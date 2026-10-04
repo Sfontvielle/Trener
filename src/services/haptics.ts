@@ -21,7 +21,12 @@ export const haptic = {
   setDone: () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
   timerStart: () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
   timerEnd: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)),
-  record: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
+  /** Личный рекорд: «празднование» — успех и два лёгких отклика вдогонку */
+  record: () => {
+    safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+    setTimeout(() => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)), 160);
+    setTimeout(() => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid)), 300);
+  },
   success: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   warning: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)),
 };

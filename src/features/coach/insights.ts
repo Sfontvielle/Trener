@@ -107,7 +107,7 @@ export function localInsights(args: {
       const rec = recommend({ exercise: ex, plannedSets: pe.sets, repMin: pe.repMin, repMax: pe.repMax, targetRir: pe.targetRir, history: h, band: r?.band });
       if (rec.action === 'increase') {
         const twice = h.length >= 2 && h.slice(0, 2).every((x) => x.sets.every((st) => st.reps >= pe.repMax));
-        out.push({ kind: 'progression', key: `prog_${ex.id}`, priority: 80, text: twice ? `${ex.name}: на двух прошлых тренировках ты выполнил верхнюю границу повторений — сегодня можно увеличить рабочий вес до ${fmtWeight(rec.weight)} кг.` : `${ex.name}: прошлый раз верх диапазона с запасом. Сегодня пробуем ${fmtWeight(rec.weight)} кг (+${fmtWeight(ex.increment)}).` });
+        out.push({ kind: 'progression', key: `prog_${ex.id}`, priority: 80, text: twice ? `${ex.name}: на двух прошлых тренировках выполнена верхняя граница повторений — сегодня можно увеличить рабочий вес до ${fmtWeight(rec.weight)} кг.` : `${ex.name}: прошлый раз верх диапазона с запасом. Сегодня пробуем ${fmtWeight(rec.weight)} кг (+${fmtWeight(ex.increment)}).` });
         break;
       }
       if (rec.action === 'decrease') {

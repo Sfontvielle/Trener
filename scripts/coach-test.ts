@@ -478,3 +478,61 @@ test('DaySummary: анализ и давление попадают в лент�
   assert.deepEqual(s.bp[0], { systolic: 128, diastolic: 82, pulse: undefined });
   assert.ok(s.hasAny);
 });
+
+// ─── Дизайн-итерация: лента, итог дня, фото «до/после», календарь ─────────────
+
+import { buildFeed, dayVerdict, MAX_FEED } from '../src/features/coach/feed';
+import { photoPair } from '../src/features/progress/photoCompare';
+import { monthGrid, formatDateRu } from '../src/utils/calendar';
+
+test('Лента тренера: один список по приоритету — срочное сверху, не больше 5, скрытое не показывается', () => {
+  const alerts = [
+    { id: 'waist_due', level: 'info' as const, priority: 30, title: 'Пора измерить талию', text: '…', data: [], target: 'measure' as const },
+    { id: 'bp_crisis', level: 'urgent' as const, priority: 100, title: 'Очень высокое давление', text: '…', data: [], target: 'health' as const },
+    { id: 'sleep_down', level: 'warning' as const, priority: 55, title: 'Сон ухудшается', text: '…', data: [], target: 'checkin' as const },
+  ];
+  const tips = [
+    { kind: 'plan' as const, priority: 66, key: 'program_x', text: 'Предложение по программе: снизить объём', proposal: { id: 'x', kind: 'volume' as const, title: 't', why: [], change: {} } },
+    { kind: 'nutrition' as const, priority: 60, text: 'Белок ниже нормы' },
+  ];
+  const f = buildFeed({ alerts, tips, shift: { text: 'Перенести на сегодня?', action: 'Перенести' }, due: { kind: 'waist', text: 'Пора' }, setupPending: ['health', 'food'], evening: { verdict: 'Хороший день.', good: true } });
+  assert.ok(f.length <= MAX_FEED);
+  assert.equal(f[0].id, 'a_bp_crisis');
+  assert.equal(f[0].dismissible, false, 'срочное нельзя скрыть');
+  assert.ok(f.some((x) => x.id === 'shift'));
+  assert.ok(!f.some((x) => x.title === 'Белок ниже нормы' || x.text === 'Белок ниже нормы'), 'подсказка без действия не дублирует план дня');
+  assert.ok(!f.some((x) => x.id === 'due_waist'), 'замер не дублируется с сигналом');
+  for (let i = 1; i < f.length; i++) assert.ok(f[i - 1].priority >= f[i].priority);
+  const hidden = buildFeed({ alerts, tips: [], hidden: ['sleep_down', 'bp_crisis'] });
+  assert.ok(hidden.some((x) => x.id === 'a_bp_crisis'), 'срочное не скрывается');
+  assert.ok(!hidden.some((x) => x.id === 'a_sleep_down'));
+  const setup = buildFeed({ alerts: [], tips: [], setupPending: ['health', 'life'] });
+  assert.match(setup[0].title, /Дополни профиль: здоровье/);
+  assert.match(setup[0].text, /Осталось разделов: 2/);
+});
+
+test('Итог дня: хороший день / недобор белка / перебор калорий', () => {
+  assert.equal(dayVerdict({ workoutDone: true, restDay: false, kcal: [2500, 2500], protein: [150, 150] }).good, true);
+  assert.match(dayVerdict({ workoutDone: true, restDay: false, kcal: [2500, 2500], protein: [100, 150] }).verdict, /Белка не хватило ~50 г/);
+  assert.match(dayVerdict({ workoutDone: false, restDay: true, kcal: [3000, 2500], protein: [150, 150] }).verdict, /Калорий больше цели/);
+});
+
+test('Фото «месяц назад / сейчас»: тот же ракурс, ближайшее к 30 дням, не ближе 14', () => {
+  const ph = (id: string, daysAgo: number, pose: 'front' | 'side' | 'back') => ({ id, date: addDays(D, -daysAgo), pose });
+  const photos = [ph('a', 90, 'front'), ph('b', 33, 'front'), ph('c', 10, 'front'), ph('d', 0, 'front'), ph('s1', 5, 'side')];
+  const p = photoPair(photos)!;
+  assert.equal(p.after.id, 'd');
+  assert.equal(p.before.id, 'b');
+  assert.equal(p.pose, 'front');
+  assert.equal(photoPair(photos, 'side'), null, 'один снимок сбоку — пары нет');
+  assert.equal(photoPair([ph('x', 3, 'back'), ph('y', 0, 'back')])!.before.id, 'x', 'нет старых — самое раннее');
+});
+
+test('Календарь выбора даты: сетка месяца с понедельника, формат «4 октября 2026»', () => {
+  const g = monthGrid(2026, 9); // октябрь 2026: 1-е — четверг
+  assert.equal(g.indexOf(1), 3);
+  assert.equal(g.filter((x) => x !== null).length, 31);
+  assert.equal(g.length % 7, 0);
+  assert.equal(formatDateRu('2026-10-04'), '4 октября 2026');
+  assert.equal(formatDateRu(''), '');
+});

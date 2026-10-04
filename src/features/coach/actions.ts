@@ -55,7 +55,7 @@ export function validateAction(action: CoachAction, ctx: ActionContext): Validat
   const prefs = getPrefs(ctx.profile);
   const customs = ctx.customs ?? [];
   const fail = (reason: string): Validation => ({ ok: false, reason });
-  if ((ctx.rejected ?? []).includes(actionKey(action))) return fail('ты уже отказался от этого предложения');
+  if ((ctx.rejected ?? []).includes(actionKey(action))) return fail('это предложение уже отклонено');
 
   const ex = p.exerciseId ? getExercise(p.exerciseId, customs) : undefined;
   if (p.exerciseId && !ex) return fail('неизвестное упражнение');

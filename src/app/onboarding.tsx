@@ -7,7 +7,8 @@ import { Screen } from '@/components/Screen';
 import { Button, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { Bar } from '@/components/charts';
-import { BodySection, FoodSection, GoalPicker, HealthSection, LifestyleSection, TrainingSection, defaultProfile } from '@/features/profile/forms';
+import { BodySection, GoalPicker, TrainingSection, defaultProfile } from '@/features/profile/forms';
+import { useProfile } from '@/stores/profile';
 import { PlanOverview } from '@/features/profile/PlanSummary';
 import { computeNutritionTarget } from '@/features/nutrition/targets';
 import { generatePlan } from '@/features/training/planGenerator';
@@ -15,7 +16,8 @@ import { applyProfile } from '@/features/profile/applyProfile';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 
-const STEPS = ['Знакомство', 'Тело', 'Цель', 'Тренировки', 'Здоровье', 'Образ жизни', 'Питание', 'Твой план'];
+/** Короткий онбординг: 4 вопроса + план. Здоровье, оборудование, активность и питание — позже, на главной («Дополни профиль») */
+const STEPS = ['Знакомство', 'Тело', 'Цель', 'Тренировки', 'Твой план'];
 
 export default function Onboarding() {
   const [step, setStep] = useState(0);
@@ -27,6 +29,7 @@ export default function Onboarding() {
 
   const finish = () => {
     applyProfile({ ...p, name: p.name.trim(), createdAt: Date.now() }, { force: true });
+    useProfile.getState().updateSettings({ setupPending: ['health', 'equipment', 'life', 'food'] });
     haptic.success();
     router.replace('/');
   };
@@ -49,7 +52,7 @@ export default function Onboarding() {
             {BRAND} / PERSONAL COACH
           </T>
           <T v="display">Тренер, нутрициолог и восстановление — в одном приложении</T>
-          <T v="bodyDim">Ответь на несколько вопросов — {BRAND} рассчитает калории, БЖУ, сплит и нагрузку. Все данные хранятся на твоём телефоне.</T>
+          <T v="bodyDim">4 коротких вопроса — {BRAND} рассчитает калории, БЖУ, сплит и нагрузку. Все данные хранятся на твоём телефоне.</T>
           <Field label="Как тебя зовут?" placeholder="Имя" value={p.name} onChangeText={(t) => set({ name: t })} autoFocus returnKeyType="next" onSubmitEditing={() => canNext && setStep(1)} maxLength={40} />
         </View>
       ) : null}
@@ -65,26 +68,11 @@ export default function Onboarding() {
       ) : null}
       {step === 3 ? (
         <Section title="Тренировки" sub="Только реальные возможности — план должен выполняться.">
-          <TrainingSection p={p} set={set} />
+          <TrainingSection p={p} set={set} compact />
         </Section>
       ) : null}
-      {step === 4 ? (
-        <Section title="Здоровье и особенности" sub={`Необязательно, но важно: ${BRAND} не назначит движения, которые могут навредить, и уберёт из подбора еды аллергены.`}>
-          <HealthSection p={p} set={set} />
-        </Section>
-      ) : null}
-      {step === 5 ? (
-        <Section title="Активность вне зала" sub="Шаги и работа сильно влияют на расход калорий.">
-          <LifestyleSection p={p} set={set} />
-        </Section>
-      ) : null}
-      {step === 6 ? (
-        <Section title="Питание" sub={`${BRAND} будет подбирать еду из того, что ты любишь.`}>
-          <FoodSection p={p} set={set} />
-        </Section>
-      ) : null}
-      {step === 7 && preview ? (
-        <Section title={`${p.name.trim()}, вот твой старт`} sub="Рассчитано автоматически. Всё можно изменить позже в профиле.">
+      {step === 4 && preview ? (
+        <Section title={`${p.name.trim()}, вот твой старт`} sub="Рассчитано автоматически. Здоровье, оборудование и питание можно уточнить потом — тренер напомнит.">
           <PlanOverview plan={preview.plan} target={preview.target} />
         </Section>
       ) : null}

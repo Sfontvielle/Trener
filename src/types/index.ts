@@ -106,7 +106,11 @@ export interface AppSettings {
   accent: 'lime' | 'blue' | 'orange';
   /** Оборудование зала: реальные веса, которые можно поставить (нет — значения по умолчанию) */
   gym?: GymSetup;
+  /** Короткий онбординг: какие разделы профиля ещё предложить заполнить позже */
+  setupPending?: SetupItem[];
 }
+
+export type SetupItem = 'health' | 'equipment' | 'life' | 'food';
 
 export interface GymSetup {
   barKg: number;

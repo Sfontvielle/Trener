@@ -214,7 +214,7 @@ export function chooseSplit(p: UserProfile, prefs: TrainingPreferences, sessions
   if (pref !== 'auto' && pref !== 'custom') {
     auto = false;
     split = pref === 'ppl' && d >= 6 ? 'ppl_x2' : pref;
-    reasons.unshift(`Ты выбрал формат ${SPLIT_PREF_LABEL[pref]}`);
+    reasons.unshift(`Выбран формат ${SPLIT_PREF_LABEL[pref]}`);
     if (!candidates.some((c) => c.split === split)) {
       const c = scoreSplit(split, Math.min(Math.max(d, SPECS[split].days[0]), SPECS[split].days[1]), p, prefs, targets, rec, !!opts.legsRestricted);
       if (c) candidates.push({ ...c, cons: [`рассчитан на ${SPECS[split].days[0]}–${SPECS[split].days[1]} дней — дни идут по ротации`, ...c.cons] });
