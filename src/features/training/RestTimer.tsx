@@ -14,6 +14,7 @@ export function RestTimerBar({ bottom = 0, inline }: { bottom?: number; inline?:
   const stop = useWorkouts((s) => s.stopRest);
   const [now, setNow] = useState(() => Date.now());
   const firedFor = useRef<number | null>(null);
+  const warnedFor = useRef<number | null>(null);
   const pulse = useState(() => new Animated.Value(0))[0];
   const enter = useState(() => new Animated.Value(0))[0];
   const startedAt = rest?.startedAt;
@@ -31,6 +32,14 @@ export function RestTimerBar({ bottom = 0, inline }: { bottom?: number; inline?:
 
   const left = rest ? Math.max(0, Math.round((rest.endsAt - now) / 1000)) : 0;
   const done = !!rest && left === 0;
+
+  // За 10 секунд до конца — лёгкий тактильный сигнал: успеть подойти к снаряду
+  useEffect(() => {
+    if (rest && rest.duration > 20 && left > 0 && left <= 10 && warnedFor.current !== rest.endsAt) {
+      warnedFor.current = rest.endsAt;
+      haptic.light();
+    }
+  }, [left, rest]);
 
   useEffect(() => {
     if (done && rest && firedFor.current !== rest.endsAt) {
@@ -59,8 +68,8 @@ export function RestTimerBar({ bottom = 0, inline }: { bottom?: number; inline?:
           Следующий: {rest.label}
         </T>
       </View>
-      <Pressable accessibilityLabel="Плюс 15 секунд" onPress={() => adjust(15)} style={styles.adj} hitSlop={6}>
-        <T v="small" style={{ fontWeight: '800' }}>+15</T>
+      <Pressable accessibilityLabel="Плюс 30 секунд" onPress={() => { haptic.tap(); adjust(30); }} style={styles.adj} hitSlop={6}>
+        <T v="small" style={{ fontWeight: '800' }}>+30</T>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={done ? 'Закрыть таймер' : 'Пропустить отдых'} onPress={() => { haptic.tap(); stop(); }} style={[styles.skip, done && { backgroundColor: colors.accent }]} hitSlop={6}>
         {done ? <Icon name="checkmark" size={20} color={colors.onAccent} /> : <T v="small" style={{ fontWeight: '800' }}>Пропустить</T>}

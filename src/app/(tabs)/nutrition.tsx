@@ -20,14 +20,14 @@ import { dayProgress, fiberLabel, macroState, macrosFor, sumFiber, sumMacros, ty
 import { stateColor } from '@/components/macroColor';
 import { suggestMeals, type MealSuggestion } from '@/features/nutrition/suggest';
 import { reviewCalories } from '@/features/nutrition/adaptive';
-import { applyCalorieDelta } from '@/features/profile/applyProfile';
+import { applyCalorieDelta, recalibrateCalories } from '@/features/profile/applyProfile';
 import { LOCAL_FOODS } from '@/data/foods';
 import { addDays, daysBetween, relativeDay, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
 import { useDayKey } from '@/hooks/useDayKey';
-import { frequentProducts, sameMealYesterday } from '@/features/nutrition/quick';
+import { frequentProducts, sameMealYesterday, usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { MealIcon } from '@/features/nutrition/MealIcon';
 import { BRAND } from '@/config/brand';
 
@@ -56,6 +56,13 @@ export default function Nutrition() {
   const isToday = offset === 0;
   const nowMeal = mealForHour(new Date().getHours());
   const repeat = useMemo(() => (isToday ? sameMealYesterday(allEntries, date, nowMeal) : []), [isToday, allEntries, date, nowMeal]);
+  const usual = useMemo(() => Object.fromEntries((['breakfast', 'lunch', 'dinner', 'snack'] as MealSlot[]).map((m) => [m, usualMeal(allEntries, products, date, m)])) as Record<MealSlot, UsualMeal | null>, [allEntries, products, date]);
+  const addUsual = (u: UsualMeal) => {
+    const st = useNutrition.getState();
+    const ids = u.items.map((it) => st.addEntry(it.product, it.grams, u.slot, date).id);
+    haptic.success();
+    toast(`${MEAL_LABEL[u.slot]}: обычный добавлен`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
+  };
   const frequent = useMemo(() => frequentProducts(allEntries, products, lastGrams, date), [allEntries, products, lastGrams, date]);
   const target = nut.target;
   const dayFiber = useMemo(() => sumFiber(nut.entries), [nut.entries]);
@@ -146,7 +153,7 @@ export default function Nutrition() {
       {isToday && (repeat.length || frequent.length) ? (
         <>
           
-          {repeat.length ? (
+          {repeat.length && nut.entries.length ? (
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
               <Icon name="repeat" size={20} color={colors.accent} />
               <View style={{ flex: 1 }}>
@@ -230,7 +237,21 @@ export default function Nutrition() {
                   </T>
                 )}
               </Pressable>
-              {list.length === 0 && prevDay.some((e) => e.meal === m) ? (
+              {list.length === 0 && usual[m] ? (
+                <Pressable accessibilityRole="button" accessibilityLabel={`Добавить обычный ${MEAL_LABEL[m].toLowerCase()}`} onPress={() => addUsual(usual[m]!)} style={styles.usual} testID={`usual-${m}`}>
+                  <View style={{ flex: 1 }}>
+                    <T v="small" color={colors.text} style={{ fontWeight: '700', fontSize: 13 }}>
+                      Ваш обычный {MEAL_LABEL[m].toLowerCase()} · {fmtNum(usual[m]!.kcal)} ккал
+                    </T>
+                    <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+                      {usual[m]!.items.map((it) => `${it.product.name} ${it.grams} г`).join(', ')}
+                    </T>
+                  </View>
+                  <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+                    + Добавить
+                  </T>
+                </Pressable>
+              ) : list.length === 0 && prevDay.some((e) => e.meal === m) ? (
                 <Pressable accessibilityRole="button" accessibilityLabel={`Скопировать ${MEAL_LABEL[m].toLowerCase()} со вчера`} hitSlop={8} onPress={() => copyFrom(addDays(date, -1), m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, marginLeft: 42 }}>
                   <Icon name="copy-outline" size={14} color={colors.accent} />
                   <T v="small" color={colors.accent} style={{ fontWeight: '700', fontSize: 12 }}>
@@ -266,14 +287,22 @@ export default function Nutrition() {
         })}
       </View>
 
-      {review && review.status === 'adjust' && isToday ? (
-        <Card tone="warning" style={{ marginTop: space.md, gap: 8 }}>
-          <T v="h3">{review.headline}</T>
-          <T v="small">{review.detail}</T>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.headline, 'adaptive'); toast('Калорийность обновлена'); }} style={{ flex: 1 }} />
-            <Button title="Спросить тренера" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Стоит ли менять калорийность по тренду веса?' } })} />
-          </View>
+      {review && isToday && review.status !== 'insufficient_data' ? (
+        // Итог алгоритма одной фразой; действие — только если правило предлагает изменение
+        <Card tone={review.status === 'adjust' ? 'warning' : undefined} style={{ marginTop: space.md, gap: 8 }} testID="calorie-review">
+          <T v="body" color={colors.text} style={{ fontSize: 15 }}>
+            {review.summary}
+          </T>
+          {review.maintenance ? (
+            <T v="small" style={{ fontSize: 12 }}>
+              {review.maintenance.text}
+            </T>
+          ) : null}
+          {review.status === 'adjust' ? (
+            <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.summary, 'adaptive'); toast('Калорийность обновлена'); }} />
+          ) : review.maintenance && Math.abs(review.maintenance.kcal - target.tdee) >= 150 && (target.adjustmentKcal ?? 0) === 0 ? (
+            <Button title={`Перейти на мой расход (~${fmtNum(review.maintenance.kcal)} ккал)`} size="sm" variant="secondary" onPress={() => { const r = recalibrateCalories(); toast(r.message, r.ok ? 'checkmark-circle' : 'alert-circle'); }} />
+          ) : null}
         </Card>
       ) : null}
 
@@ -450,6 +479,7 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
 }
 
 const styles = themed({
+  usual: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginLeft: 42, padding: 10, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.md },
   legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
   quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },

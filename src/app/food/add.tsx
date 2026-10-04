@@ -15,7 +15,7 @@ import { allergenIn, foodAvoidance, healthOf } from '@/features/profile/health';
 import { searchLocalFoods, LOCAL_FOODS } from '@/data/foods';
 import { foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
 import { macrosFor, remaining, sumMacros } from '@/features/nutrition/status';
-import { frequentProducts } from '@/features/nutrition/quick';
+import { frequentProducts, lastPortion } from '@/features/nutrition/quick';
 import { today } from '@/utils/date';
 import { parseDecimal } from '@/utils/format';
 import { uid } from '@/utils/id';
@@ -47,7 +47,7 @@ export default function AddFood() {
   // Результат онлайн-поиска привязан к запросу: «загрузка» = результат ещё не для текущего запроса
   const [result, setResult] = useState<{ q: string; items: FoodProduct[]; error: string | null }>({ q: '', items: [], error: null });
   // Возврат со сканера: продукт уже в кэше
-  const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? null : null));
+  const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? LOCAL_FOODS.find((f) => f.id === params.productId) ?? null : null));
   const [barcodeOpen, setBarcodeOpen] = useState(params.enterBarcode === '1');
   const [customOpen, setCustomOpen] = useState(params.manual === '1');
   const reqId = useRef(0);
@@ -207,12 +207,14 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
   const entries = useNutrition((s) => s.entries);
   const target = usePlan((s) => s.target);
   const profile = useProfile((s) => s.profile);
-  const [g, setG] = useState(() => (product ? lastGrams[product.id] ?? product.serving?.grams ?? 100 : 100));
+  // Порция по умолчанию — последняя (запомненная или из дневника), а не 100 г
+  const portion = product ? lastPortion(product.id, lastGrams, entries, product.serving) : null;
+  const [g, setG] = useState(() => portion?.grams ?? 100);
   const [meal, setMeal] = useState<MealSlot>(() => initialMeal ?? mealForHour(new Date().getHours()));
   if (!product) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
   const m = macrosFor(product.per100, g);
   const rem = target ? remaining(target, sumMacros(entries.filter((e) => e.date === date))) : null;
-  const presets = [...new Set([product.serving?.grams, 50, 100, 150, 200, 250, 350].filter((x): x is number => !!x && x > 0))].slice(0, 7);
+  const presets = [...new Set([portion?.source === 'last' ? portion.grams : undefined, product.serving?.grams, 50, 100, 150, 200, 250, 350].filter((x): x is number => !!x && x > 0))].slice(0, 7);
   const avoid = profile ? foodAvoidance(profile) : null;
   const allergen = avoid ? allergenIn(`${product.name} ${product.brand ?? ''}`, avoid.allergyWords) : undefined;
   const forbidden = !allergen && profile ? allergenIn(product.name, healthOf(profile).forbiddenFoods) : undefined;
@@ -222,6 +224,11 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
         <FavStar id={product.id} />
         {allergen ? <Banner tone="danger" icon="warning-outline" text={`В профиле указано: «${allergen}». Проверь состав на упаковке — название может не отражать все ингредиенты.`} /> : null}
         {forbidden ? <Banner tone="warning" icon="ban-outline" text={`«${forbidden}» в списке запрещённых продуктов профиля.`} /> : null}
+        {portion?.source === 'last' ? (
+          <T v="small" testID="last-portion">
+            Последний раз: <T v="small" color={colors.text} style={{ fontWeight: '800' }}>{portion.grams} г</T>
+          </T>
+        ) : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {presets.map((x) => (
             <Chip key={x} label={product.serving && x === product.serving.grams ? `${product.serving.label} · ${x} г` : `${x} г`} active={g === x} onPress={() => setG(x)} />

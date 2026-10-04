@@ -37,11 +37,13 @@ export const Card = memo(function Card({
   onPress,
   accessibilityLabel,
   tone = 'default',
+  testID,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   accessibilityLabel?: string;
+  testID?: string;
   tone?: 'default' | 'accent' | 'warning' | 'danger' | 'flat';
 }) {
   const toneStyle =
@@ -60,13 +62,18 @@ export const Card = memo(function Card({
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
+        testID={testID}
         style={({ pressed }) => [styles.card, toneStyle, style, pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]}
       >
         {children}
       </Pressable>
     );
   }
-  return <View style={[styles.card, toneStyle, style]}>{children}</View>;
+  return (
+    <View testID={testID} style={[styles.card, toneStyle, style]}>
+      {children}
+    </View>
+  );
 });
 
 export function Button({

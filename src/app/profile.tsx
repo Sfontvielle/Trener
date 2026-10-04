@@ -22,6 +22,7 @@ import { ensurePermission } from '@/services/notifications';
 import { relativeDay, toISODate } from '@/utils/date';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
+import { GymSheet } from '@/features/training/GymSheet';
 import { BRAND } from '@/config/brand';
 
 function prefsSummary(p: UserProfile): string {
@@ -60,6 +61,7 @@ export default function Profile() {
   const healthSync = useHealth((s) => s.lastSyncAt);
   const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
   const [section, setSection] = useState<Section>(null);
+  const [gymOpen, setGymOpen] = useState(false);
   const [draft, setDraft] = useState<UserProfile | null>(null);
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
@@ -142,6 +144,7 @@ export default function Profile() {
             <Chip label="lb" active={settings.weightUnit === 'lb'} onPress={() => updateSettings({ weightUnit: 'lb' })} />
           </View>
         </View>
+        <Row label="Оборудование зала" value={settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — настроить диски и шаги'} onPress={() => setGymOpen(true)} />
         <Toggle value={settings.restTimerAuto} onChange={(v) => updateSettings({ restTimerAuto: v })} label="Авто-таймер отдыха" sub="Запускается после отметки подхода" />
         <NumberStepper label="Отдых по умолчанию, сек" value={settings.defaultRestSec} onChange={(v) => updateSettings({ defaultRestSec: Math.round(v) })} step={15} min={30} max={600} compact />
         <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, таймер, рекорды (на iPhone)" />
@@ -222,6 +225,7 @@ export default function Profile() {
         {BRAND} — фитнес-помощник и не ставит медицинских диагнозов.
       </T>
 
+      <GymSheet visible={gymOpen} onClose={() => setGymOpen(false)} />
       <Sheet visible={!!section} onClose={() => setSection(null)} title={section ? TITLES[section] : ''} footer={<Button title="Сохранить и пересчитать" icon="checkmark" size="lg" onPress={save} />}>
         {draft && section === 'goal' ? <GoalPicker p={draft} set={set} /> : null}
         {draft && section === 'body' ? <BodySection p={draft} set={set} /> : null}

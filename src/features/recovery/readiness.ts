@@ -113,7 +113,13 @@ export function computeReadiness(
   }
 
   score = Math.round(clamp(score, 5, 100));
-  const band: ReadinessBand = score >= 75 ? 'go' : score >= 60 ? 'reduce' : score >= 45 ? 'light' : 'recover';
+  let band: ReadinessBand = score >= 75 ? 'go' : score >= 60 ? 'reduce' : score >= 45 ? 'light' : 'recover';
+  // Осторожность: нагрузку снижаем только по СОВОКУПНОСТИ признаков. Один показатель (например, HRV ниже базы
+  // при нормальном сне и самочувствии) — не повод для −15%: работаем по плану и смотрим на первые подходы
+  // (авторегуляция в тренировке). Сильные признаки (сон < 5 ч, «нет сил») считаются за два. ЭВРИСТИКА RYNJI.
+  const signals = negativeSignals(c, ctx, factors);
+  const ambiguous = !c.pain && band !== 'go' && signals < 2;
+  if (ambiguous) band = 'go';
   const meta = BAND_META[band];
   factors.sort((a, b) => a.impact - b.impact);
   // Причины простыми словами — сравнение с личной нормой, где она есть
@@ -127,7 +133,27 @@ export function computeReadiness(
   if (!ctx.objectiveOnly && c.stress >= 4) reasons.push('высокий стресс');
   if (factors.some((f) => f.label === 'Нагрузка за неделю')) reasons.push('нагрузка за неделю выше обычной');
   if (c.pain) reasons.push('отмечена боль');
-  return { score, band, category: readinessCategory(score, band), reasons, headline: c.pain ? `${meta.headline}. Избегай движений, которые вызывают боль` : meta.headline, volumeFactor: meta.volumeFactor, rirDelta: meta.rirDelta, factors };
+  const headline = ambiguous ? 'Один показатель ниже нормы — работаем по плану, ориентируемся на первые подходы' : c.pain ? `${meta.headline}. Избегай движений, которые вызывают боль` : meta.headline;
+  return { score, band, category: readinessCategory(score, band), reasons, headline, volumeFactor: meta.volumeFactor, rirDelta: meta.rirDelta, factors };
+}
+
+/** Сколько независимых признаков недовосстановления (сильные — за два) */
+export function negativeSignals(c: DailyCheckIn, ctx: { hrvBaseline?: number; rhrBaseline?: number; objectiveOnly?: boolean; sleepBaseline?: number }, factors: ReadinessResult['factors']): number {
+  let n = 0;
+  const sleepLow = ctx.sleepBaseline ? c.sleepHours < ctx.sleepBaseline - 0.75 : c.sleepHours < 6.5;
+  if (c.sleepHours < 5) n += 2;
+  else if (sleepLow) n += 1;
+  if (c.hrvMs && ctx.hrvBaseline && c.hrvMs < ctx.hrvBaseline * 0.85) n += 1;
+  if (c.restingHr && ctx.rhrBaseline && c.restingHr - ctx.rhrBaseline >= 5) n += 1;
+  if (!ctx.objectiveOnly) {
+    if (c.energy <= 1) n += 2;
+    else if (c.energy <= 2) n += 1;
+    if (c.soreness >= 4) n += 1;
+    if (c.stress >= 4) n += 1;
+    if (c.sleepQuality <= 1) n += 1;
+  }
+  if (factors.some((f) => f.label === 'Нагрузка за неделю' || (f.label === 'Вчерашняя тренировка' && f.detail === 'тяжёлая'))) n += 1;
+  return n;
 }
 
 function hardSetShare(s: WorkoutSession): number {

@@ -1,4 +1,4 @@
-import type { Exercise, PlannedExercise, ReadinessBand, WorkoutExercise, WorkoutSession, WorkoutSource } from '@/types';
+import type { Exercise, GymSetup, PlannedExercise, ReadinessBand, WorkoutExercise, WorkoutSession, WorkoutSource } from '@/types';
 import { getExercise } from '@/data/exercises';
 import { uid } from '@/utils/id';
 import { today } from '@/utils/date';
@@ -17,6 +17,7 @@ export interface SessionContext {
   band?: ReadinessBand;
   volumeFactor: number;
   rirDelta: number;
+  gym?: GymSetup;
 }
 
 export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): WorkoutExercise | null {
@@ -33,6 +34,7 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
     history,
     band: ctx.band,
     volumeFactor: ctx.volumeFactor,
+    gym: ctx.gym,
   });
   // Вес, согласованный с тренером, главнее авто-прогрессии (пользователь подтвердил его явно)
   const rec = pe.targetWeight !== undefined ? { ...base, weight: pe.targetWeight, rationale: `Вес ${pe.targetWeight} кг согласован с тренером. ${base.rationale}` } : base;

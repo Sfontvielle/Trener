@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { DailyCheckIn } from '@/types';
-import { colors, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Card, T } from '@/components/ui';
-import { Field, NumberStepper, Scale5, Toggle } from '@/components/inputs';
+import { Banner, Button, Card, Icon, T } from '@/components/ui';
+import { Field, NumberStepper, Toggle } from '@/components/inputs';
 import { DurationWheel } from '@/components/WheelPicker';
 import { useHealth } from '@/stores/health';
 import { CATEGORY_LABEL, readinessCategory, sleepBaseline, sleepMinutesOf, withSleep } from '@/features/science/recovery';
@@ -31,7 +31,8 @@ export default function CheckIn() {
   const healthMin = healthDay?.sleepHours ? Math.round(healthDay.sleepHours * 60) : undefined;
   const [c, setC] = useState<DailyCheckIn>(() => {
     if (existing) return existing.sleepMinutes !== undefined ? existing : withSleep(existing, sleepMinutesOf(existing), existing.sleepSource ?? 'manual');
-    const base: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 3, energy: 3, stress: 3, soreness: 2, pain: false, createdAt: Date.now() };
+    // Значения по умолчанию = «нейтральные» точки формулы готовности: обычный день — один тап «Сохранить»
+    const base: DailyCheckIn = { date: d, sleepHours: 7.5, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, createdAt: Date.now() };
     return healthMin ? withSleep(base, healthMin, 'health') : withSleep(base, 450, 'manual');
   });
   // Синк Apple Health завершился после открытия экрана: обновляем только не тронутое вручную значение
@@ -41,8 +42,11 @@ export default function CheckIn() {
   const weights = useBody((s) => s.weights);
   const todayWeight = weights.find((w) => w.date === d);
   const lastKg = weights[weights.length - 1]?.kg ?? useProfile.getState().profile?.weightKg ?? 75;
-  const [logWeight, setLogWeight] = useState(!todayWeight);
+  // Вес пишется только по явному действию: раньше переключатель был включён по умолчанию,
+  // и сохранение без взвешивания записывало вчерашний вес как сегодняшний (портило тренд)
+  const [logWeight, setLogWeight] = useState(false);
   const [kg, setKg] = useState(todayWeight?.kg ?? lastKg);
+  const [editSleep, setEditSleep] = useState(false);
   const [showHealth, setShowHealth] = useState(!!(existing?.hrvMs || existing?.restingHr));
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
   const checkins = useCheckins((s) => s.byDate);
@@ -108,51 +112,61 @@ export default function CheckIn() {
 
   return (
     <Screen keyboard>
-      <Header title="Утренний чек-ин" subtitle="30 секунд — и план подстроится" />
+      <Header title="Утренний чек-ин" subtitle="Обычный день — просто «Сохранить»" />
       <View style={{ gap: space.xl }}>
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <T v="h3">Сколько спал?</T>
-            <T v="h3" color={colors.accent} testID="sleep-value">
-              {formatSleep(sleepMinutesOf(c))}
-            </T>
-          </View>
-          <DurationWheel minutes={sleepMinutesOf(c)} onChange={(m) => setC((x) => withSleep(x, m, 'manual'))} testID="sleep-wheel" />
-          {c.sleepSource === 'health' ? (
-            <T v="small" style={{ textAlign: 'center' }}>
-              Источник: Apple Health · можно изменить
-            </T>
-          ) : healthMin && healthMin !== c.sleepMinutes ? (
-            <Pressable accessibilityRole="button" onPress={() => setC((x) => withSleep(x, healthMin, 'health'))} style={{ alignSelf: 'center', padding: 4 }}>
-              <T v="small" color={colors.accent}>
-                Apple Health: {formatSleep(healthMin)} — подставить
+        {c.sleepSource === 'health' && !editSleep ? (
+          // Сон из Apple Health — ничего вводить не нужно
+          <View style={styles.fromHealth}>
+            <Icon name="moon" size={18} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <T v="h3" testID="sleep-value">
+                {formatSleep(sleepMinutesOf(c))}
+              </T>
+              <T v="small">Источник: Apple Health</T>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Изменить сон" onPress={() => setEditSleep(true)} hitSlop={8} style={{ padding: 6 }}>
+              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+                Изменить
               </T>
             </Pressable>
-          ) : null}
-        </View>
-        <View style={{ gap: 8 }}>
-          <T v="h3">Качество сна</T>
-          <Scale5 value={c.sleepQuality} onChange={(v) => set({ sleepQuality: v })} low="Плохо" high="Отлично" />
-        </View>
-        <View style={{ gap: 8 }}>
-          <T v="h3">Энергия</T>
-          <Scale5 value={c.energy} onChange={(v) => set({ energy: v })} low="Нет сил" high="Полон сил" />
-        </View>
-        <View style={{ gap: 8 }}>
-          <T v="h3">Стресс</T>
-          <Scale5 value={c.stress} onChange={(v) => set({ stress: v })} low="Спокойно" high="Очень высокий" invert />
-        </View>
-        <View style={{ gap: 8 }}>
-          <T v="h3">Мышечная усталость</T>
-          <Scale5 value={c.soreness} onChange={(v) => set({ soreness: v })} low="Свежий" high="Всё болит" invert />
-        </View>
+          </View>
+        ) : (
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <T v="h3">Сон</T>
+              <T v="h3" color={colors.accent} testID="sleep-value">
+                {formatSleep(sleepMinutesOf(c))}
+              </T>
+            </View>
+            <DurationWheel minutes={sleepMinutesOf(c)} onChange={(m) => setC((x) => withSleep(x, m, 'manual'))} testID="sleep-wheel" />
+            {healthMin && healthMin !== c.sleepMinutes ? (
+              <Pressable accessibilityRole="button" onPress={() => setC((x) => withSleep(x, healthMin, 'health'))} style={{ alignSelf: 'center', padding: 4 }}>
+                <T v="small" color={colors.accent}>
+                  Apple Health: {formatSleep(healthMin)} — подставить
+                </T>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
+        <Choice3 title="Самочувствие" options={['Плохо', 'Нормально', 'Отлично']} values={[2, 4, 5]} value={c.energy <= 2 ? 2 : c.energy >= 5 ? 5 : 4} onChange={(v) => set({ energy: v })} />
+        <Choice3 title="Болезненность мышц" options={['Нет', 'Средняя', 'Сильная']} values={[2, 3, 5]} value={c.soreness <= 2 ? 2 : c.soreness >= 4 ? 5 : 3} onChange={(v) => set({ soreness: v })} />
+        <Choice3 title="Стресс" options={['Низкий', 'Средний', 'Высокий']} values={[2, 3, 5]} value={c.stress <= 2 ? 2 : c.stress >= 4 ? 5 : 3} onChange={(v) => set({ stress: v })} />
         <View style={{ gap: 8 }}>
           <Toggle value={c.pain} onChange={(v) => set({ pain: v })} label="Есть боль (не крепатура)" sub="Сустав, спина, острая боль при движении" />
           {c.pain ? <Field placeholder="Где и когда болит?" value={c.painNote ?? ''} onChangeText={(t) => set({ painNote: t })} /> : null}
           {c.pain ? <Banner tone="warning" icon="medkit-outline" text={`${BRAND} исключит нагрузку, но не заменяет врача. При острой боли, отёке или травме — к специалисту.`} /> : null}
         </View>
+        {healthDay?.hrvMs || healthDay?.restingHr ? (
+          // Есть в Apple Health — ничего вводить не нужно, готовность берёт эти значения сама
+          <View style={styles.fromHealth}>
+            <Icon name="heart" size={16} color={colors.accent} />
+            <T v="small" color={colors.text} style={{ flex: 1 }}>
+              Из Apple Health: {[healthDay.hrvMs ? `HRV ${Math.round(healthDay.hrvMs)} мс` : '', healthDay.restingHr ? `пульс покоя ${Math.round(healthDay.restingHr)}` : ''].filter(Boolean).join(' · ')}
+            </T>
+          </View>
+        ) : (
         <View style={{ gap: 8 }}>
-          <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя (Apple Health подключится позже)" />
+          <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя вручную — если Apple Health не подключён" />
           {showHealth ? (
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Field style={{ flex: 1 }} label="HRV, мс" keyboardType="numeric" value={c.hrvMs ? String(c.hrvMs) : ''} onChangeText={(t) => set({ hrvMs: Number.isFinite(parseDecimal(t)) ? parseDecimal(t) : undefined })} />
@@ -160,8 +174,9 @@ export default function CheckIn() {
             </View>
           ) : null}
         </View>
+        )}
         <View style={{ gap: 8 }}>
-          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? 'Обновить вес' : 'Взвесился утром'} sub="Натощак, после туалета — для тренда веса" />
+          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? `Вес сегодня ${String(todayWeight.kg).replace('.', ',')} кг — обновить` : 'Взвесился утром'} sub={todayWeight ? 'Уже записан (вручную или из Apple Health)' : 'Натощак, после туалета — для тренда веса'} />
           {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
         </View>
         <Button
@@ -179,3 +194,40 @@ export default function CheckIn() {
     </Screen>
   );
 }
+
+/** Три варианта одним тапом — вместо шкалы 1–5 (точность выше не нужна для решений) */
+function Choice3({ title, options, values, value, onChange }: { title: string; options: [string, string, string]; values: [number, number, number]; value: number; onChange: (v: 1 | 2 | 3 | 4 | 5) => void }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <T v="h3">{title}</T>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {options.map((o, i) => {
+          const active = values[i] === value;
+          return (
+            <Pressable
+              key={o}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${title}: ${o}`}
+              onPress={() => {
+                haptic.tap();
+                onChange(values[i] as 1 | 2 | 3 | 4 | 5);
+              }}
+              style={[styles.choice, active && styles.choiceOn]}
+            >
+              <T v="body" style={{ fontWeight: '700', fontSize: 15 }} color={active ? colors.onAccent : colors.text}>
+                {o}
+              </T>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = themed({
+  choice: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  choiceOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  fromHealth: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+});

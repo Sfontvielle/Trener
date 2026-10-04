@@ -104,6 +104,19 @@ export interface AppSettings {
   /** Оформление: системная / тёмная / светлая и цвет акцента */
   theme: 'system' | 'dark' | 'light';
   accent: 'lime' | 'blue' | 'orange';
+  /** Оборудование зала: реальные веса, которые можно поставить (нет — значения по умолчанию) */
+  gym?: GymSetup;
+}
+
+export interface GymSetup {
+  barKg: number;
+  ezBarKg: number;
+  /** Доступные диски (кг), по паре каждого */
+  plates: number[];
+  /** Шаг гантелей: 20 → 22 → 24 = 2 */
+  dumbbellStep: number;
+  /** Шаг стека тренажёра/блока: 50 → 55 → 60 = 5 */
+  machineStep: number;
 }
 
 // ─── Nutrition target & plan ────────────────────────────────────────────────

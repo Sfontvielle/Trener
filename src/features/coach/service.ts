@@ -169,7 +169,7 @@ function applyExerciseChange(action: CoachAction) {
   const ps = usePlan.getState();
   const active = ws.active;
   if (p.scope !== 'plan' && active && (action.type === 'reorder_exercises' || active.exercises.some((we) => we.exerciseId === p.exerciseId))) {
-    const ctx = { sessions: ws.sessions, customs: ws.customExercises, volumeFactor: 1, rirDelta: 0 };
+    const ctx = { sessions: ws.sessions, customs: ws.customExercises, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym };
     ws.patchActive((s) => {
       if (action.type === 'reorder_exercises') {
         const rest = [...s.exercises];

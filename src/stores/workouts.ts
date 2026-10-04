@@ -29,6 +29,8 @@ interface WorkoutState {
   patchActive: (fn: (s: WorkoutSession) => WorkoutSession) => void;
   updateSet: (weId: string, setId: string, patch: Partial<ExerciseSet>) => void;
   addSet: (weId: string) => void;
+  /** Вставить разминочные подходы перед рабочими (не считаются рабочим объёмом) */
+  addWarmups: (weId: string, sets: { weight: number; reps: number }[]) => void;
   removeSet: (weId: string, setId: string) => void;
   addExercise: (we: WorkoutExercise) => void;
   removeExercise: (weId: string) => void;
@@ -73,6 +75,13 @@ export const useWorkouts = create<WorkoutState>()(
             const ns: ExerciseSet = { id: uid('s_'), weight: last?.weight ?? we.recommendation?.weight ?? 0, reps: last?.reps ?? we.repMax, done: false };
             return { ...we, sets: [...we.sets, ns] };
           }),
+        ),
+      addWarmups: (weId, list) =>
+        get().patchActive((s) =>
+          mapEx(s, weId, (we) => ({
+            ...we,
+            sets: [...list.map((w) => ({ id: uid('s_'), weight: w.weight, reps: w.reps, done: false, warmup: true }) as ExerciseSet), ...we.sets.filter((x) => !(x.warmup && !x.done))],
+          })),
         ),
       removeSet: (weId, setId) => get().patchActive((s) => mapEx(s, weId, (we) => ({ ...we, sets: we.sets.filter((x) => x.id !== setId) }))),
       addExercise: (we) => get().patchActive((s) => ({ ...s, exercises: [...s.exercises, we] })),
