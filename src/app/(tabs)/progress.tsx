@@ -31,6 +31,8 @@ import { comparePeriods, e1rmSeries, metricSeries, progressNarrative, topLifts, 
 import { METRIC_META } from '@/features/progress/metrics';
 import { BRAND } from '@/config/brand';
 import { CATEGORY_LABEL, categoryForScore } from '@/features/science/recovery';
+import { useLabs } from '@/stores/labs';
+import { healthFlags } from '@/features/labs/analysis';
 
 type Range = '7' | '30' | '90' | 'all';
 
@@ -42,6 +44,10 @@ export default function Progress() {
   const weights = useBody((s) => s.weights);
   const metrics = useBody((s) => s.metrics);
   const photos = useBody((s) => s.photos);
+  const labReports = useLabs((s) => s.reports);
+  const sexP = useProfile((s) => s.profile?.sex);
+  const lastLab = useMemo(() => [...labReports].sort((a, b) => (a.date < b.date ? 1 : -1))[0], [labReports]);
+  const labFlags = useMemo(() => healthFlags(labReports, sexP).length, [labReports, sexP]);
   const sessions = useWorkouts((s) => s.sessions);
   const plan = usePlan((s) => s.plan);
   const target = usePlan((s) => s.target);
@@ -129,6 +135,17 @@ export default function Progress() {
           <Icon name="chevron-forward" size={18} color={colors.muted} />
         </View>
         <T v="small">{week ? `${formatDayShort(week.from)} – ${formatDayShort(week.to)}: ${week.headline}` : 'Вес, замеры, тренировки, питание, сон и вывод тренера — раз в неделю'}</T>
+      </Card>
+
+      <Card onPress={() => router.push('/labs')} style={{ marginBottom: space.md, gap: 4 }} accessibilityLabel="Анализы и здоровье">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Icon name="flask-outline" size={18} color={labFlags ? colors.warning : colors.accent} />
+          <T v="h3" style={{ flex: 1 }}>
+            Анализы и здоровье
+          </T>
+          <Icon name="chevron-forward" size={18} color={colors.muted} />
+        </View>
+        <T v="small">{lastLab ? `Последние ${formatDayShort(lastLab.date)}${lastLab.lab ? ` · ${lastLab.lab}` : ''}${labFlags ? ` · обсудить с врачом: ${labFlags}` : ''}` : 'PDF, фото или текст бланка — история показателей и изменения'}</T>
       </Card>
 
       <Card style={{ marginBottom: space.md, gap: 10 }}>

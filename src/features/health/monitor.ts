@@ -26,7 +26,16 @@ export interface HealthSignal {
   /** На каких данных основан сигнал */
   data: string[];
   basis: Basis;
+  /** Значим для тренировок: запрещает повышение нагрузки (давление, пульс, гематокрит, калий, печень, почки, КФК…) */
+  gate?: boolean;
 }
+
+/**
+ * Показатели, отклонение которых важно для ТРЕНИРОВОЧНОЙ нагрузки (риск тромбозов, аритмий, рабдомиолиза,
+ * перегрузки печени/почек). Долгосрочные факторы риска (например, ЛПНП) — повод к врачу, но не к остановке прогрессии.
+ * ЭВРИСТИКА RYNJI.
+ */
+export const TRAINING_GATE_MARKERS = new Set(['hct', 'hgb', 'rbc', 'k', 'na', 'alt', 'ast', 'creat', 'egfr', 'cysc', 'ck', 'tsh', 'ft4', 'ft3', 'glu']);
 
 // ─── Артериальное давление (ACC/AHA 2017) ───────────────────────────────────
 
@@ -82,9 +91,9 @@ export function bpSignals(bp: BloodPressureEntry[], ref: ISODate = today()): Hea
   const lastCat = bpCategory(s.last.systolic, s.last.diastolic);
   const data = [`${s.n} изм. давления за 14 дней, среднее ${s.systolic}/${s.diastolic}`, `последнее ${s.last.systolic}/${s.last.diastolic} (${formatDayShort(s.last.date)})`];
   if (lastCat === 'crisis' && s.last.date >= addDays(ref, -2)) {
-    out.push({ id: 'bp_crisis', level: 'urgent', title: 'Очень высокое давление', text: `Последнее измерение ${s.last.systolic}/${s.last.diastolic}. Повторите измерение в покое через 5 минут. Если давление остаётся выше 180/120 или есть боль в груди, одышка, сильная головная боль, нарушение зрения или речи — вызовите скорую (103/112). Тренировку сегодня не проводите.`, data, basis: BP_BASIS });
+    out.push({ id: 'bp_crisis', level: 'urgent', gate: true, title: 'Очень высокое давление', text: `Последнее измерение ${s.last.systolic}/${s.last.diastolic}. Повторите измерение в покое через 5 минут. Если давление остаётся выше 180/120 или есть боль в груди, одышка, сильная головная боль, нарушение зрения или речи — вызовите скорую (103/112). Тренировку сегодня не проводите.`, data, basis: BP_BASIS });
   } else if (s.n >= 2 && (s.category === 'stage2' || s.category === 'crisis')) {
-    out.push({ id: 'bp_high', level: 'doctor', title: 'Давление в среднем ≥140/90', text: `Среднее ${s.systolic}/${s.diastolic} по ${s.n} измерениям. Рекомендуется обсудить результат с врачом в ближайшее время. До консультации — без максимальных усилий и задержки дыхания.`, data, basis: BP_BASIS });
+    out.push({ id: 'bp_high', level: 'doctor', gate: true, title: 'Давление в среднем ≥140/90', text: `Среднее ${s.systolic}/${s.diastolic} по ${s.n} измерениям. Рекомендуется обсудить результат с врачом в ближайшее время. До консультации — без максимальных усилий и задержки дыхания.`, data, basis: BP_BASIS });
   } else if (s.n >= 2 && s.category === 'stage1') {
     out.push({ id: 'bp_stage1', level: 'monitor', title: 'Давление выше оптимального', text: `Среднее ${s.systolic}/${s.diastolic} — в диапазоне 130–139/80–89. Продолжайте измерять (утром и вечером, в покое). Если сохраняется — рекомендуется обсудить с врачом.`, data, basis: BP_BASIS });
   }
@@ -120,7 +129,7 @@ export function rhrSignals(health: Record<string, HealthDay>, ref: ISODate = tod
   if (!t) return [];
   const data = [`пульс покоя: ${t.recent} уд/мин в среднем за ${t.days} дн. (Apple Health)`, `ваша обычная норма ~${t.baseline}`];
   const basis: Basis = { kind: 'heuristic', sources: ['plews2013'], note: 'сравнение с личной базовой линией; пороги — правила RYNJI' };
-  if (t.recent >= 100) return [{ id: 'rhr_high', level: 'doctor', title: 'Высокий пульс покоя', text: `Пульс покоя в среднем ${t.recent} уд/мин. Рекомендуется обсудить с врачом.`, data, basis }];
+  if (t.recent >= 100) return [{ id: 'rhr_high', level: 'doctor', gate: true, title: 'Высокий пульс покоя', text: `Пульс покоя в среднем ${t.recent} уд/мин. Рекомендуется обсудить с врачом.`, data, basis }];
   if (t.delta >= 7) return [{ id: 'rhr_rise', level: 'monitor', title: 'Пульс покоя выше обычного', text: `Неделю пульс покоя на ${t.delta} уд/мин выше вашей нормы. Бывает при недосыпе, болезни, перегрузке, а также на фоне препаратов. Нагрузку не повышаем; если держится или есть симптомы — к врачу.`, data, basis }];
   return [];
 }
@@ -133,7 +142,7 @@ export function labSignals(reports: LabReport[], sex?: Sex, enhanced = false, re
   if (!reports.length) return [];
   const out: HealthSignal[] = [];
   for (const f of healthFlags(reports, sex)) {
-    out.push({ id: `lab_${f.markerId ?? f.name}`, level: f.level === 'urgent' ? 'urgent' : 'doctor', title: f.name, text: f.text, data: [`анализ от ${formatDayShort(f.date)}`], basis: LAB_BASIS });
+    out.push({ id: `lab_${f.markerId ?? f.name}`, level: f.level === 'urgent' ? 'urgent' : 'doctor', gate: f.level === 'urgent' || (!!f.markerId && TRAINING_GATE_MARKERS.has(f.markerId)), title: f.name, text: f.text, data: [`анализ от ${formatDayShort(f.date)}`], basis: LAB_BASIS });
   }
   // Enhanced: рост наблюдаемых показателей в трёх анализах подряд (гематокрит, гемоглобин, ЛПНП, АЛТ…)
   if (enhanced) {
@@ -202,7 +211,7 @@ export interface HealthGate {
 export function healthGate(signals: HealthSignal[]): HealthGate {
   const urgent = signals.find((s) => s.level === 'urgent');
   if (urgent) return { blockIncrease: true, stop: true, reason: `${urgent.title}: сначала медицинская оценка, тренировки — после.` };
-  const doc = signals.find((s) => s.level === 'doctor');
+  const doc = signals.find((s) => s.level === 'doctor' && s.gate);
   if (doc) return { blockIncrease: true, stop: false, reason: `${doc.title}: есть показатели, которые стоит обсудить с врачом, поэтому нагрузку не повышаем.` };
   return { blockIncrease: false, stop: false };
 }

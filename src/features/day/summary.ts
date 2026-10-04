@@ -1,4 +1,4 @@
-import type { BodyMetric, DailyCheckIn, Exercise, FoodEntry, ISODate, MealSlot, WorkoutPlan, WeightEntry, WorkoutSession } from '@/types';
+import type { BloodPressureEntry, BodyMetric, DailyCheckIn, Exercise, FoodEntry, ISODate, LabReport, MealSlot, WorkoutPlan, WeightEntry, WorkoutSession } from '@/types';
 import type { HealthDay } from '@/features/health/model';
 import { getExercise } from '@/data/exercises';
 import { historyFor, isPersonalRecord, workingSets } from '@/features/training/progression';
@@ -47,6 +47,10 @@ export interface DaySummary {
   health: { steps?: number; restingHr?: number; hrvMs?: number; sleepMinutes?: number; activeKcal?: number } | null;
   weightKg: number | null;
   measurements: { kind: BodyMetric['kind']; value: number }[];
+  /** Анализы, сданные в этот день (подтверждённые пользователем) */
+  labs: { id: string; lab?: string; count: number; outOfRange: number }[];
+  /** Давление за день */
+  bp: { systolic: number; diastolic: number; pulse?: number }[];
   /** По плану: день отдыха (нет тренировки в расписании) */
   plannedRest: boolean;
   plannedName?: string;
@@ -63,6 +67,8 @@ export interface DaySources {
   metrics: BodyMetric[];
   plan?: WorkoutPlan | null;
   customs?: Exercise[];
+  labs?: LabReport[];
+  bp?: BloodPressureEntry[];
 }
 
 const MEALS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -124,6 +130,11 @@ export function buildDaySummary(date: ISODate, src: DaySources): DaySummary {
     else measurements.push({ kind: m.kind, value: m.value });
   }
 
+  const labs: DaySummary['labs'] = (src.labs ?? [])
+    .filter((r) => r.date === date)
+    .map((r) => ({ id: r.id, lab: r.lab, count: r.results.length, outOfRange: r.results.filter((x) => x.flag || (x.refHigh !== undefined && x.value > x.refHigh) || (x.refLow !== undefined && x.value < x.refLow)).length }));
+  const bp: DaySummary['bp'] = (src.bp ?? []).filter((x) => x.date === date).map((x) => ({ systolic: x.systolic, diastolic: x.diastolic, pulse: x.pulse }));
+
   const tplId = src.plan?.schedule[weekdayIndex(date)] ?? null;
   const plannedName = tplId ? src.plan?.templates.find((t) => t.id === tplId)?.name : undefined;
   const hasRecord = workouts.some((x) => x.prs > 0);
@@ -135,10 +146,12 @@ export function buildDaySummary(date: ISODate, src: DaySources): DaySummary {
     health,
     weightKg: w ? w.kg : null,
     measurements,
+    labs,
+    bp,
     plannedRest: !!src.plan && !tplId,
     plannedName,
     hasRecord,
-    hasAny: !!(workouts.length || nutrition || checkin || health || w || measurements.length),
+    hasAny: !!(workouts.length || nutrition || checkin || health || w || measurements.length || labs.length || bp.length),
   };
 }
 
@@ -148,7 +161,7 @@ export type DayMarker = { trained: boolean; record: boolean; rest: boolean; data
 export function dayMarkers(dates: ISODate[], src: DaySources): Record<ISODate, DayMarker> {
   const out: Record<ISODate, DayMarker> = {};
   const trainedDays = new Set(src.sessions.filter((s) => s.status === 'completed').map((s) => s.date));
-  const dataDays = new Set<string>([...src.entries.map((e) => e.date), ...Object.keys(src.checkins), ...src.weights.map((w) => w.date), ...src.metrics.map((m) => m.date)]);
+  const dataDays = new Set<string>([...src.entries.map((e) => e.date), ...Object.keys(src.checkins), ...src.weights.map((w) => w.date), ...src.metrics.map((m) => m.date), ...(src.labs ?? []).map((r) => r.date), ...(src.bp ?? []).map((x) => x.date)]);
   for (const d of dates) {
     const trained = trainedDays.has(d);
     out[d] = {

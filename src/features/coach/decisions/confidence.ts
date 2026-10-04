@@ -13,11 +13,14 @@ import type { Rated } from './types';
 
 /** Расход (maintenance): формула → средняя (2–3 нед. данных) → высокая (3+ нед., 10+ взвешиваний) */
 export function maintenanceConfidence(target: NutritionTarget | null, m: MaintenanceEstimate | null): Rated {
+  if (target?.source === 'adaptive' && target.observedTdee) return { level: target.observedConfidence ?? 'medium', note: `цель откалибрована по вашему фактическому расходу ~${Math.round(target.observedTdee)} ккал` };
   if (m) {
     const weeks = Math.max(2, Math.round(m.days / 7));
-    return { level: m.confidence, note: `персональный расход по ${m.loggedDays} дням дневника и ${m.weighIns} взвешиваниям за ${weeks} нед.` };
+    const data = `${m.loggedDays} дн. дневника и ${m.weighIns} взвешиваний за ${weeks} нед.`;
+    // Цель ещё по формуле: уверенность высокая, только если фактический расход её подтверждает
+    if (!target || Math.abs(m.kcal - target.tdee) <= 150) return { level: m.confidence, note: `формулу подтверждает ваш фактический расход ~${m.kcal} ккал (${data})` };
+    return { level: 'low', note: `цель пока по формуле, а фактический расход ~${m.kcal} ккал (${data}) — можно перейти на него в «Питании»` };
   }
-  if (target?.source === 'adaptive' && target.observedTdee) return { level: target.observedConfidence ?? 'medium', note: 'цель откалибрована по вашему фактическому расходу' };
   return { level: 'low', note: 'недостаточно истории, пока исходная формула (Миффлин — Сан Жеор, точность ±10%)' };
 }
 

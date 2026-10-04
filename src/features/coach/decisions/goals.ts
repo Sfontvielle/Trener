@@ -28,7 +28,7 @@ export interface GoalPreset {
 const BULK: Record<ExperienceLevel, [number, number, number]> = {
   beginner: [0.3, 0.5, 0.75],
   intermediate: [0.2, 0.35, 0.5],
-  advanced: [0.1, 0.25, 0.35],
+  advanced: [0.15, 0.25, 0.35],
 };
 const CUT: [number, number, number] = [0.5, 0.75, 1.0];
 
@@ -72,8 +72,7 @@ export function recommendedPreset(args: { goal: GoalType; level: ExperienceLevel
     if (args.waistPerKg !== undefined && args.waistPerKg !== null && args.waistPerKg >= 1) return { id: 'conservative', why: 'На прошлом наборе талия росла быстро относительно веса — лучше медленнее.' };
     if (whtr !== undefined && whtr >= 0.5) return { id: 'conservative', why: `Отношение талии к росту ${whtr.toFixed(2).replace('.', ',')} (≥0,5 — повышенный кардиометаболический риск): набор лучше вести медленно.` };
     if (bmi >= 27) return { id: 'conservative', why: `ИМТ ${bmi.toFixed(1).replace('.', ',')}: при большей массе быстрый набор чаще идёт в жир.` };
-    if (args.level === 'advanced') return { id: 'conservative', why: 'У продвинутых мышцы растут медленно — большой профицит в основном уходит в жир (Helms 2023).' };
-    return { id: 'balanced', why: args.level === 'beginner' ? 'Новички растут быстрее всего — умеренный профицит это использует без лишнего жира.' : 'Для среднего опыта — умеренный темп.' };
+    return { id: 'balanced', why: args.level === 'beginner' ? 'Новички растут быстрее всего — умеренный профицит это использует без лишнего жира.' : args.level === 'advanced' ? 'У продвинутых мышцы растут медленно, поэтому и «сбалансированный» темп для них ниже (Helms 2023).' : 'Для среднего опыта — умеренный темп.' };
   }
   if (args.goal === 'cut') {
     if (bmi >= 30 || (whtr !== undefined && whtr >= 0.6)) return { id: 'balanced', why: 'При большем запасе жира умеренно быстрый темп обычно переносится хорошо.' };

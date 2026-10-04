@@ -139,7 +139,7 @@ export function coachToday(i: CoachTodayInput): CoachToday {
       focus = exDecisions.find((d) => d.action === 'increase') ?? exDecisions.find((d) => d.action === 'reps' || d.action === 'decrease') ?? exDecisions.find((d) => d.action === 'new') ?? exDecisions[0] ?? null;
     }
     if (gate.blockIncrease) {
-      decisions.push({ id: 'health_hold', area: 'health', what: 'Нагрузку не повышаем', why: gate.reason!, data: i.signals.filter((s) => s.level === 'doctor').flatMap((s) => [s.title, ...s.data]).slice(0, 4), confidence: 'high', confidenceNote: 'здоровье важнее прогресса', basis: i.signals[0].basis });
+      decisions.push({ id: 'health_hold', area: 'health', what: 'Нагрузку не повышаем', why: gate.reason!, data: i.signals.filter((s) => s.level === 'doctor' && s.gate).flatMap((s) => [s.title, ...s.data]).slice(0, 4), confidence: 'high', confidenceNote: 'здоровье важнее прогресса', basis: i.signals[0].basis });
     }
     for (const d of exDecisions) if (d.id !== focus?.id) decisions.push(d);
   } else if (tw.kind === 'rest') {

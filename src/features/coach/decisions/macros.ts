@@ -22,8 +22,8 @@ export function explainNutrition(profile: UserProfile, target: NutritionTarget, 
   const goalTxt = profile.goal === 'bulk' ? `профицит под темп +${k((weightKg * profile.ratePctPerWeek) / 100)} кг/нед` : profile.goal === 'cut' ? `дефицит под темп −${k((weightKg * profile.ratePctPerWeek) / 100)} кг/нед` : profile.goal === 'recomp' ? 'лёгкий дефицит для рекомпозиции' : 'баланс для поддержания веса';
   const rows = [
     { label: 'Калории', value: `${fmtInt(target.kcal)} ккал`, why: `${base}; ${goalTxt}${target.adjustmentKcal ? `; корректировки по тренду ${target.adjustmentKcal > 0 ? '+' : ''}${target.adjustmentKcal} ккал` : ''}.` },
-    { label: 'Белок', value: `${target.protein} г`, why: `${k(target.protein / weightKg)} г/кг (${GOAL_SHORT[profile.goal].toLowerCase()}: ${PROTEIN_PER_KG[profile.goal]} г/кг). Научный диапазон для роста и сохранения мышц — 1,6–2,2 г/кг (Morton 2018; Nunes 2022), на сушке ближе к верхней границе (Helms 2014).` },
-    { label: 'Жиры', value: `${target.fat} г`, why: `${k(target.fat / weightKg)} г/кг — не ниже ${FAT_PER_KG[profile.goal]} г/кг и 22% калорий: минимум для гормонального здоровья и усвоения витаминов (диапазон 20–35% энергии, IOM 2005).` },
+    { label: 'Белок', value: `${target.protein} г`, why: `${k(target.protein / weightKg)} г/кг (норма RYNJI для цели «${GOAL_SHORT[profile.goal].toLowerCase()}» — ${k(PROTEIN_PER_KG[profile.goal])} г/кг${Math.abs(target.protein / weightKg - PROTEIN_PER_KG[profile.goal]) > 0.15 ? ' от референсного веса' : ''}). Научный диапазон для роста и сохранения мышц — 1,6–2,2 г/кг (Morton 2018; Nunes 2022), на сушке ближе к верхней границе (Helms 2014).` },
+    { label: 'Жиры', value: `${target.fat} г`, why: `${k(target.fat / weightKg)} г/кг — не ниже ${k(FAT_PER_KG[profile.goal])} г/кг и 22% калорий: минимум для гормонального здоровья и усвоения витаминов (диапазон 20–35% энергии, IOM 2005).` },
     { label: 'Углеводы', value: `${target.carbs} г`, why: 'Всё, что осталось после белка и жиров: основное топливо для тренировок.' },
     { label: 'Клетчатка', value: `${target.fiber ?? fiberTarget(target.kcal)} г`, why: '14 г на каждые 1000 ккал (IOM 2005).' },
   ];

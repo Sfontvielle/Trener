@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, StyleProp, View, ViewStyle } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { colors } from '@/theme';
 import { T } from './ui';
 
@@ -64,11 +64,13 @@ export interface LinePoint {
 const pad = { l: 8, r: 40, t: 12, b: 20 };
 
 /** Линейный график тренда веса: точки — замеры, линия — сглаженный тренд */
-export function TrendChart({ points, height = 170, unit = 'кг', labels }: { points: LinePoint[]; height?: number; unit?: string; labels?: [string, string] }) {
+/** band — референсный диапазон [низ, верх] (полупрозрачная полоса); undefined-граница = край графика */
+export function TrendChart({ points, height = 170, unit = 'кг', labels, band, emptyText }: { points: LinePoint[]; height?: number; unit?: string; labels?: [string, string]; band?: [number | undefined, number | undefined]; emptyText?: string }) {
   const [w, setW] = useState(0);
   const data = useMemo(() => {
     if (points.length < 2 || !w) return null;
-    const vals = points.flatMap((p) => (p.raw !== undefined ? [p.y, p.raw] : [p.y]));
+    const vals: number[] = points.flatMap((p) => (p.raw !== undefined ? [p.y, p.raw] : [p.y]));
+    for (const b of band ?? []) if (b !== undefined) vals.push(b);
     let min = Math.min(...vals);
     let max = Math.max(...vals);
     if (max - min < 1) {
@@ -84,8 +86,9 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels }: { po
     const Y = (y: number) => pad.t + (1 - (y - min) / (max - min)) * ih;
     const d = points.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
     const area = `${d} L${X(x1).toFixed(1)},${height - pad.b} L${X(x0).toFixed(1)},${height - pad.b} Z`;
-    return { X, Y, d, area, min, max };
-  }, [points, w, height]);
+    const bandRect = band && (band[0] !== undefined || band[1] !== undefined) ? { y1: Y(band[1] ?? max), y2: Y(band[0] ?? min) } : null;
+    return { X, Y, d, area, min, max, bandRect };
+  }, [points, w, height, band]);
 
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }}>
@@ -109,6 +112,7 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels }: { po
               </React.Fragment>
             );
           })}
+          {data.bandRect ? <Rect x={pad.l} y={data.bandRect.y1} width={w - pad.l - pad.r} height={Math.max(1, data.bandRect.y2 - data.bandRect.y1)} fill={colors.accent} opacity={0.1} /> : null}
           <Path d={data.area} fill="url(#g)" />
           {points.map((p, i) => (p.raw !== undefined ? <Circle key={i} cx={data.X(p.x)} cy={data.Y(p.raw)} r={2.6} fill={colors.muted} /> : null))}
           <Path d={data.d} stroke={colors.accent} strokeWidth={2.5} fill="none" strokeLinejoin="round" strokeLinecap="round" />
@@ -126,7 +130,7 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels }: { po
         </Svg>
       ) : (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <T v="small">{points.length < 2 ? 'Нужно минимум 2 взвешивания' : ''}</T>
+          <T v="small">{points.length < 2 ? (emptyText ?? 'Нужно минимум 2 взвешивания') : ''}</T>
         </View>
       )}
     </View>

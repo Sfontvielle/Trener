@@ -118,6 +118,6 @@ export function weeklyDecisions(args: {
       }
     }
   }
-  if (gate.blockIncrease) decisions.unshift({ id: 'w_health', area: 'health', what: 'Нагрузку не повышаем', why: gate.reason!, data: (args.signals ?? []).filter((s) => s.level !== 'info' && s.level !== 'monitor').map((s) => s.title).slice(0, 3), confidence: 'high', confidenceNote: 'здоровье важнее прогресса', basis: (args.signals ?? [])[0]?.basis ?? { kind: 'heuristic', sources: [] } });
+  if (gate.blockIncrease) decisions.unshift({ id: 'w_health', area: 'health', what: 'Нагрузку не повышаем', why: gate.reason!, data: (args.signals ?? []).filter((s) => s.gate).map((s) => s.title).slice(0, 3), confidence: 'high', confidenceNote: 'здоровье важнее прогресса', basis: (args.signals ?? [])[0]?.basis ?? { kind: 'heuristic', sources: [] } });
   return { metrics, decisions, calorieDelta };
 }

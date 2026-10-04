@@ -24,11 +24,18 @@ import { uid } from '@/utils/id';
 import { keyHit, norm } from './text';
 import { formatHours } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import type { CoachToday } from '../decisions/today';
+import { CONFIDENCE_LABEL, type Decision } from '../decisions/types';
+
+/** Ответ «почему» строго из решения: что → почему → данные → уверенность */
+export function explainDecision(d: Decision): string {
+  return `**${d.what}.** ${d.why}${d.data.length ? `\n\nНа основе: ${d.data.join('; ')}.` : ''}\n\nУверенность: ${CONFIDENCE_LABEL[d.confidence]} — ${d.confidenceNote}.`;
+}
 
 export { keyHit, norm };
 
 /**
- * FORM Coach на устройстве: без сервера и настройки.
+ * RYNJI Coach на устройстве: без сервера и настройки.
  * 1) безопасность (красные флаги) — всегда первой;
  * 2) личные намерения с данными: упражнение (замена / техника / вес), еда сейчас, тренировка сегодня,
  *    почему стоит вес, итоги недели, боль в зоне;
@@ -55,6 +62,8 @@ export interface LocalCtx {
   memory?: CoachMemoryItem[];
   /** Предыдущий вопрос — для уточнений «а сколько подходов?» */
   previousQuestion?: string;
+  /** Решения Coach Engine на сегодня (что/почему/данные/уверенность) — для ответов «почему» */
+  coach?: CoachToday | null;
 }
 
 export interface LocalReply {
@@ -279,8 +288,22 @@ export function localCoach(c: LocalCtx): LocalReply {
     };
   }
 
-  // 5. Конкретное упражнение. По сокращению («присед», «бицепс») — только если вопрос про само упражнение
+  // 4а. «Почему?» — ответ из решений Coach Engine (без выдумывания данных)
   const exAny = findExercise(q, c.customs);
+  if (has(n, /(почему|зачем|отчего|на основании|как ты решил|откуда)/) && c.coach) {
+    const ds = c.coach.decisions;
+    if (exAny) {
+      const d = ds.find((x) => x.id === `ex_${exAny.id}`);
+      if (d) return { text: explainDecision(d), actions, intent: 'why_decision' };
+      const hist = historyFor(exAny.id, c.sessions, 1);
+      if (!hist.length) return { text: `По «${exAny.name}» в приложении нет записанных тренировок — данных недостаточно, поэтому вес я не повышаю и не снижаю. Запиши 1–2 тренировки с весом, повторами и запасом (RIR) — и я смогу обосновать прогрессию.`, actions, intent: 'why_insufficient' };
+      if (c.coach.kind !== 'workout') return { text: `Сегодня «${exAny.name}» нет в плане (${c.coach.title.toLowerCase()}). Решение по весу появится в день, когда упражнение будет в тренировке; прошлый раз: ${hist[0].sets.map((s) => (s.weight ? `${s.weight}×${s.reps}` : `${s.reps}`)).join(', ')}.`, actions, intent: 'why_not_today' };
+    }
+    const pick = has(n, /(калор|ккал|кбжу|белок|жир|углев|питан)/) ? ds.find((x) => x.id === 'nutrition') : has(n, /(облегч|режим|готовност|отдых|объ[её]м|сниж)/) ? ds.find((x) => x.id === 'mode' || x.id === 'health_hold' || x.id === 'health_stop') : has(n, /(шаг)/) ? ds.find((x) => x.id === 'steps') : has(n, /(повыша|не повыш|вес|нагруз)/) ? ds.find((x) => x.id === 'health_hold') ?? c.coach.focus ?? undefined : undefined;
+    if (pick) return { text: explainDecision(pick), actions, intent: 'why_decision' };
+  }
+
+  // 5. Конкретное упражнение. По сокращению («присед», «бицепс») — только если вопрос про само упражнение
   const exactName = !!exAny && n.includes(norm(exAny.name));
   const aboutExercise = /замен|вместо|аналог|техник|как делать|как выполн|правильно|вес|сколько ставить|прогресс|плато|не раст|сколько жать|сколько присед/;
   const pain = /болит|боль|ноет|тянет|дискомфорт|хруст/;

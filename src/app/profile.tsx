@@ -11,6 +11,8 @@ import { confirm, toast } from '@/components/Dialog';
 import { resetAllStores } from '@/stores/hydration';
 import { clearAllData } from '@/storage/persist';
 import { useProfile } from '@/stores/profile';
+import { useLabs } from '@/stores/labs';
+import { useEnhanced } from '@/stores/enhanced';
 import { useCoach } from '@/stores/coach';
 import { useHealth } from '@/stores/health';
 import { applyProfile } from '@/features/profile/applyProfile';
@@ -55,6 +57,8 @@ const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body:
 export default function Profile() {
   const profile = useProfile((s) => s.profile);
   const settings = useProfile((s) => s.settings);
+  const labCount = useLabs((x) => x.reports.length);
+  const enhancedOn = useEnhanced((x) => x.enabled);
   const updateSettings = useProfile((s) => s.updateSettings);
   const memory = useCoach((s) => s.memory);
   const healthOn = useHealth((s) => s.enabled);
@@ -125,6 +129,13 @@ export default function Profile() {
         <Row label="Питание" value={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
       </Card>
       <Button title="Мой план и расчёты" icon="document-text-outline" variant="secondary" style={{ marginTop: space.md }} onPress={() => router.push('/plan')} />
+
+      <SectionTitle title="Здоровье" />
+      <Card style={{ paddingVertical: 4 }}>
+        <Row label="Анализы" value={labCount ? `${labCount} ${labCount === 1 ? 'анализ' : 'анализа(ов)'} · история и изменения` : 'PDF, фото или текст — любые лаборатории'} onPress={() => router.push('/labs')} />
+        <Divider />
+        <Row label="Давление, пульс, Enhanced" value={enhancedOn ? 'Режим Enhanced включён · мониторинг' : 'Мониторинг здоровья и сигналы'} onPress={() => router.push('/health-monitor')} />
+      </Card>
 
       <SectionTitle title="Настройки" />
       <Card style={{ paddingVertical: 4, marginBottom: space.md }}>

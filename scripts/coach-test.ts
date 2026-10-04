@@ -272,7 +272,8 @@ test('Пресеты набора: зависят от опыта; быстры�
   assert.ok(goalPresets('bulk', 'advanced', 80)[1].ratePct < goalPresets('bulk', 'beginner', 80)[1].ratePct);
   assert.equal(recommendedPreset({ goal: 'bulk', level: 'beginner', sex: 'male', heightCm: 180, weightKg: 75 }).id, 'balanced');
   assert.equal(recommendedPreset({ goal: 'bulk', level: 'intermediate', sex: 'male', heightCm: 180, weightKg: 75, waistCm: 95 }).id, 'conservative', 'талия/рост ≥0,5');
-  assert.equal(recommendedPreset({ goal: 'bulk', level: 'advanced', sex: 'male', heightCm: 180, weightKg: 80 }).id, 'conservative');
+  assert.equal(recommendedPreset({ goal: 'bulk', level: 'advanced', sex: 'male', heightCm: 180, weightKg: 80 }).id, 'balanced');
+  assert.equal(recommendedPreset({ goal: 'bulk', level: 'beginner', sex: 'male', heightCm: 175, weightKg: 90 }).id, 'conservative', 'ИМТ ≥27');
   assert.equal(presetForRate('bulk', 'intermediate', 0.35), 'balanced');
   assert.equal(rateWarning('bulk', 'intermediate', 0.35, 80), null);
   assert.equal(rateWarning('bulk', 'intermediate', 0.5, 80)?.level, 'caution');
@@ -413,4 +414,67 @@ test('Weekly: метрики и решения — калории, объём, �
   for (const d of w.decisions) {
     assert.ok(d.what && d.why !== undefined && Array.isArray(d.data) && d.confidence, `решение ${d.id} содержит что/почему/данные/уверенность`);
   }
+});
+
+// ─── Чат: ответы «почему» из решений; ИИ-объяснение отдельно от расчётов ─────
+
+import { localCoach } from '../src/features/coach/local/engine';
+import { decisionsContext } from '../src/features/coach/decisions/context';
+import { buildDaySummary } from '../src/features/day/summary';
+import { maintenanceConfidence as mc2 } from '../src/features/coach/decisions/confidence';
+
+test('Чат: «почему не повышаем жим?» — ответ из решения с данными и уверенностью; без данных — честно «недостаточно»', () => {
+  const sessions = [benchSession(2, 80, [9, 8, 7], 1), benchSession(6, 80, [8, 8, 7], 1)];
+  const input = todayInput(sessions);
+  const coach = coachToday(input);
+  const ask = (question: string) => localCoach({ question, profile: base, target: input.target, entries: [], recentProducts: [], todayW: input.today, insights: [], sessions, weights: [], adjustments: [], plan, checkins: {}, coach });
+  const r = ask('Почему сегодня не повышаем жим лёжа?');
+  assert.equal(r.intent, 'why_decision');
+  assert.ok(/добрать повторы/.test(r.text), r.text);
+  assert.ok(/На основе: .*80 кг × 9\/8\/7/.test(r.text), 'ссылается на реальные тренировки');
+  assert.ok(/Уверенность: /.test(r.text));
+  const none = ask('Почему ты не повышаешь вес в приседе?');
+  assert.equal(none.intent, 'why_insufficient');
+  assert.ok(/данных недостаточно/.test(none.text));
+  const kcal = ask('Почему у меня такие калории?');
+  assert.equal(kcal.intent, 'why_decision');
+  assert.ok(/ккал/.test(kcal.text) && /Уверенность: низкая/.test(kcal.text));
+});
+
+test('Контекст для ИИ: решения переданы готовыми числами, с правилом «нет данных — скажи об этом»', () => {
+  const sessions = [benchSession(2, 80, [10, 10, 10], 2), benchSession(5, 80, [10, 10, 10], 2), benchSession(9, 80, [10, 10, 10], 2)];
+  const coach = coachToday(todayInput(sessions));
+  const labs = [rep('a', '2026-03-01', [['hct', 47, '%', 40, 50]]), rep('b', '2026-09-01', [['hct', 49.1, '%', 40, 50]])];
+  const ctx = decisionsContext({ coach, alerts: [], signals: [], labs, enhanced: true });
+  assert.ok(ctx.includes('РЕШЕНИЯ ТРЕНЕРА'));
+  assert.ok(ctx.includes('с 80 до 82,5 кг'), 'фокус передан как готовое решение');
+  assert.ok(/уверенность: высокая/.test(ctx));
+  assert.ok(ctx.includes('Гематокрит ↑ 2,1 п.п.'), 'изменения анализов посчитаны приложением');
+  assert.ok(/данных недостаточно/.test(ctx));
+  assert.ok(/Не обсуждать схемы, дозы, препараты/.test(ctx), 'граница безопасности Enhanced');
+});
+
+test('Здоровье и нагрузка: ЛПНП — к врачу, но прогрессию не останавливает; гематокрит >54% — останавливает повышение', () => {
+  const ldl = labSignals([rep('a', addDays(D, -200), [['ldl', 3.6, 'ммоль/л', undefined, 3.0]]), rep('b', addDays(D, -5), [['ldl', 3.9, 'ммоль/л', undefined, 3.0]])], 'male');
+  assert.ok(ldl.some((s) => s.level === 'doctor'));
+  assert.equal(healthGate(ldl).blockIncrease, false);
+  const hct = labSignals([rep('c', addDays(D, -5), [['hct', 55, '%', 40, 50]])], 'male');
+  assert.equal(healthGate(hct).blockIncrease, true);
+});
+
+test('Уверенность в калориях: формула подтверждена фактом → высокая; расходятся → низкая с подсказкой', () => {
+  const t = computeNutritionTarget(base);
+  const m = { kcal: t.tdee + 50, avgIntake: 2900, kgPerWeek: 0.2, days: 28, loggedDays: 24, weighIns: 14, confidence: 'high' as const, text: '', basis: { kind: 'estimate' as const, sources: [] } };
+  assert.equal(mc2(t, m).level, 'high');
+  assert.equal(mc2(t, { ...m, kcal: t.tdee + 400 }).level, 'low');
+  assert.ok(/можно перейти/.test(mc2(t, { ...m, kcal: t.tdee + 400 }).note));
+});
+
+test('DaySummary: анализ и давление попадают в ленту дня', () => {
+  const labs = [rep('a', D, [['hct', 52, '%', 40, 50], ['alt', 30, 'ед/л', undefined, 41]])];
+  const s = buildDaySummary(D, { sessions: [], entries: [], checkins: {}, weights: [], metrics: [], labs, bp: [bp(0, 128, 82)] });
+  assert.equal(s.labs.length, 1);
+  assert.equal(s.labs[0].outOfRange, 1);
+  assert.deepEqual(s.bp[0], { systolic: 128, diastolic: 82, pulse: undefined });
+  assert.ok(s.hasAny);
 });

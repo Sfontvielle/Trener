@@ -24,6 +24,11 @@ import { getExercise } from '@/data/exercises';
 import { actionKey, applyToExercises, validateAction, validateActions, type ActionContext } from './actions';
 import { askCoach, coachBaseUrl, CoachApiError, coachErrorText, summarizeConversation, type CoachApiAction } from '@/services/coachApi';
 import { buildCoachContext } from './context';
+import { decisionsContext } from './decisions/context';
+import { currentAlerts, currentCoachToday } from './brief';
+import { currentHealthSignals } from '@/features/health/current';
+import { useLabs } from '@/stores/labs';
+import { useEnhanced } from '@/stores/enhanced';
 import { detectSafety, safetyReply } from './safety';
 import { localInsights } from './insights';
 import { localCoach } from './local/engine';
@@ -46,6 +51,7 @@ function snapshot() {
 
 export function currentContext(): string {
   const s = snapshot();
+  const extra = decisionsContext({ coach: currentCoachToday(), alerts: currentAlerts(), signals: currentHealthSignals(), labs: useLabs.getState().reports, enhanced: useEnhanced.getState().enabled });
   return buildCoachContext({
     profile: s.profile,
     plan: s.ps.plan,
@@ -65,7 +71,7 @@ export function currentContext(): string {
     active: s.ws.active,
     notes: useJournal.getState().notes.filter((n) => n.date === today()).map((n) => `${new Date(n.at).toTimeString().slice(0, 5)} ${n.text}`),
     health: healthContext(useHealth.getState().days, today()),
-  });
+  }) + extra;
 }
 
 export function currentLocalInsights() {
@@ -428,6 +434,7 @@ export function localReply(question: string, previousQuestion?: string) {
     customs: s.ws.customExercises,
     memory: useCoach.getState().memory,
     previousQuestion,
+    coach: currentCoachToday(),
   });
 }
 

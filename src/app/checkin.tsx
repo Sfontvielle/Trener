@@ -16,7 +16,6 @@ import { formatSleep, today } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { MODE_LABEL } from '@/features/training/today';
-import { parseDecimal } from '@/utils/format';
 import { useBody } from '@/stores/body';
 import { useProfile } from '@/stores/profile';
 import { BRAND } from '@/config/brand';
@@ -47,7 +46,6 @@ export default function CheckIn() {
   const [logWeight, setLogWeight] = useState(false);
   const [kg, setKg] = useState(todayWeight?.kg ?? lastKg);
   const [editSleep, setEditSleep] = useState(false);
-  const [showHealth, setShowHealth] = useState(!!(existing?.hrvMs || existing?.restingHr));
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
   const checkins = useCheckins((s) => s.byDate);
   const healthDays = useHealth((s) => s.days);
@@ -164,21 +162,14 @@ export default function CheckIn() {
               Из Apple Health: {[healthDay.hrvMs ? `HRV ${Math.round(healthDay.hrvMs)} мс` : '', healthDay.restingHr ? `пульс покоя ${Math.round(healthDay.restingHr)}` : ''].filter(Boolean).join(' · ')}
             </T>
           </View>
-        ) : (
-        <View style={{ gap: 8 }}>
-          <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя вручную — если Apple Health не подключён" />
-          {showHealth ? (
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Field style={{ flex: 1 }} label="HRV, мс" keyboardType="numeric" value={c.hrvMs ? String(c.hrvMs) : ''} onChangeText={(t) => set({ hrvMs: Number.isFinite(parseDecimal(t)) ? parseDecimal(t) : undefined })} />
-              <Field style={{ flex: 1 }} label="Пульс покоя" keyboardType="numeric" value={c.restingHr ? String(c.restingHr) : ''} onChangeText={(t) => set({ restingHr: Number.isFinite(parseDecimal(t)) ? parseDecimal(t) : undefined })} />
-            </View>
-          ) : null}
-        </View>
-        )}
-        <View style={{ gap: 8 }}>
-          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? `Вес сегодня ${String(todayWeight.kg).replace('.', ',')} кг — обновить` : 'Взвесился утром'} sub={todayWeight ? 'Уже записан (вручную или из Apple Health)' : 'Натощак, после туалета — для тренда веса'} />
-          {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
-        </View>
+        ) : null}
+        {/* Вес из Apple Health или уже записанный — ничего не спрашиваем */}
+        {!todayWeight ? (
+          <View style={{ gap: 8 }}>
+            <Toggle value={logWeight} onChange={setLogWeight} label="Взвесился утром" sub="Натощак, после туалета — для тренда веса" />
+            {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
+          </View>
+        ) : null}
         <Button
           title={`Сохранить · ${CATEGORY_LABEL[cat].toLowerCase()} готовность`}
           size="lg"

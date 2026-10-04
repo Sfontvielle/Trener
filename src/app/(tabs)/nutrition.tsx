@@ -27,6 +27,9 @@ import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
 import { WaterSheet } from '@/features/nutrition/WaterSheet';
+import { explainNutrition } from '@/features/coach/decisions/macros';
+import { ConfidenceLine } from '@/features/coach/DecisionView';
+import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday, usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { MealIcon } from '@/features/nutrition/MealIcon';
@@ -82,6 +85,8 @@ export default function Nutrition() {
   }, [profile, nut.remaining, nut.entries, recent, products, isToday]);
 
   const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, allEntries, adjustments, metrics, sessions]);
+  const [whyOpen, setWhyOpen] = useState(false);
+  const explain = useMemo(() => (profile && target ? explainNutrition(profile, target, latestTrendWeight(weights) ?? profile.weightKg, review?.maintenance ?? null) : null), [profile, target, weights, review]);
 
   if (!profile || !target) return <Screen tabBar><EmptyState icon="nutrition-outline" title="Нет плана питания" text={`Заполни профиль — ${BRAND} рассчитает КБЖУ.`} /></Screen>;
 
@@ -134,6 +139,12 @@ export default function Nutrition() {
           <MacroLeft label="Жиры" eaten={nut.eaten.fat} target={target.fat} state={macroState('fat', nut.eaten.fat, target.fat, dp)} base={colors.fat} />
           <MacroLeft label="Клетчатка" eaten={dayFiber.g} complete={dayFiber.complete} target={target.fiber ?? fiberTarget(target.kcal)} state="progress" base={colors.accent} />
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Почему такие КБЖУ?" hitSlop={6} onPress={() => setWhyOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Icon name="help-circle-outline" size={15} color={colors.accent} />
+          <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+            Почему такие КБЖУ?
+          </T>
+        </Pressable>
       </Card>
 
       <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.md, marginBottom: space.sm }} onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
@@ -348,6 +359,34 @@ export default function Nutrition() {
       ) : null}
 
       <AddFoodSheet visible={!!addFor} onClose={() => setAddFor(null)} date={date} meal={addFor ?? 'snack'} />
+      <Sheet visible={whyOpen} onClose={() => setWhyOpen(false)} title="Почему такие КБЖУ?" subtitle={target.source === 'adaptive' ? 'По вашему фактическому расходу' : 'Стартовая оценка — дальше подстроится под вас'}>
+        {explain ? (
+          <View style={{ gap: 10 }} testID="macro-why">
+            {explain.rows.map((r) => (
+              <View key={r.label} style={{ gap: 2 }}>
+                <View style={{ flexDirection: 'row' }}>
+                  <T v="body" style={{ flex: 1, fontWeight: '800' }}>
+                    {r.label}
+                  </T>
+                  <T v="body" style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                    {r.value}
+                  </T>
+                </View>
+                <T v="small">{r.why}</T>
+              </View>
+            ))}
+            <View style={{ gap: 2 }}>
+              {explain.data.map((x) => (
+                <T key={x} v="small" style={{ fontSize: 12 }}>
+                  • {x}
+                </T>
+              ))}
+            </View>
+            <ConfidenceLine level={explain.confidence.level} note={explain.confidence.note} />
+            <Button title="Подробный расчёт" variant="ghost" size="sm" onPress={() => { setWhyOpen(false); router.push('/plan'); }} />
+          </View>
+        ) : null}
+      </Sheet>
       <SaveMealSheet value={saveMeal} onClose={() => setSaveMeal(null)} />
       <EditEntrySheet key={edit?.id ?? 'none'} entry={edit} onClose={() => setEdit(null)} />
     </Screen>

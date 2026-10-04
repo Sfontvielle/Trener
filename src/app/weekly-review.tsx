@@ -19,11 +19,15 @@ import { analyzeProgram, type ProgramProposal } from '@/features/training/adaptP
 import { applyProgramProposal } from '@/features/training/adaptActions';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { applyCalorieDelta } from '@/features/profile/applyProfile';
-import { formatDayShort, formatHours, today } from '@/utils/date';
+import { addDays, formatDayShort, formatHours, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { CATEGORY_LABEL, categoryForScore } from '@/features/science/recovery';
+import { weeklyDecisions } from '@/features/coach/decisions/weekly';
+import { compositionSignal } from '@/features/coach/decisions/composition';
+import { DecisionCard, ConfidenceLine } from '@/features/coach/DecisionView';
+import { currentHealthSignals } from '@/features/health/current';
 
 /**
  * Отчёт недели: что было (вес, замеры, тренировки, рабочие веса, питание, сон, восстановление),
@@ -49,6 +53,14 @@ export default function WeeklyReviewScreen() {
   );
   const proposals = useMemo<ProgramProposal[]>(() => (profile && review ? analyzeProgram({ profile, plan, sessions, checkins, readinessAvg: review.avgReadiness }) : []), [profile, plan, sessions, checkins, review]);
   const calories = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, entries, adjustments, metrics, sessions]);
+  const customs = useWorkouts((s) => s.customExercises);
+  const gym = useProfile((s) => s.settings.gym);
+  // Решения тренера: калории, объём, конкретные упражнения — что/почему/данные/уверенность
+  const coach = useMemo(
+    () => (profile && review ? weeklyDecisions({ profile, plan, target, review, calories, proposals, sessions, health, weighIns: weights.filter((x) => x.date > addDays(today(), -21)).length, adjustments, customs, gym, signals: currentHealthSignals() }) : null),
+    [profile, plan, target, review, calories, proposals, sessions, health, weights, adjustments, customs, gym],
+  );
+  const comp = useMemo(() => (profile ? compositionSignal({ goal: profile.goal, weights, metrics, sessions }) : null), [profile, weights, metrics, sessions]);
 
   if (!profile || !review) return null;
   const w = review.week;
@@ -69,15 +81,55 @@ export default function WeeklyReviewScreen() {
       ) : (
         <>
           <View style={styles.grid}>
-            <Tile icon="scale-outline" label="Вес" value={w?.weightDelta !== null && w?.weightDelta !== undefined ? `${w.weightDelta > 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг` : '—'} />
-            <Tile icon="resize-outline" label="Талия" value={review.waistDelta !== null ? `${review.waistDelta > 0 ? '+' : ''}${String(review.waistDelta).replace('.', ',')} см` : '—'} />
-            <Tile icon="barbell-outline" label="Тренировки" value={w ? `${w.workouts}/${w.planned || w.workouts}` : '0'} sub={review.missed ? `пропущено ${review.missed}` : undefined} />
-            <Tile icon="trending-up" label="Рост весов" value={review.strengthUps.length ? `${review.strengthUps.length} упр.` : '—'} sub={review.prs.length ? `рекордов ${review.prs.length}` : undefined} />
+            <Tile icon="scale-outline" label="Вес, Δ" value={w?.weightDelta !== null && w?.weightDelta !== undefined ? `${w.weightDelta > 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг` : '—'} />
+            <Tile icon="resize-outline" label="Талия, Δ" value={review.waistDelta !== null ? `${review.waistDelta > 0 ? '+' : ''}${String(review.waistDelta).replace('.', ',')} см` : '—'} />
             <Tile icon="flame-outline" label="Калории, ср." value={w?.avgKcal ? fmtNum(w.avgKcal) : '—'} sub={target && review.loggedDays ? `в цели ${review.kcalOnTargetDays}/${review.loggedDays} дн` : undefined} />
-            <Tile icon="egg-outline" label="Белок, ср." value={review.avgProtein !== null ? `${review.avgProtein} г` : '—'} sub={target ? `цель ${target.protein} г` : undefined} />
+            <Tile icon="footsteps-outline" label="Шаги/день" value={coach?.metrics.stepsPerDay ? fmtNum(coach.metrics.stepsPerDay) : '—'} />
+            <Tile icon="barbell-outline" label="Тренировки" value={w ? `${w.workouts}/${w.planned || w.workouts}` : '0'} sub={review.missed ? `пропущено ${review.missed}` : undefined} />
+            <Tile icon="trending-up" label="Сила" value={coach?.metrics.strengthPct !== null && coach?.metrics.strengthPct !== undefined ? `${coach.metrics.strengthPct > 0 ? '+' : ''}${String(coach.metrics.strengthPct).replace('.', ',')}%` : '—'} sub={review.prs.length ? `рекордов ${review.prs.length}` : 'к прошлым 4 нед.'} />
             <Tile icon="moon-outline" label="Сон, ср." value={w?.avgSleep ? `${formatHours(w.avgSleep)} ч` : '—'} />
             <Tile icon="pulse" label="Готовность, ср." value={review.avgReadiness !== null ? CATEGORY_LABEL[categoryForScore(review.avgReadiness)] : '—'} />
           </View>
+
+          {coach && coach.decisions.length ? (
+            <Card style={{ marginTop: space.md, gap: 10 }} testID="weekly-decisions">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="sparkles" size={16} color={colors.accent} />
+                <T v="caption" color={colors.accent}>
+                  Решения тренера на неделю
+                </T>
+              </View>
+              {coach.decisions.map((d) => (
+                <View key={d.id} style={{ gap: 6 }}>
+                  <DecisionCard d={d} />
+                  {d.id === 'w_kcal' && coach.calorieDelta && !handled.includes('kcal') ? (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Button title={`Применить ${coach.calorieDelta > 0 ? '+' : ''}${coach.calorieDelta} ккал`} size="sm" style={{ flex: 1 }} onPress={() => { applyCalorieDelta(coach.calorieDelta, calories?.headline ?? 'отчёт недели', 'coach'); toast('Калорийность и КБЖУ обновлены'); setHandled([...handled, 'kcal']); }} />
+                      <Button title="Оставить" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => setHandled([...handled, 'kcal'])} />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </Card>
+          ) : null}
+
+          {comp && comp.kind !== 'insufficient' ? (
+            <Card style={{ marginTop: space.md, gap: 6 }} testID="composition">
+              <T v="caption">Вес, талия и сила за 6 недель</T>
+              <T v="body" style={{ fontWeight: '700' }}>
+                {comp.text}
+              </T>
+              {comp.data.map((x) => (
+                <T key={x} v="small" style={{ fontSize: 12 }}>
+                  • {x}
+                </T>
+              ))}
+              <ConfidenceLine level={comp.confidence} note="косвенные признаки за 4–6 недель" />
+              <T v="small" style={{ fontSize: 11 }}>
+                {comp.caveat}
+              </T>
+            </Card>
+          ) : null}
 
           {review.strengthUps.length || review.prs.length ? (
             <Card style={{ marginTop: space.md, gap: 6 }}>
@@ -129,21 +181,8 @@ export default function WeeklyReviewScreen() {
                 </View>
               </View>
             ))}
-            {calories && calories.status === 'adjust' && !handled.includes('kcal') ? (
-              <View style={styles.proposal}>
-                <T v="body" style={{ fontWeight: '800' }}>
-                  {calories.deltaKcal > 0 ? '+' : ''}
-                  {calories.deltaKcal} ккал в день
-                </T>
-                <T v="small">{calories.detail}</T>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Button title="Применить" size="sm" style={{ flex: 1 }} onPress={() => { applyCalorieDelta(calories.deltaKcal, calories.headline, 'coach'); toast('Калорийность обновлена'); setHandled([...handled, 'kcal']); }} />
-                  <Button title="Оставить" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => setHandled([...handled, 'kcal'])} />
-                </View>
-              </View>
-            ) : null}
-            {!proposals.filter((p) => !handled.includes(p.id)).length && !(calories?.status === 'adjust' && !handled.includes('kcal')) ? (
-              <T v="small">Менять программу не нужно — продолжаем по плану и прогрессируем в весах.</T>
+            {!proposals.filter((p) => !handled.includes(p.id)).length ? (
+              <T v="small">Менять программу не нужно — продолжаем по плану (решения по весам и калориям — выше).</T>
             ) : null}
             <T v="small" style={{ fontSize: 11 }}>
               Изменения применяются только по твоей кнопке. Выводы — сопоставление данных, а не медицинская оценка.
