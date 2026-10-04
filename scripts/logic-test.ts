@@ -285,7 +285,7 @@ test('1. 4 дня + предпочтение Upper/Lower → не Full Body', ()
   const plan = generatePlan(withPrefs(base, { preferredSplit: 'upper_lower' }));
   assert.equal(plan.split, 'upper_lower');
   assert.ok(!plan.templates.some((t) => /full/i.test(t.name)), plan.templates.map((t) => t.name).join(', '));
-  assert.ok(plan.splitChoice?.reasons.some((r) => r.includes('Ты выбрал')), 'объяснение выбора');
+  assert.ok(plan.splitChoice?.reasons.some((r) => r.includes('Выбран формат')), 'объяснение выбора');
 });
 
 test('2. Исключённая становая тяга не появляется нигде', () => {

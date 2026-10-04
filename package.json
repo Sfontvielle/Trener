@@ -51,7 +51,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts",
+    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts scripts/profiles-test.ts",
     "server": "node --env-file-if-exists=server/.env server/index.mjs",
     "server:install": "npm --prefix server install",
     "lint": "expo lint"

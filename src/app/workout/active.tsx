@@ -82,10 +82,18 @@ export default function ActiveWorkout() {
     }),
   );
 
+  // Экран целиком не перерисовывается каждую секунду (это давало подтормаживания на длинной тренировке):
+  // секундомер — отдельный компонент <Elapsed>, энергия обновляется раз в 30 с, конец отдыха — точным таймером.
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
+  const restEnd = rest?.endsAt;
+  useEffect(() => {
+    if (!restEnd) return;
+    const id = setTimeout(() => setNow(Date.now()), Math.max(0, restEnd + 1600 - Date.now()));
+    return () => clearTimeout(id);
+  }, [restEnd]);
   useEffect(() => {
     active?.exercises.forEach((we) => {
       const ex = getExercise(we.exerciseId, customs);
@@ -224,7 +232,7 @@ export default function ActiveWorkout() {
             {count ? `${idx + 1} из ${count}` : '—'}
           </T>
           <T v="small" style={{ fontSize: 11, fontVariant: ['tabular-nums'] }}>
-            {formatDuration((now - active.startedAt) / 1000)}
+            <Elapsed startedAt={active.startedAt} />
             {energy && energy.kcal >= 5 ? ` · ${energy.source === 'health' ? '' : '≈ '}${energy.kcal} ккал` : ''}
           </T>
         </Pressable>
@@ -373,7 +381,7 @@ export default function ActiveWorkout() {
         ) : null}
       </Sheet>
 
-      <Sheet visible={!!painWe} onClose={() => setPainFor(null)} title="Где дискомфорт?" subtitle="Упражнение не будет назначаться автоматически, пока ты сам его не вернёшь">
+      <Sheet visible={!!painWe} onClose={() => setPainFor(null)} title="Где дискомфорт?" subtitle="Упражнение не будет назначаться автоматически, пока ты не вернёшь его вручную">
         {painWe ? (
           <View style={{ gap: 8 }}>
             {PAIN_AREAS.map((a) => (
@@ -980,3 +988,13 @@ const styles = themed({
   alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim },
   rpe: { width: 48, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
 });
+
+/** Секундомер тренировки: тикает сам, не перерисовывая весь экран */
+function Elapsed({ startedAt }: { startedAt: number }) {
+  const [t, setT] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setT(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <>{formatDuration((t - startedAt) / 1000)}</>;
+}

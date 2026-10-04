@@ -13,6 +13,9 @@ const PROFILE = {
   limitations: '', avoidExerciseIds: [], likedFoods: [], dislikedFoods: [], dietRestrictions: [], activity: 'moderate', stepsPerDay: 7000,
   workStyle: 'desk', preferredTime: 'evening', preferredDays: [], createdAt: 0, updatedAt: 0,
 };
+// E2E_SEX=female — тот же прогон для женского профиля; E2E_GOAL=cut|recomp|maintain — другая цель
+if (process.env.E2E_SEX === 'female') Object.assign(PROFILE, { name: 'Анна', sex: 'female', age: 27, heightCm: 166, weightKg: 58 });
+if (process.env.E2E_GOAL) Object.assign(PROFILE, { goal: process.env.E2E_GOAL, ratePctPerWeek: process.env.E2E_GOAL === 'cut' ? 0.6 : 0 });
 // Кнопки, которые меняют/удаляют данные или уводят из приложения — не нажимаем
 const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Заполнить демо|Экспорт|Восстанов|Импорт|Поделиться|настройк|Управление доступом|Свернуть тренировку|Завершить и сохранить|Не предлагать больше|Мне не нравится|Перейти на этот сплит|Применить|Начать с RYNJI|Подключить Apple Health|Сохранить и пересчитать|Перейти на мой расход|Профиль$/i;
 

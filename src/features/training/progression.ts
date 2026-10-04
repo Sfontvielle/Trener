@@ -159,7 +159,7 @@ export function recommend(args: {
       return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `По повторам (${lastStr}) можно было бы +${fmtWeight(ex.increment)} кг, но ${args.noIncrease} Держим ${w(top)}.` };
     }
     if (lowReadiness) {
-      return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Готов к +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
+      return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Можно +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
     }
     const next = fit(roundTo(top + ex.increment, ex.increment >= 2 ? ex.increment / 2 : 0.5), 'up');
     return { weight: next, repMin, repMax, sets, targetRir, action: 'increase', delta: `+${fmtWeight(next - top)} кг`, rationale: `Прошлый раз ${w(top)} × ${lastStr} с запасом — пробуем ${w(next)}.` };

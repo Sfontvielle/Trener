@@ -163,7 +163,7 @@ function todayAnswer(c: LocalCtx): LocalReply {
       const worst = c.readiness.factors.filter((f) => f.impact < -2).slice(0, 2);
       if (worst.length) out.push(`Снижает: ${worst.map((f) => `${f.label.toLowerCase()} (${f.detail})`).join(', ')}.`);
     } else {
-      out.push('Если плохо спал, устал или что-то болит — напиши, и я облегчу тренировку.');
+      out.push('Если сон был плохим, есть усталость или что-то болит — напиши, и я облегчу тренировку.');
     }
     if (c.health?.hrvDeltaPct !== undefined && c.health.hrvDeltaPct <= -15) out.push(`HRV на ${-c.health.hrvDeltaPct}% ниже твоей нормы — сегодня без рекордов.`);
     actions.push({ id: uid('act_'), type: 'start_today', label: 'Начать тренировку', params: {} });
