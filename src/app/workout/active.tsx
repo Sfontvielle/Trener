@@ -34,6 +34,7 @@ import { formatDuration, today } from '@/utils/date';
 import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
+import { noIncreaseReason } from '@/features/health/current';
 
 /** Обработчик свайпа текущего экрана тренировки (экран один — модульная переменная безопасна) */
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
@@ -143,7 +144,7 @@ export default function ActiveWorkout() {
 
   const ctx = () => {
     const r = readinessFor(today(), useCheckins.getState().byDate, sessions, useHealth.getState().days);
-    return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym };
+    return { sessions, customs, band: r?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() };
   };
 
   /** После исключения/дискомфорта — предложить замену, только если в упражнении ещё есть невыполненные подходы */

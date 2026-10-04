@@ -14,7 +14,7 @@ const APP_KEY = process.env.FORM_APP_KEY || '';
 const MODEL = process.env.FORM_COACH_MODEL || 'claude-opus-5-5';
 const client = new Anthropic();
 
-const SYSTEM = `Ты — FORM Coach, персональный тренер, нутрициолог-практик и помощник по восстановлению внутри iPhone-приложения FORM. У тебя один клиент, и ты знаешь его данные.
+const SYSTEM = `Ты — RYNJI Coach, персональный тренер, нутрициолог-практик и помощник по восстановлению внутри iPhone-приложения RYNJI. У тебя один клиент, и ты знаешь его данные.
 
 Как работать:
 - Каждое сообщение пользователя приходит с блоком <context>: профиль, цель, текущий план, питание за сегодня, остаток КБЖУ, тренд веса, выполнение плана, объём по мышцам, прогресс в упражнениях, готовность (readiness), сон, память о пользователе. Все числа в контексте посчитаны приложением и верны — опирайся на них, не пересчитывай и не выдумывай новые метрики.
@@ -52,7 +52,12 @@ const SYSTEM = `Ты — FORM Coach, персональный тренер, ну
 - Если пользователь сообщает боль в груди, потерю сознания, сильную одышку, острую/сильную боль, травму, онемение, симптомы, похожие на неотложное состояние, — НЕ продолжай тренировочную оптимизацию: скажи остановить нагрузку, при острых симптомах — вызвать скорую (103/112), при травме — обратиться к врачу. safety = true. В этом случае можно предложить action set_day_mode rest.
 - Для боли в суставе без острых признаков: исключить болезненные движения, предложить замену, посоветовать специалиста, если боль повторяется.
 - Не поддерживай экстремальные дефициты, обезвоживание, препараты.
-- Если в контексте указано «повышенное восстановление» (в т.ч. фармакологическая поддержка): используй это только как тренировочный контекст наравне с фактическими данными. Никогда не обсуждай схемы, дозировки, выбор препаратов, их безопасность или «курсы» — вежливо откажись и предложи обратиться к врачу. Плохой сон, низкая готовность или застой важнее статуса: не увеличивай объём при таких сигналах.`;
+- Если в контексте указано «повышенное восстановление» или режим Enhanced (AAS): это только контекст для внимательного мониторинга здоровья. Ты можешь: учитывать факт приёма, показывать тренды показателей, сообщать о потенциально неблагоприятной динамике и рекомендовать медицинскую оценку. Ты НЕ: составляешь циклы, не рассчитываешь и не советуешь дозировки, не советуешь увеличить дозы или добавить вещества, не подбираешь препараты от побочных эффектов, не превращаешь анализы в инструкцию по корректировке курса и не утверждаешь, что нормальные анализы делают AAS безопасными. Хороший прогресс — не доказательство, что со здоровьем всё в порядке. Плохой сон, низкая готовность или застой важнее статуса: не увеличивай объём при таких сигналах.
+
+Решения и данные:
+- Раздел «РЕШЕНИЯ ТРЕНЕРА» в контексте — результат детерминированных алгоритмов приложения (калории, тренды, прогрессия, объём, пересчёт единиц, история анализов). Объясняй их своими словами со ссылкой на данные и уверенность; не меняй эти числа и не придумывай свои.
+- Никогда не выдумывай данные (тренировки, веса, анализы, сон). Если в контексте нужных данных нет — прямо скажи, что данных недостаточно, и что нужно записать.
+- Анализы: «выше/ниже референса лаборатории» — не диагноз. Формулируй «Рекомендуется обсудить результат с врачом.» При значимых отклонениях здоровья не предлагай повышать нагрузку. Никогда не советуй начать, добавить или изменить препарат.`;
 
 const ACTION_TYPES = [
   'set_day_mode', 'swap_today', 'adjust_calories', 'replace_exercise', 'exclude_exercise', 'favorite_exercise', 'change_sets', 'change_rep_range',
@@ -200,6 +205,90 @@ async function summarize({ messages, summary }) {
   return { summary: textOf(resp).trim().slice(0, 1200) };
 }
 
+// ---------- Распознавание бланков анализов ----------
+// Модель ТОЛЬКО переписывает то, что напечатано в бланке (название, значение, единица, референс, флаг).
+// Не интерпретирует, не пересчитывает единицы, не добавляет показателей. Приложение затем сопоставляет
+// показатели с каталогом, а пользователь ОБЯЗАТЕЛЬНО проверяет всё на экране «Проверьте распознанные данные».
+const LAB_SYSTEM = `Ты извлекаешь данные из бланка лабораторных анализов (PDF, фото или скриншот, возможно несколько страниц; любые лаборатории — Инвитро, Хеликс, Гемотест, KDL, CMD, зарубежные и др.).
+Правила:
+- Переписывай ТОЛЬКО то, что напечатано. Ничего не придумывай, не пересчитывай единицы и не исправляй значения.
+- Каждая строка результата: название показателя как в бланке, значение (как напечатано, с запятой или точкой; знаки < > сохраняй), единица как в бланке, референсный интервал как в бланке (refText) и флаг H/L, если в бланке есть пометка (H, L, ↑, ↓, *, «выше», «ниже», выделение).
+- Если значение нечитаемо — пропусти строку. Качественные результаты (например «отрицательно») включай со значением-текстом.
+- date — дата взятия биоматериала (если нет — дата выполнения/выдачи) в формате YYYY-MM-DD; пустая строка, если не найдена. Дату рождения не путай с датой анализа.
+- lab — название лаборатории; пустая строка, если не указана.
+- Не добавляй интерпретаций, советов, диагнозов. Только данные.`;
+
+const LAB_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['lab', 'date', 'rows'],
+  properties: {
+    lab: { type: 'string' },
+    date: { type: 'string', description: 'YYYY-MM-DD или пустая строка' },
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'value', 'unit', 'refText', 'flag'],
+        properties: {
+          name: { type: 'string' },
+          value: { type: 'string', description: 'значение как в бланке' },
+          unit: { type: 'string' },
+          refText: { type: 'string', description: 'референс как в бланке или пустая строка' },
+          flag: { type: 'string', enum: ['H', 'L', ''] },
+        },
+      },
+    },
+  },
+};
+
+const LAB_MEDIA = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+async function extractLab({ files }) {
+  if (!Array.isArray(files) || files.length === 0 || files.length > 10) throw Object.assign(new Error('files: 1–10'), { status: 400 });
+  const content = [];
+  for (const f of files) {
+    const mediaType = String(f?.mediaType || '');
+    const data = String(f?.data || '');
+    if (!LAB_MEDIA.has(mediaType) || !data) throw Object.assign(new Error('unsupported file'), { status: 400 });
+    content.push(
+      mediaType === 'application/pdf'
+        ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+        : { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
+    );
+  }
+  content.push({ type: 'text', text: 'Извлеки все результаты анализов из этого бланка (все страницы).' });
+
+  // Многостраничные бланки — длинный вход, поэтому стриминг + finalMessage()
+  const stream = client.beta.messages.stream({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: LAB_SYSTEM,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: LAB_SCHEMA } },
+    messages: [{ role: 'user', content }],
+  });
+  const resp = await stream.finalMessage();
+  if (resp.stop_reason === 'refusal') return { lab: '', date: '', rows: [], refused: true };
+  if (resp.stop_reason === 'max_tokens') throw Object.assign(new Error('truncated'), { status: 502 });
+  let parsed;
+  try {
+    parsed = JSON.parse(textOf(resp));
+  } catch {
+    throw Object.assign(new Error('bad model output'), { status: 502 });
+  }
+  const rows = (Array.isArray(parsed.rows) ? parsed.rows : []).slice(0, 200).map((r) => ({
+    name: String(r?.name || '').slice(0, 120),
+    value: String(r?.value || '').slice(0, 40),
+    unit: String(r?.unit || '').slice(0, 30),
+    refText: String(r?.refText || '').slice(0, 60),
+    flag: r?.flag === 'H' || r?.flag === 'L' ? r.flag : '',
+  }));
+  return { lab: String(parsed.lab || '').slice(0, 60), date: /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : '', rows };
+}
+
 function apiError(e) {
   if (e instanceof Anthropic.RateLimitError) return [429, 'rate_limited'];
   if (e instanceof Anthropic.AuthenticationError) return [500, 'server_auth'];
@@ -215,9 +304,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== 'POST') return send(res, 404, { error: 'not_found' });
   if (APP_KEY && req.headers['x-form-key'] !== APP_KEY) return send(res, 401, { error: 'unauthorized' });
   try {
-    const body = await readBody(req);
+    const body = await readBody(req, req.url === '/v1/labs/extract' ? 30_000_000 : 400_000);
     if (req.url === '/v1/coach') return send(res, 200, await callModel(body));
     if (req.url === '/v1/summarize') return send(res, 200, await summarize(body));
+    if (req.url === '/v1/labs/extract') return send(res, 200, await extractLab(body));
     return send(res, 404, { error: 'not_found' });
   } catch (e) {
     const [status, code] = apiError(e);

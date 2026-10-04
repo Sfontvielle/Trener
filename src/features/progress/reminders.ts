@@ -22,7 +22,7 @@ const NAME: Partial<Record<MeasureKind, string>> = { waist: 'талии', chest:
 export function measurementDue(weights: WeightEntry[], metrics: BodyMetric[], ref: ISODate): MeasureReminder | null {
   const last = (k: MeasureKind) => {
     const dates = k === 'weight' ? weights.map((w) => w.date) : metrics.filter((m) => m.kind === k).map((m) => m.date);
-    return dates.length ? dates.sort().at(-1)! : null;
+    return dates.length ? dates.sort()[dates.length - 1] : null;
   };
   const lw = last('weight');
   const dw = lw ? daysBetween(lw, ref) : null;

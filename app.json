@@ -12,10 +12,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "net.fontvielle.form",
       "infoPlist": {
-        "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов.",
+        "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов и фотографировать бланки анализов.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "RYNJI читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
-        "NSPhotoLibraryUsageDescription": "RYNJI использует фото, чтобы ты мог сохранять фото прогресса. Они остаются на устройстве."
+        "NSPhotoLibraryUsageDescription": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве."
       }
     },
     "android": {
@@ -64,8 +64,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "RYNJI использует фото, чтобы ты мог сохранять фото прогресса. Они остаются на устройстве.",
-          "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов и фото прогресса.",
+          "photosPermission": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве.",
+          "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов, фото прогресса и бланков анализов.",
           "microphonePermission": false
         }
       ]

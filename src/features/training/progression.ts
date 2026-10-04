@@ -14,7 +14,8 @@ import { DEFAULT_GYM, equipmentStep, loadKind, roundToEquipment } from './equipm
  *     (например 50 → 52,5 кг при диапазоне 8–10, а не сразу 55);
  *  4) в диапазоне → тот же вес, +1 повтор;
  *  5) ниже диапазона → держим; вторую тренировку подряд → −8% (округление до шага);
- *  Низкая готовность (сон, HRV, пульс, усталость) запрещает повышение — вес держим.
+ *  Низкая готовность (сон, HRV, пульс, усталость) и значимые сигналы здоровья (анализы, давление) запрещают
+ *  повышение — вес держим.
  * Шаг повышения = минимальный доступный шаг оборудования (ex.increment) — ЭВРИСТИКА: ACSM даёт 2–10%.
  */
 
@@ -92,6 +93,8 @@ export function recommend(args: {
   rirDelta?: number;
   /** Оборудование зала — рекомендуются только реально выставляемые веса */
   gym?: GymSetup;
+  /** Повышение нагрузки запрещено (сигналы здоровья важнее прогресса) — причина для объяснения */
+  noIncrease?: string;
 }): Recommendation {
   const { repMin, repMax, history, band } = args;
   const gym = args.gym ?? DEFAULT_GYM;
@@ -152,6 +155,9 @@ export function recommend(args: {
   }
 
   if (allTop && ok) {
+    if (args.noIncrease) {
+      return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `По повторам (${lastStr}) можно было бы +${fmtWeight(ex.increment)} кг, но ${args.noIncrease} Держим ${w(top)}.` };
+    }
     if (lowReadiness) {
       return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${w(top)}`, rationale: `Готов к +${fmtWeight(ex.increment)} кг (${lastStr}), но готовность сегодня снижена — держим ${w(top)}.` };
     }

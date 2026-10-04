@@ -12,6 +12,9 @@ import { EMPTY_HEALTH, healthOf, healthTraining } from './health';
 import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
 import { BRAND } from '@/config/brand';
 import { CategoryPicker, joinItems, splitItems, type PickerCategory } from './CategoryPicker';
+import { useBody } from '@/stores/body';
+import { bodyTrend } from '@/features/science/bodyTrend';
+import { goalPresets, presetForRate, rateWarning, recommendedPreset } from '@/features/coach/decisions/goals';
 
 export const GOAL_DESC: Record<GoalType, string> = {
   bulk: 'Профицит калорий, упор на прогрессию весов',
@@ -78,7 +81,7 @@ export function GoalPicker({ p, set }: { p: UserProfile; set: Setter }) {
             accessibilityState={{ selected: active }}
             onPress={() => {
               haptic.tap();
-              set({ goal: g, ratePctPerWeek: defaultRate(g, p.level) });
+              set({ goal: g, ratePctPerWeek: g === 'bulk' || g === 'cut' ? goalPresets(g, p.level, p.weightKg).find((x) => x.id === recommendedPreset({ goal: g, level: p.level, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg }).id)!.ratePct : defaultRate(g, p.level) });
             }}
             style={[styles.goal, active && { borderColor: colors.accent, backgroundColor: colors.accentDim }]}
           >
@@ -90,19 +93,96 @@ export function GoalPicker({ p, set }: { p: UserProfile; set: Setter }) {
           </Pressable>
         );
       })}
-      {p.goal === 'bulk' || p.goal === 'cut' ? (
-        <View style={{ gap: 6, marginTop: 6 }}>
-          <T v="caption">Темп, % массы тела в неделю</T>
-          <Opt
-            items={(p.goal === 'bulk' ? [0.25, 0.35, 0.5, 0.75] : [0.4, 0.6, 0.8, 1.0]).map((v) => ({ v, label: `${String(v).replace('.', ',')}% · ${(p.weightKg * v / 100).toFixed(2).replace('.', ',')} кг` }))}
-            value={p.ratePctPerWeek}
-            onChange={(v) => set({ ratePctPerWeek: v })}
-          />
-          <T v="small" style={{ fontSize: 12 }}>
-            {p.goal === 'bulk' ? 'Медленнее — меньше жира. Новичкам можно быстрее.' : 'Быстрее 1% в неделю — риск потерять мышцы и силу.'}
+      {p.goal === 'bulk' || p.goal === 'cut' ? <RatePresets p={p} set={set} /> : null}
+    </View>
+  );
+}
+
+/**
+ * Темп цели — пресеты (Консервативный / Сбалансированный / Более быстрый). Рекомендуемый зависит от массы, талии,
+ * опыта и истории. Свой темп можно выбрать — при агрессивном RYNJI объясняет последствия, но не запрещает.
+ */
+function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
+  const metrics = useBody((s) => s.metrics);
+  const weights = useBody((s) => s.weights);
+  const [custom, setCustom] = useState(false);
+  const waistCm = [...metrics].filter((m) => m.kind === 'waist').sort((a, b) => (a.date < b.date ? -1 : 1)).pop()?.value;
+  const waistPerKg = p.goal === 'bulk' ? bodyTrend(weights, metrics).waistPerKg : null;
+  const presets = goalPresets(p.goal, p.level, p.weightKg);
+  const rec = recommendedPreset({ goal: p.goal, level: p.level, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg, waistCm, waistPerKg });
+  const current = presetForRate(p.goal, p.level, p.ratePctPerWeek);
+  const warn = rateWarning(p.goal, p.level, p.ratePctPerWeek, p.weightKg);
+  return (
+    <View style={{ gap: 8, marginTop: 6 }} testID="rate-presets">
+      <T v="caption">Темп</T>
+      {presets.map((x) => {
+        const active = current === x.id;
+        return (
+          <Pressable
+            key={x.id}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${x.label}: ${String(x.ratePct).replace('.', ',')}% в неделю`}
+            onPress={() => {
+              haptic.tap();
+              set({ ratePctPerWeek: x.ratePct });
+            }}
+            style={[styles.goal, { paddingVertical: 10 }, active && { borderColor: colors.accent, backgroundColor: colors.accentDim }]}
+          >
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <T v="body" style={{ fontWeight: '800' }}>
+                  {x.label}
+                </T>
+                {rec.id === x.id ? (
+                  <View style={styles.recBadge}>
+                    <T v="small" color={colors.onAccent} style={{ fontSize: 10, fontWeight: '800' }}>
+                      РЕКОМЕНДУЕМ
+                    </T>
+                  </View>
+                ) : null}
+              </View>
+              <T v="small" style={{ fontSize: 12, fontVariant: ['tabular-nums'] }} color={colors.text}>
+                {p.goal === 'bulk' ? '+' : '−'}
+                {String(x.kgPerWeek).replace('.', ',')} кг/нед · {p.goal === 'bulk' ? '+' : '−'}
+                {String(Math.round(x.kgPerMonth * 10) / 10).replace('.', ',')} кг/мес · ~{x.kcalPerDay} ккал/день
+              </T>
+              <T v="small" style={{ fontSize: 12 }}>
+                {x.note}
+              </T>
+            </View>
+            <View style={[styles.radio, active && { borderColor: colors.accent }]}>{active ? <View style={styles.radioDot} /> : null}</View>
+          </Pressable>
+        );
+      })}
+      {rec.why ? (
+        <T v="small" style={{ fontSize: 12 }}>
+          Почему рекомендуем: {rec.why}
+        </T>
+      ) : null}
+      {custom || !current ? (
+        <Opt
+          items={(p.goal === 'bulk' ? [0.15, 0.25, 0.35, 0.5, 0.75, 1.0] : [0.4, 0.6, 0.8, 1.0, 1.25]).map((v) => ({ v, label: `${String(v).replace('.', ',')}%` }))}
+          value={p.ratePctPerWeek}
+          onChange={(v) => set({ ratePctPerWeek: v })}
+        />
+      ) : (
+        <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setCustom(true)}>
+          <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+            Свой темп
+          </T>
+        </Pressable>
+      )}
+      {warn ? (
+        <View style={[styles.warn, warn.level === 'strong' && { borderColor: colors.warning }]} testID="rate-warning">
+          <T v="small" color={colors.text}>
+            {warn.text}
           </T>
         </View>
       ) : null}
+      <T v="small" style={{ fontSize: 11 }}>
+        Это стартовая точка, а не гарантия: дальше {BRAND} сверяет темп с трендом веса, талией и силовыми и предлагает корректировки.
+      </T>
     </View>
   );
 }
@@ -375,6 +455,8 @@ const styles = themed({
   goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
+  recBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.accent },
+  warn: { padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim, borderWidth: 1, borderColor: colors.warningLine },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
   tagField: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingLeft: space.md, paddingRight: 6, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   inlineAdd: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },

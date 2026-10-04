@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GH, GestureRoot, SafeDetector } from './gestures';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
@@ -62,8 +62,11 @@ export function Sheet({
   // Ref читается только внутри обработчиков жеста, не во время рендера
   // eslint-disable-next-line react-hooks/refs
   const [gestures] = useState(() => {
+    if (!GH) return null;
+    const { Gesture } = GH;
     const st = { active: false };
-    const native = Gesture.Native();
+    // runOnJS(true) у ВСЕХ жестов, включая Native: иначе gesture-handler переключается на Reanimated
+    const native = Gesture.Native().runOnJS(true);
     const pan = Gesture.Pan()
       .runOnJS(true)
       .activeOffsetY(6)
@@ -126,7 +129,7 @@ export function Sheet({
   const maxH = Math.max(240, (height - pad) * maxHeightPct - (pad ? insets.top : 0));
 
   const body = scroll ? (
-    <GestureDetector gesture={gestures.native}>
+    <SafeDetector gesture={gestures?.native}>
     <ScrollView
       ref={scrollRef}
       keyboardShouldPersistTaps="handled"
@@ -145,20 +148,20 @@ export function Sheet({
     >
       <KeyboardScrollProvider ensure={ensure}>{children}</KeyboardScrollProvider>
     </ScrollView>
-    </GestureDetector>
+    </SafeDetector>
   ) : (
     <View style={{ paddingBottom: footer || pad ? space.sm : insets.bottom + space.lg, flexShrink: 1 }}>{children}</View>
   );
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureRoot style={{ flex: 1 }}>
       <View ref={rootRef} style={{ flex: 1, paddingBottom: pad }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>
           <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть" />
         </Animated.View>
         <View style={{ flex: 1 }} pointerEvents="box-none" />
-        <GestureDetector gesture={gestures.pan}>
+        <SafeDetector gesture={gestures?.pan}>
         <Animated.View
           onLayout={(e) => {
             const h = e.nativeEvent.layout.height;
@@ -188,9 +191,9 @@ export function Sheet({
           {body}
           {footer ? <View style={{ paddingTop: space.sm, paddingBottom: pad ? space.md : insets.bottom + space.md }}>{footer}</View> : null}
         </Animated.View>
-        </GestureDetector>
+        </SafeDetector>
       </View>
-      </GestureHandlerRootView>
+      </GestureRoot>
     </Modal>
   );
 }

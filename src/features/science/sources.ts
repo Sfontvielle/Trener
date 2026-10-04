@@ -35,6 +35,16 @@ export const SOURCES = {
   watson2015: { id: 'watson2015', title: 'Recommended Amount of Sleep for a Healthy Adult: AASM & SRS Joint Consensus', org: 'Sleep', year: '2015', url: doi('10.5665/sleep.4716') },
   plews2013: { id: 'plews2013', title: 'Training adaptation and heart rate variability in elite endurance athletes: opening the door to effective monitoring', org: 'Sports Med', year: '2013', url: doi('10.1007/s40279-013-0071-8') },
   compendium2024: { id: 'compendium2024', title: '2024 Adult Compendium of Physical Activities (MET-значения)', org: 'J Sport Health Sci / ASU', year: '2024', url: 'https://pacompendium.com/' },
+  slater2019: { id: 'slater2019', title: 'Is an Energy Surplus Required to Maximize Skeletal Muscle Hypertrophy Associated With Resistance Training? (Slater et al.)', org: 'Front Nutr', year: '2019', url: doi('10.3389/fnut.2019.00131') },
+  nunes2022: { id: 'nunes2022', title: 'Systematic review and meta-analysis of protein intake to support muscle mass and function in healthy adults (Nunes et al.)', org: 'J Cachexia Sarcopenia Muscle', year: '2022', url: doi('10.1002/jcsm.12922') },
+  ashwell2012: { id: 'ashwell2012', title: 'Waist-to-height ratio is a better screening tool than waist circumference and BMI for adult cardiometabolic risk factors: systematic review and meta-analysis', org: 'Obes Rev', year: '2012', url: doi('10.1111/j.1467-789X.2011.00952.x') },
+  acc2017bp: { id: 'acc2017bp', title: '2017 ACC/AHA Guideline for the Prevention, Detection, Evaluation, and Management of High Blood Pressure in Adults (Whelton et al.)', org: 'Hypertension', year: '2018', url: doi('10.1161/HYP.0000000000000065') },
+  bhasin2018: { id: 'bhasin2018', title: 'Testosterone Therapy in Men With Hypogonadism: An Endocrine Society Clinical Practice Guideline (гематокрит >54%)', org: 'J Clin Endocrinol Metab', year: '2018', url: doi('10.1210/jc.2018-00229') },
+  pope2014: { id: 'pope2014', title: 'Adverse Health Consequences of Performance-Enhancing Drugs: An Endocrine Society Scientific Statement (Pope et al.)', org: 'Endocr Rev', year: '2014', url: doi('10.1210/er.2013-1058') },
+  esc2019lipids: { id: 'esc2019lipids', title: '2019 ESC/EAS Guidelines for the management of dyslipidaemias (Mach et al.)', org: 'Eur Heart J', year: '2020', url: doi('10.1093/eurheartj/ehz455') },
+  kdigo2024: { id: 'kdigo2024', title: 'KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease (СКФ <60)', org: 'Kidney Int', year: '2024', url: doi('10.1016/j.kint.2023.10.018') },
+  ada2025: { id: 'ada2025', title: 'ADA Standards of Care in Diabetes — 2025: Diagnosis and Classification (глюкоза ≥7,0 ммоль/л, HbA1c ≥6,5%)', org: 'Diabetes Care', year: '2025', url: doi('10.2337/dc25-S002') },
+  easl2019dili: { id: 'easl2019dili', title: 'EASL Clinical Practice Guidelines: Drug-induced liver injury (АЛТ >3×ВГН)', org: 'J Hepatol', year: '2019', url: doi('10.1016/j.jhep.2019.02.014') },
 } satisfies Record<string, ScienceSource>;
 
 export type SourceId = keyof typeof SOURCES;
