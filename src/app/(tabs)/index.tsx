@@ -29,7 +29,7 @@ import type { LocalInsight } from '@/features/coach/insights';
 import type { ProgramProposal } from '@/features/training/adaptPlan';
 import { applyProgramProposal } from '@/features/training/adaptActions';
 import { useDayKey } from '@/hooks/useDayKey';
-import { GOAL_LABEL } from '@/features/nutrition/targets';
+import { GOAL_LABEL, targetWeeklyChangeKg } from '@/features/nutrition/targets';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { weightTrend } from '@/features/progress/weightTrend';
@@ -41,6 +41,12 @@ import { addDays, formatDayLong, formatHours, greeting, weekdayIndex } from '@/u
 import { fmtNum, fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
+import { stepGoal } from '@/features/science/steps';
+import { bodyTrend } from '@/features/science/bodyTrend';
+import { dayInsights, readinessLabel } from '@/features/science/insights';
+import { sleepBaseline } from '@/features/science/recovery';
+import { BASIS_LABEL } from '@/features/science/sources';
+import { QuickMeasureSheet } from '@/features/progress/QuickMeasureSheet';
 
 const WEEKDAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 const KIND_ICON: Record<JournalKind, IconName> = {
@@ -88,6 +94,8 @@ export default function Home() {
   const tw = useTodayWorkout();
   const nut = useDayNutrition();
   const [addFood, setAddFood] = useState(false);
+  const [measureOpen, setMeasureOpen] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
   const [proposal, setProposal] = useState<ProgramProposal | null>(null);
@@ -102,6 +110,22 @@ export default function Home() {
   }, [weights]);
   const health = useMemo(() => healthContext(healthDays, d), [healthDays, d]);
   const goal = useMemo(() => (profile ? goalProgress(profile, weights, metrics) : null), [profile, weights, metrics]);
+  // Наука: персональная цель шагов, тренд тела и выводы — детерминированно из данных
+  const steps = useMemo(() => (profile ? stepGoal({ age: profile.age, profileSteps: profile.stepsPerDay, health: healthDays, ref: d }) : null), [profile, healthDays, d]);
+  const body = useMemo(() => bodyTrend(weights, metrics, d), [weights, metrics, d]);
+  const lastWaist = useMemo(() => [...metrics].reverse().find((m) => m.kind === 'waist'), [metrics]);
+  const insights = useMemo(() => {
+    if (!profile) return [];
+    const cur = body.weight.trendKg ?? profile.weightKg;
+    return dayInsights({
+      readiness,
+      sleepBaseline: sleepBaseline(d, checkins, healthDays),
+      sleepHours: checkins[d]?.sleepHours ?? healthDays[d]?.sleepHours,
+      body,
+      goal: profile.goal,
+      targetKgPerWeek: targetWeeklyChangeKg(profile, cur),
+    });
+  }, [profile, body, readiness, d, checkins, healthDays]);
   // Советы тренера пересчитываются при изменении данных, которые на них влияют
   const tips = useMemo(
     () => (profile ? currentLocalInsights().filter((i) => i.kind !== 'general' || i.key) : []),
@@ -182,6 +206,12 @@ export default function Home() {
           </Pressable>
         </View>
 
+        <View style={styles.quickRow}>
+          <QuickAction icon="restaurant-outline" label="+ Еда" onPress={() => setAddFood(true)} />
+          <QuickAction icon="body-outline" label="+ Замеры" onPress={() => setMeasureOpen(true)} />
+          <QuickAction icon="sunny-outline" label="Check-in" onPress={() => router.push('/checkin')} done={!!checkin} />
+        </View>
+
         <Hero tw={tw} active={active} debrief={debrief} readiness={readiness} onWhy={() => setWhyOpen(true)} target={target} trend={trend} onAddFood={() => setAddFood(true)} />
 
         {mode === 'evening' ? (
@@ -201,10 +231,70 @@ export default function Home() {
           />
           <Tile label="Белок" value={target ? `${Math.round(nut.eaten.protein)}` : '—'} sub={target ? `из ${target.protein} г` : ''} progress={target ? nut.eaten.protein / target.protein : undefined} color={colors.protein} icon="egg-outline" onPress={() => router.push('/nutrition')} a11y="Белок, открыть питание" />
           <Tile label="Вода" value={water < 1000 ? `${water} мл` : `${String(Math.round(water / 50) / 20).replace('.', ',')} л`} sub={`из ${String(waterGoal / 1000).replace('.', ',')} л · тап +250`} progress={water / waterGoal} color={colors.protein} icon="water-outline" onPress={() => addWater(250)} onLongPress={() => water > 0 && addWater(-250)} a11y="Вода: добавить стакан 250 мл" />
-          <Tile label="Шаги" value={health?.steps !== undefined ? fmtNum(health.steps) : '—'} sub={health?.steps !== undefined ? `цель ${fmtNum(profile.stepsPerDay)}` : healthOn ? 'нет данных' : 'Apple Health'} progress={health?.steps !== undefined ? health.steps / Math.max(1000, profile.stepsPerDay) : undefined} icon="footsteps-outline" onPress={() => router.push('/health')} a11y="Шаги" />
+          <Tile
+            label="Шаги"
+            value={health?.steps !== undefined && steps ? `${fmtNum(health.steps)} / ${fmtNum(steps.target)}` : '—'}
+            sub={health?.steps !== undefined ? (steps?.source === 'health' ? `цель по твоей норме ~${fmtNum(steps.baseline)}` : 'цель из профиля') : healthOn ? `нет данных · цель ${fmtNum(steps?.target ?? profile.stepsPerDay)}` : `цель ${fmtNum(steps?.target ?? profile.stepsPerDay)} · Apple Health`}
+            progress={health?.steps !== undefined && steps ? health.steps / steps.target : undefined}
+            icon="footsteps-outline"
+            onPress={() => setStepsOpen(true)}
+            a11y="Шаги, как рассчитана цель"
+          />
           <Tile label="Сон" value={sleep ? formatHours(sleep) : '—'} sub={sleep ? (checkin ? 'из чек-ина' : 'Apple Health') : 'чек-ин'} progress={sleep ? sleep / 8 : undefined} color={sleep && sleep < 6.5 ? colors.warning : colors.accent} icon="moon-outline" onPress={() => router.push('/checkin')} a11y="Сон, чек-ин" />
           <Tile label={GOAL_LABEL[profile.goal]} value={goal?.headline ?? '—'} sub={goal?.detail ?? ''} progress={goal?.pct ?? undefined} icon="flag-outline" small onPress={() => router.push('/progress')} a11y="Прогресс к цели" />
         </View>
+
+        <View style={styles.measure} testID="measure-card">
+          <Pressable accessibilityRole="button" accessibilityLabel="Замеры: вес и талия, открыть тренд" onPress={() => router.push('/weight')} style={({ pressed }) => [{ flex: 1, gap: 4 }, pressed && { opacity: 0.8 }]}>
+            <T v="caption">Замеры</T>
+            <View style={{ flexDirection: 'row', gap: space.lg }}>
+              <View>
+                <T v="small" style={{ fontSize: 11 }}>
+                  Вес{body.weight.avg7 !== null ? ' · среднее 7 дн' : ''}
+                </T>
+                <T v="num" style={{ fontSize: 20 }}>
+                  {body.weight.avg7 !== null ? fmtWeight(body.weight.avg7) : weights.length ? fmtWeight(weights[weights.length - 1].kg) : '—'}
+                  <T v="small"> кг</T>
+                </T>
+                {body.weight.kgPerWeek !== null ? (
+                  <T v="small" style={{ fontSize: 11 }}>
+                    {body.weight.kgPerWeek >= 0 ? '+' : '−'}
+                    {Math.abs(body.weight.kgPerWeek).toFixed(2).replace('.', ',')} кг/нед
+                  </T>
+                ) : null}
+              </View>
+              <View>
+                <T v="small" style={{ fontSize: 11 }}>
+                  Талия
+                </T>
+                <T v="num" style={{ fontSize: 20 }}>
+                  {lastWaist ? String(lastWaist.value).replace('.', ',') : '—'}
+                  <T v="small"> см</T>
+                </T>
+                {body.waist ? (
+                  <T v="small" style={{ fontSize: 11 }}>
+                    {body.waist.changeCm >= 0 ? '+' : '−'}
+                    {Math.abs(body.waist.changeCm).toString().replace('.', ',')} см за {Math.max(1, Math.round(body.waist.days / 7))} нед
+                  </T>
+                ) : null}
+              </View>
+            </View>
+          </Pressable>
+          <Button title="Добавить" icon="add" size="sm" variant="secondary" onPress={() => setMeasureOpen(true)} />
+        </View>
+
+        {insights.length ? (
+          <View style={styles.insights} testID="insights">
+            {insights.map((t) => (
+              <View key={t} style={{ flexDirection: 'row', gap: 8 }}>
+                <Icon name="analytics-outline" size={15} color={colors.accent} style={{ marginTop: 2 }} />
+                <T v="small" color={colors.text} style={{ flex: 1, fontSize: 13 }}>
+                  {t}
+                </T>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {tips.length ? (
           <View style={{ gap: 8 }}>
@@ -305,6 +395,18 @@ export default function Home() {
       </ScrollView>
 
       <AddFoodSheet visible={addFood} onClose={() => setAddFood(false)} date={d} meal={mealForHour(now.getHours())} />
+      <QuickMeasureSheet visible={measureOpen} onClose={() => setMeasureOpen(false)} date={d} />
+      <Sheet visible={stepsOpen} onClose={() => setStepsOpen(false)} title="Шаги" subtitle={steps ? `Цель ${fmtNum(steps.target)} · ${BASIS_LABEL[steps.basis.kind]}` : undefined}>
+        {steps ? (
+          <View style={{ gap: 10 }}>
+            <T v="body">{steps.reason}</T>
+            <T v="small">
+              Шаги — часть бытовой активности (NEAT): они добавляют расход энергии и полезны для здоровья, но не «сжигают» жир в конкретном месте. Ориентир пользы для твоего возраста — {fmtNum(steps.benefitRange[0])}–{fmtNum(steps.benefitRange[1])} шагов (Paluch 2022, Ding 2025).
+            </T>
+            <T v="small">Данных Apple Health за 4 недели: {steps.daysOfData} дн.</T>
+          </View>
+        ) : null}
+      </Sheet>
       <NoteSheet visible={noteOpen} onClose={() => setNoteOpen(false)} date={d} />
       <ReadinessSheet visible={whyOpen} onClose={() => setWhyOpen(false)} r={readiness} hasCheckin={!!checkin} />
       <ProposalSheet
@@ -350,12 +452,12 @@ function Hero({
   const readyCol = !readiness ? colors.textDim : readiness.band === 'go' ? colors.accent : readiness.band === 'reduce' ? colors.warning : colors.danger;
   const facts = (
     <View style={{ gap: 6 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={readiness ? `Готовность ${readiness.score}%, почему` : 'Пройти чек-ин'} onPress={readiness ? onWhy : () => router.push('/checkin')} style={styles.heroRow}>
+      <Pressable accessibilityRole="button" accessibilityLabel={readiness ? `Готовность ${readinessLabel(readiness).toLowerCase()}, почему` : 'Пройти чек-ин'} onPress={readiness ? onWhy : () => router.push('/checkin')} style={styles.heroRow}>
         <Icon name="pulse" size={16} color={readyCol} />
         <T v="body" style={{ fontSize: 15, flex: 1 }} color={colors.text}>
           {readiness ? (
             <>
-              Готовность <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={readyCol}>{readiness.score}%</T>
+              Готовность <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={readyCol}>{readinessLabel(readiness).toLowerCase()}</T>
               {readiness.band !== 'go' ? ` · ${BAND_META[readiness.band].short.toLowerCase()}` : ''}
             </>
           ) : (
@@ -487,6 +589,25 @@ function Hero({
       <T v="small">Заполни профиль — {BRAND} составит программу и питание.</T>
       <Button title="Открыть профиль" size="lg" onPress={() => router.push('/profile')} />
     </View>
+  );
+}
+
+function QuickAction({ icon, label, onPress, done }: { icon: IconName; label: string; onPress: () => void; done?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => {
+        haptic.tap();
+        onPress();
+      }}
+      style={({ pressed }) => [styles.quick, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
+    >
+      <Icon name={done ? 'checkmark-circle' : icon} size={17} color={colors.accent} />
+      <T v="body" style={{ fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+        {label}
+      </T>
+    </Pressable>
   );
 }
 
@@ -687,6 +808,10 @@ function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () =
 }
 
 const styles = themed({
+  quickRow: { flexDirection: 'row', gap: 8 },
+  quick: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  measure: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  insights: { gap: 8, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   hero: { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1.5, borderColor: colors.border, padding: space.lg, gap: 6 },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 },
   heroDivider: { height: 1, backgroundColor: colors.border, marginVertical: 6 },

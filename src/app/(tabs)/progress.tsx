@@ -30,6 +30,7 @@ import { getExercise } from '@/data/exercises';
 import { comparePeriods, e1rmSeries, metricSeries, progressNarrative, topLifts, weeklySeries } from '@/features/progress/series';
 import { METRIC_META } from '@/features/progress/metrics';
 import { BRAND } from '@/config/brand';
+import { CATEGORY_LABEL, categoryForScore } from '@/features/science/recovery';
 
 type Range = '7' | '30' | '90' | 'all';
 
@@ -395,7 +396,7 @@ export default function Progress() {
       <SectionTitle title="Восстановление · 7 дней" />
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Stat label="Готовность, ср." value={readiness7.some((x) => x) ? String(Math.round(readiness7.filter((x) => x).reduce((a, b) => a + b, 0) / readiness7.filter((x) => x).length)) : '—'} />
+          <Stat label="Готовность, неделя" value={readiness7.some((x) => x) ? CATEGORY_LABEL[categoryForScore(readiness7.filter((x) => x).reduce((a, b) => a + b, 0) / readiness7.filter((x) => x).length)] : '—'} />
           <Stat label="Сон, ср." value={avgSleep ? formatHours(avgSleep) : '—'} unit={avgSleep ? 'ч' : undefined} />
           <Stat label="Чек-инов" value={`${sleep.length}/7`} />
         </View>

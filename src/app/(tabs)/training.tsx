@@ -482,6 +482,8 @@ function TemplateCard({ t, editable, customs }: { t: WorkoutTemplate; editable: 
 
 function HistoryTab({ bottom }: { bottom: number }) {
   const sessions = useWorkouts((s) => s.sessions);
+  const daySrc = useDaySources();
+  const [dayOpen, setDayOpen] = useState<ISODate | null>(null);
   const data = useMemo(() => sessions.filter((s) => s.status === 'completed').sort((a, b) => b.startedAt - a.startedAt), [sessions]);
   const weekly = useMemo(() => {
     const d = today();
@@ -501,16 +503,22 @@ function HistoryTab({ bottom }: { bottom: number }) {
       initialNumToRender={12}
       contentContainerStyle={{ paddingBottom: bottom, gap: 8 }}
       showsVerticalScrollIndicator={false}
+      ListFooterComponent={<DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />}
       ListHeaderComponent={
-        <Card style={{ marginBottom: 8 }}>
-          <T v="caption">Тренировок в неделю · 8 недель</T>
-          <View style={{ marginTop: 10 }}>
-            <MiniBars values={weekly} height={44} />
-          </View>
-          <T v="small" style={{ marginTop: 8 }}>
-            Всего: {data.length}
-          </T>
-        </Card>
+        <View style={{ gap: 8, marginBottom: 8 }}>
+          <Card>
+            <TrainingCalendar today={today()} src={daySrc} onSelect={setDayOpen} />
+          </Card>
+          <Card>
+            <T v="caption">Тренировок в неделю · 8 недель</T>
+            <View style={{ marginTop: 10 }}>
+              <MiniBars values={weekly} height={44} />
+            </View>
+            <T v="small" style={{ marginTop: 8 }}>
+              Всего: {data.length}
+            </T>
+          </Card>
+        </View>
       }
     />
   );

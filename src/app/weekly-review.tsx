@@ -23,6 +23,7 @@ import { formatDayShort, formatHours, today } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
+import { CATEGORY_LABEL, categoryForScore } from '@/features/science/recovery';
 
 /**
  * Отчёт недели: что было (вес, замеры, тренировки, рабочие веса, питание, сон, восстановление),
@@ -75,7 +76,7 @@ export default function WeeklyReviewScreen() {
             <Tile icon="flame-outline" label="Калории, ср." value={w?.avgKcal ? fmtNum(w.avgKcal) : '—'} sub={target && review.loggedDays ? `в цели ${review.kcalOnTargetDays}/${review.loggedDays} дн` : undefined} />
             <Tile icon="egg-outline" label="Белок, ср." value={review.avgProtein !== null ? `${review.avgProtein} г` : '—'} sub={target ? `цель ${target.protein} г` : undefined} />
             <Tile icon="moon-outline" label="Сон, ср." value={w?.avgSleep ? `${formatHours(w.avgSleep)} ч` : '—'} />
-            <Tile icon="pulse" label="Готовность, ср." value={review.avgReadiness !== null ? String(review.avgReadiness) : '—'} />
+            <Tile icon="pulse" label="Готовность, ср." value={review.avgReadiness !== null ? CATEGORY_LABEL[categoryForScore(review.avgReadiness)] : '—'} />
           </View>
 
           {review.strengthUps.length || review.prs.length ? (
