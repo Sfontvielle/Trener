@@ -536,3 +536,29 @@ test('Календарь выбора даты: сетка месяца с по�
   assert.equal(formatDateRu('2026-10-04'), '4 октября 2026');
   assert.equal(formatDateRu(''), '');
 });
+
+// ─── Очередь модальных окон (зависание iPhone при открытии окна во время закрытия другого) ──
+
+import { beginModalClose, modalBusy, whenModalIdle } from '../src/components/modalGate';
+
+test('Окна: новое окно открывается только после полного закрытия предыдущего; очередь не застревает', async () => {
+  const order: string[] = [];
+  const finish = beginModalClose();
+  assert.equal(modalBusy(), true);
+  whenModalIdle(() => order.push('открыто окно дня'));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(order, [], 'пока календарь закрывается — ничего не открывается');
+  finish();
+  finish(); // повторный вызов безопасен
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(order, ['открыто окно дня']);
+  assert.equal(modalBusy(), false);
+  // Если закрытие «потерялось» (нет onDismiss) — подстраховка через 0,9 с
+  beginModalClose();
+  whenModalIdle(() => order.push('после таймаута'));
+  await new Promise((r) => setTimeout(r, 1100));
+  assert.deepEqual(order, ['открыто окно дня', 'после таймаута']);
+  // Свободно — выполняется сразу
+  whenModalIdle(() => order.push('сразу'));
+  assert.equal(order[order.length - 1], 'сразу');
+});

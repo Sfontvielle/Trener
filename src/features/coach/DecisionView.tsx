@@ -6,6 +6,7 @@ import { Icon, T, type IconName } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { BASIS_LABEL } from '@/features/science/sources';
 import { CONFIDENCE_LABEL, type Confidence, type Decision, type DecisionArea } from './decisions/types';
+import { afterModalClose } from '@/components/modalGate';
 
 const AREA_ICON: Record<DecisionArea, IconName> = {
   training: 'barbell-outline',
@@ -94,7 +95,7 @@ export function CoachWhySheet({ visible, onClose, title, decisions, onReadiness 
             hitSlop={8}
             onPress={() => {
               onClose();
-              router.push('/coach');
+              afterModalClose(() => router.push('/coach'));
             }}
           >
             <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>

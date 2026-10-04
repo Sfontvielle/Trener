@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { GH, GestureRoot, SafeDetector } from './gestures';
+import { useModalPresence } from './useModalPresence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
@@ -39,7 +40,6 @@ export function Sheet({
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const [mounted, setMounted] = useState(visible);
   const [anim] = useState(() => new Animated.Value(0));
   const [drag] = useState(() => new Animated.Value(0));
   const [boxH, setBoxH] = useState(0);
@@ -123,20 +123,19 @@ export function Sheet({
     return { native, pan, head: undefined, body: undefined };
   });
 
-  // Монтируем сразу при открытии (во время рендера, без лишнего прохода эффекта)
-  if (visible && !mounted) setMounted(true);
-
-  useEffect(() => {
-    if (visible) {
+  const { mounted, shown, onDismiss } = useModalPresence(
+    visible,
+    () => {
       live.current.closing = false;
       live.current.atTop = true;
       drag.setValue(0);
       Animated.spring(anim, { toValue: 1, damping: 26, stiffness: 240, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
-    } else if (mounted) {
+    },
+    (done) => {
       live.current.closing = true;
-      Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setMounted(false));
-    }
-  }, [visible, anim, drag, mounted]);
+      Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => done());
+    },
+  );
 
   if (!mounted) return null;
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [height, 0] });
@@ -170,7 +169,7 @@ export function Sheet({
   );
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <Modal visible={shown} onDismiss={onDismiss} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <GestureRoot style={{ flex: 1 }}>
       <View ref={rootRef} style={{ flex: 1, paddingBottom: pad }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, opacity: dim }]}>

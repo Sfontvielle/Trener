@@ -57,6 +57,7 @@ import type { CoachToday } from '@/features/coach/decisions/today';
 import { CoachWhySheet } from '@/features/coach/DecisionView';
 import { CoachFeed } from '@/features/coach/Feed';
 import { buildFeed, dayVerdict, SETUP_SECTION } from '@/features/coach/feed';
+import { afterModalClose } from '@/components/modalGate';
 
 const WEEKDAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 const KIND_ICON: Record<JournalKind, IconName> = {
@@ -412,7 +413,7 @@ export default function Home() {
 
       <AddFoodSheet visible={addFood} onClose={() => setAddFood(false)} date={d} meal={mealForHour(now.getHours())} />
       <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">
-        <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); setTimeout(() => setDayOpen(x), 250); }} />
+        <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); afterModalClose(() => setDayOpen(x)); }} />
       </Sheet>
       <WaterSheet visible={waterOpen} onClose={() => setWaterOpen(false)} date={d} />
       <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
@@ -439,7 +440,7 @@ export default function Home() {
           readiness
             ? () => {
                 setCoachWhyOpen(false);
-                setTimeout(() => setWhyOpen(true), 250);
+                afterModalClose(() => setWhyOpen(true));
               }
             : undefined
         }

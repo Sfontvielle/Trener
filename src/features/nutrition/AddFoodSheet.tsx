@@ -14,6 +14,7 @@ import { macrosFor } from './status';
 import { haptic } from '@/services/haptics';
 import { fmtNum } from '@/utils/format';
 import { BRAND } from '@/config/brand';
+import { afterModalClose } from '@/components/modalGate';
 
 type View_ = 'menu' | 'favorites' | 'frequent' | 'recent' | 'meals';
 
@@ -54,7 +55,7 @@ export function AddFoodSheet({ visible, onClose, date, meal }: { visible: boolea
   };
   const go = (fn: () => void) => {
     close();
-    setTimeout(fn, 220);
+    afterModalClose(fn);
   };
 
   const quickAdd = (p: FoodProduct, grams: number) => {

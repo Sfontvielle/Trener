@@ -34,6 +34,7 @@ import { useDayKey } from '@/hooks/useDayKey';
 import { frequentProducts, sameMealYesterday, usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { MealIcon } from '@/features/nutrition/MealIcon';
 import { BRAND } from '@/config/brand';
+import { afterModalClose } from '@/components/modalGate';
 
 export default function Nutrition() {
   // Дата считается от «сегодня», которое само переключается после полуночи
@@ -383,7 +384,7 @@ export default function Nutrition() {
               ))}
             </View>
             <ConfidenceLine level={explain.confidence.level} note={explain.confidence.note} />
-            <Button title="Подробный расчёт" variant="ghost" size="sm" onPress={() => { setWhyOpen(false); router.push('/plan'); }} />
+            <Button title="Подробный расчёт" variant="ghost" size="sm" onPress={() => { setWhyOpen(false); afterModalClose(() => router.push('/plan')); }} />
           </View>
         ) : null}
       </Sheet>

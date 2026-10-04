@@ -15,6 +15,7 @@ import { comparable, compareWithPrevious, healthFlags, statusOf, type LabStatus 
 import { draftFromText, labRecognitionAvailable, manualDraft, pickLabDocuments, pickLabPhotos, recognizeLabFiles, type LabFile } from '@/services/labExtract';
 import { formatDayShort, today } from '@/utils/date';
 import type { LabResult } from '@/types';
+import { afterModalClose } from '@/components/modalGate';
 
 const STATUS: Record<LabStatus, { color: string; label: string }> = {
   high: { color: colors.warning, label: 'выше референса' },
@@ -230,7 +231,7 @@ export default function LabsScreen() {
             variant={labRecognitionAvailable() ? 'ghost' : 'primary'}
             onPress={() => {
               setAddOpen(false);
-              setTimeout(() => setPasteOpen(true), 250);
+              afterModalClose(() => setPasteOpen(true));
             }}
           />
           <Button

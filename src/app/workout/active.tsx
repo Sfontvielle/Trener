@@ -36,6 +36,7 @@ import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
 import { prefersReducedMotion } from '@/components/motion';
+import { afterModalClose } from '@/components/modalGate';
 
 /** Обработчик свайпа текущего экрана тренировки (экран один — модульная переменная безопасна) */
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
@@ -160,7 +161,7 @@ export default function ActiveWorkout() {
   const offerReplace = (weId: string) => {
     const x = useWorkouts.getState().active?.exercises.find((e) => e.id === weId);
     if (!x || x.sets.every((st) => st.done)) return;
-    setTimeout(() => setPicker({ mode: 'swap', weId }), 300);
+    afterModalClose(() => setPicker({ mode: 'swap', weId }));
   };
 
   const onPick = (picked: Exercise) => {
@@ -324,7 +325,7 @@ export default function ActiveWorkout() {
         }}
         onAdd={() => {
           setNavOpen(false);
-          setTimeout(() => setPicker({ mode: 'add' }), 250);
+          afterModalClose(() => setPicker({ mode: 'add' }));
         }}
         onFinish={() => {
           setNavOpen(false);
@@ -335,11 +336,11 @@ export default function ActiveWorkout() {
       <Sheet visible={!!menuWe} onClose={() => setMenuFor(null)} title={menuWe ? getExercise(menuWe.exerciseId, customs)?.name : ''}>
         {menuWe ? (
           <View style={{ gap: 8 }}>
-            <MenuRow icon="information-circle-outline" label="Карточка упражнения и история" onPress={() => { setMenuFor(null); router.push({ pathname: '/exercise/[id]', params: { id: menuWe.exerciseId } }); }} />
-            <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
+            <MenuRow icon="information-circle-outline" label="Карточка упражнения и история" onPress={() => { const exId = menuWe.exerciseId; setMenuFor(null); afterModalClose(() => router.push({ pathname: '/exercise/[id]', params: { id: exId } })); }} />
+            <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setPicker({ mode: 'swap', weId: id })); }} />
             <MenuRow icon={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'star' : 'star-outline'} label={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'Убрать из избранного' : 'Добавить в избранное'} onPress={() => { toast(prefFavorite(menuWe.exerciseId), 'star'); setMenuFor(null); }} />
             <MenuRow icon="thumbs-down-outline" label={exerciseFlag(menuWe.exerciseId) === 'disliked' ? 'Снять «не нравится»' : 'Мне не нравится'} onPress={() => { toast(prefDislike(menuWe.exerciseId)); setMenuFor(null); }} />
-            <MenuRow icon="medkit-outline" label="Дискомфорт при выполнении" onPress={() => { const id = menuWe.id; setMenuFor(null); setTimeout(() => setPainFor(id), 250); }} />
+            <MenuRow icon="medkit-outline" label="Дискомфорт при выполнении" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setPainFor(id)); }} />
             <MenuRow
               icon="ban-outline"
               label="Не предлагать больше"
@@ -372,9 +373,9 @@ export default function ActiveWorkout() {
       <Sheet visible={!!swapFor} onClose={() => setSwapFor(null)} title="Заменить упражнение" subtitle="Подберём альтернативу на те же мышцы и движение">
         {swapFor ? (
           <View style={{ gap: 8 }}>
-            <MenuRow icon="time-outline" label="Тренажёр занят" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
-            <MenuRow icon="construct-outline" label="Нет нужного оборудования" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPicker({ mode: 'swap', weId: id }), 250); }} />
-            <MenuRow icon="medkit-outline" label="Дискомфорт или боль" onPress={() => { const id = swapFor; setSwapFor(null); setTimeout(() => setPainFor(id), 250); }} />
+            <MenuRow icon="time-outline" label="Тренажёр занят" onPress={() => { const id = swapFor; setSwapFor(null); afterModalClose(() => setPicker({ mode: 'swap', weId: id })); }} />
+            <MenuRow icon="construct-outline" label="Нет нужного оборудования" onPress={() => { const id = swapFor; setSwapFor(null); afterModalClose(() => setPicker({ mode: 'swap', weId: id })); }} />
+            <MenuRow icon="medkit-outline" label="Дискомфорт или боль" onPress={() => { const id = swapFor; setSwapFor(null); afterModalClose(() => setPainFor(id)); }} />
             <T v="small" style={{ fontSize: 12, marginTop: 4 }}>
               При боли прекрати это движение и выбери более комфортную альтернативу. {BRAND} не ставит диагнозов.
             </T>
@@ -969,7 +970,7 @@ function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
           onPress={() => {
             useWorkouts.getState().discard();
             onClose();
-            router.replace('/');
+            afterModalClose(() => router.replace('/'));
           }}
         />
         <Button title="Вернуться к тренировке" variant="secondary" onPress={onClose} />

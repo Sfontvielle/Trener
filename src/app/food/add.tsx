@@ -21,6 +21,7 @@ import { parseDecimal } from '@/utils/format';
 import { uid } from '@/utils/id';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
+import { afterModalClose } from '@/components/modalGate';
 
 type FoodTab = 'fav' | 'frequent' | 'recent' | 'mine' | 'base';
 const TABS: { key: FoodTab; label: string }[] = [
@@ -173,8 +174,8 @@ export default function AddFood() {
         }
       />
       <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal || undefined} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
-      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); setTimeout(() => setSelected(p), 250); }} />
-      <CustomProductSheet visible={customOpen} initialName={q} barcode={params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); setTimeout(() => setSelected(p), 250); }} />
+      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); afterModalClose(() => setSelected(p)); }} />
+      <CustomProductSheet visible={customOpen} initialName={q} barcode={params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); afterModalClose(() => setSelected(p)); }} />
     </Screen>
   );
 }

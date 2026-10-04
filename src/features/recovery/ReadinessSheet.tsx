@@ -8,6 +8,7 @@ import { Button, Icon, T } from '@/components/ui';
 import { BAND_META } from './readiness';
 import { BRAND } from '@/config/brand';
 import { readinessLabel } from '@/features/science/insights';
+import { afterModalClose } from '@/components/modalGate';
 
 /**
  * «Почему такая готовность?» — из чего сложилось число, откуда данные и как это влияет на план.
@@ -48,7 +49,7 @@ export function ReadinessSheet({ visible, onClose, r, hasCheckin }: { visible: b
         <T v="small" style={{ fontSize: 12 }}>
           Учитываются: сон (длительность и качество), энергия, стресс, мышечная усталость, боль, тренировки последних 2 дней и нагрузка за неделю относительно твоей обычной, а при подключённом Apple Health — HRV и пульс покоя относительно твоей личной нормы. Категория — правило {BRAND} (эвристика), а не медицинское измерение, поэтому без процентов. Без чек-ина и данных сна готовность не показывается.
         </T>
-        {!hasCheckin ? <Button title="Пройти чек-ин для точности" icon="sunny-outline" variant="secondary" onPress={() => { onClose(); setTimeout(() => router.push('/checkin'), 250); }} /> : null}
+        {!hasCheckin ? <Button title="Пройти чек-ин для точности" icon="sunny-outline" variant="secondary" onPress={() => { onClose(); afterModalClose(() => router.push('/checkin')); }} /> : null}
       </View>
     </Sheet>
   );

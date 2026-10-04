@@ -18,9 +18,23 @@ if (process.env.E2E_SEX === 'female') Object.assign(PROFILE, { name: 'Анна',
 if (process.env.E2E_GOAL) Object.assign(PROFILE, { goal: process.env.E2E_GOAL, ratePctPerWeek: process.env.E2E_GOAL === 'cut' ? 0.6 : 0 });
 
 const results = [];
+const pages = [];
+/** Ошибки React в консоли (dev-оверлей Expo LogBox) — тоже ошибка теста: раньше они проходили незамеченными */
+const logBoxText = async (pg) => {
+  try {
+    const t = await pg.locator('#error-toast div').filter({ hasText: /\S/ }).first().innerText({ timeout: 300 });
+    return t.trim();
+  } catch {
+    return '';
+  }
+};
 const check = async (name, fn) => {
   try {
     await fn();
+    for (const pg of pages) {
+      const lb = await logBoxText(pg);
+      if (lb) throw new Error(`ошибка в консоли React: ${lb.slice(0, 200)}`);
+    }
     results.push(`✓ ${name}`);
   } catch (e) {
     results.push(`✗ ${name}: ${e.message}`);
@@ -36,6 +50,7 @@ const check = async (name, fn) => {
   {
     const octx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
     const op = await octx.newPage();
+    pages.push(op);
     await check('0. Короткий онбординг (5 шагов) → «Дополни профиль: здоровье» в ленте → ограничения сразу превращаются в правила', async () => {
       await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
@@ -107,6 +122,8 @@ const check = async (name, fn) => {
     await octx.close();
   }
   const page = await ctx.newPage();
+  pages.length = 0;
+  pages.push(page);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   // Онбординг пропускаем: кладём профиль в хранилище и создаём план через приложение
@@ -704,6 +721,26 @@ const check = async (name, fn) => {
     assert.match(det, /Питание/);
     assert.match(det, /ккал/);
     await shot('diary');
+    // Повторно: другой день — окно дня открывается после полного закрытия календаря, приложение отвечает
+    for (const back of [3, 5]) {
+      await page.getByLabel('Закрыть').last().click();
+      await page.waitForTimeout(700);
+      await page.getByLabel('Дневник: календарь дней').click();
+      await page.waitForTimeout(700);
+      const d2 = new Date(); d2.setDate(d2.getDate() - back);
+      const y2 = `${d2.getFullYear()}-${pad(d2.getMonth() + 1)}-${pad(d2.getDate())}`;
+      if (!(await page.getByTestId(`day-${y2}`).count())) { await page.getByLabel('Предыдущий месяц').click(); await page.waitForTimeout(400); }
+      await page.getByTestId(`day-${y2}`).first().click();
+      await page.waitForTimeout(1100);
+      assert.ok(await page.getByTestId('day-details').count(), `день −${back} открыт`);
+    }
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(800);
+    await page.getByLabel('+ Еда', { exact: true }).click();
+    await page.waitForTimeout(800);
+    assert.ok(await page.getByText('Поиск продукта', { exact: true }).count(), 'после календаря приложение отвечает');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(600);
   });
 
   await check('39. Вода: увеличить и уменьшить в листе с главной', async () => {
@@ -850,7 +887,7 @@ const check = async (name, fn) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    assert.match(await page.getByTestId('coach-alerts').innerText(), /Давление/);
+    assert.match(await page.getByTestId('coach-feed').innerText(), /Давление/);
   });
 
   await check('44. Отчёт недели: метрики и решения тренера (что/почему/данные/уверенность)', async () => {
