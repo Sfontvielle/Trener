@@ -146,7 +146,7 @@ export default function Nutrition() {
       {isToday && (repeat.length || frequent.length) ? (
         <>
           
-          {repeat.length ? (
+          {repeat.length && nut.entries.length ? (
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
               <Icon name="repeat" size={20} color={colors.accent} />
               <View style={{ flex: 1 }}>

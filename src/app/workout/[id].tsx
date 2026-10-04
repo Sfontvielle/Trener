@@ -114,9 +114,8 @@ export default function SessionDetail() {
             Активные калории
           </T>
           <T v="num" style={{ fontSize: 22 }}>
-            {energy.source === 'health' ? '' : '≈ '}
-            {energy.kcal}
-            <T v="small"> ккал</T>
+            {energy.kcal < 5 ? '—' : `${energy.source === 'health' ? '' : '≈ '}${energy.kcal}`}
+            {energy.kcal < 5 ? null : <T v="small"> ккал</T>}
           </T>
           <T v="small" color={colors.accent} style={{ fontSize: 11, fontWeight: '800' }}>
             {energy.source === 'health' ? 'Apple Health · как рассчитано?' : 'оценка · как рассчитано?'}

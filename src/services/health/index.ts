@@ -169,9 +169,15 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
     if (d) d.hrvMs = Math.round(v.reduce((a, b) => a + b, 0) / v.length);
   }
   const mass = await safe(() => hk.queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', { ...all, unit: 'kg' }));
+  // Несколько взвешиваний за день (весы + ручные записи в «Здоровье») → берём самое раннее (утреннее, натощак)
+  const firstAt = new Map<string, number>();
   for (const s of mass ?? []) {
-    const d = out.get(toISODate(new Date(s.startDate)));
-    if (d) d.weightKg = Math.round(s.quantity * 10) / 10;
+    const k = toISODate(new Date(s.startDate));
+    const t = new Date(s.startDate).getTime();
+    const d = out.get(k);
+    if (!d || (firstAt.has(k) && firstAt.get(k)! <= t)) continue;
+    firstAt.set(k, t);
+    d.weightKg = Math.round(s.quantity * 10) / 10;
   }
 
   // Сон: интервалы «спал» (core/deep/REM/unspecified) за ночь — относим к дате пробуждения. Пересечения источников сливаем

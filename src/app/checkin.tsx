@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { DailyCheckIn } from '@/types';
-import { colors, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Card, T } from '@/components/ui';
+import { Banner, Button, Card, Icon, T } from '@/components/ui';
 import { Field, NumberStepper, Scale5, Toggle } from '@/components/inputs';
 import { DurationWheel } from '@/components/WheelPicker';
 import { useHealth } from '@/stores/health';
@@ -41,7 +41,9 @@ export default function CheckIn() {
   const weights = useBody((s) => s.weights);
   const todayWeight = weights.find((w) => w.date === d);
   const lastKg = weights[weights.length - 1]?.kg ?? useProfile.getState().profile?.weightKg ?? 75;
-  const [logWeight, setLogWeight] = useState(!todayWeight);
+  // Вес пишется только по явному действию: раньше переключатель был включён по умолчанию,
+  // и сохранение без взвешивания записывало вчерашний вес как сегодняшний (портило тренд)
+  const [logWeight, setLogWeight] = useState(false);
   const [kg, setKg] = useState(todayWeight?.kg ?? lastKg);
   const [showHealth, setShowHealth] = useState(!!(existing?.hrvMs || existing?.restingHr));
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
@@ -151,8 +153,17 @@ export default function CheckIn() {
           {c.pain ? <Field placeholder="Где и когда болит?" value={c.painNote ?? ''} onChangeText={(t) => set({ painNote: t })} /> : null}
           {c.pain ? <Banner tone="warning" icon="medkit-outline" text={`${BRAND} исключит нагрузку, но не заменяет врача. При острой боли, отёке или травме — к специалисту.`} /> : null}
         </View>
+        {healthDay?.hrvMs || healthDay?.restingHr ? (
+          // Есть в Apple Health — ничего вводить не нужно, готовность берёт эти значения сама
+          <View style={styles.fromHealth}>
+            <Icon name="heart" size={16} color={colors.accent} />
+            <T v="small" color={colors.text} style={{ flex: 1 }}>
+              Из Apple Health: {[healthDay.hrvMs ? `HRV ${Math.round(healthDay.hrvMs)} мс` : '', healthDay.restingHr ? `пульс покоя ${Math.round(healthDay.restingHr)}` : ''].filter(Boolean).join(' · ')}
+            </T>
+          </View>
+        ) : (
         <View style={{ gap: 8 }}>
-          <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя (Apple Health подключится позже)" />
+          <Toggle value={showHealth} onChange={setShowHealth} label="Данные с часов" sub="HRV и пульс покоя вручную — если Apple Health не подключён" />
           {showHealth ? (
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Field style={{ flex: 1 }} label="HRV, мс" keyboardType="numeric" value={c.hrvMs ? String(c.hrvMs) : ''} onChangeText={(t) => set({ hrvMs: Number.isFinite(parseDecimal(t)) ? parseDecimal(t) : undefined })} />
@@ -160,8 +171,9 @@ export default function CheckIn() {
             </View>
           ) : null}
         </View>
+        )}
         <View style={{ gap: 8 }}>
-          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? 'Обновить вес' : 'Взвесился утром'} sub="Натощак, после туалета — для тренда веса" />
+          <Toggle value={logWeight} onChange={setLogWeight} label={todayWeight ? `Вес сегодня ${String(todayWeight.kg).replace('.', ',')} кг — обновить` : 'Взвесился утром'} sub={todayWeight ? 'Уже записан (вручную или из Apple Health)' : 'Натощак, после туалета — для тренда веса'} />
           {logWeight ? <NumberStepper value={kg} onChange={setKg} step={0.1} decimals={1} min={30} max={300} unit="кг" /> : null}
         </View>
         <Button
@@ -179,3 +191,7 @@ export default function CheckIn() {
     </Screen>
   );
 }
+
+const styles = themed({
+  fromHealth: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+});

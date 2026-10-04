@@ -8,7 +8,7 @@ import type { CoachAction, DailyCheckIn, WorkoutExercise, ExerciseSet, MovementR
 import { computeNutritionTarget , bmrMifflin, fiberTarget } from '../src/features/nutrition/targets';
 import { reviewCalories } from '../src/features/nutrition/adaptive';
 import { weightTrend, weeklyRate } from '../src/features/progress/weightTrend';
-import { recommend } from '../src/features/training/progression';
+import { effectiveIncrement, recommend } from '../src/features/training/progression';
 import { computeReadiness } from '../src/features/recovery/readiness';
 import { alternativesFor, generatePlan, isAvailable, plannedWeeklySets } from '../src/features/training/planGenerator';
 import { excludeExercise, getPrefs, includeExercise, markDiscomfort, toggleFavorite, withPrefs } from '../src/features/training/engine/prefs';
@@ -1159,4 +1159,15 @@ test('Миграция чек-инов v1 → v2: минуты сна из ча�
   assert.equal(m.byDate['2025-01-01'].sleepHours, 7.25, 'старое поле сохранено');
   assert.equal(Object.keys(m.byDate).length, 1);
   assert.deepEqual(migrateCheckins(undefined, 1), { byDate: {} });
+});
+
+test('Шаг весов учится по истории: стек 5 кг → +5, а не +2,5; мало данных — стандартный шаг', () => {
+  const ex = { ...getExercise('bench_press')!, increment: 2.5 };
+  const h = (w: number, reps = 10) => ({ date: addDays(today(), -3), repMin: 8, repMax: 10, plannedSets: 2, sets: [set(w, reps, { rir: 2 }), set(w, reps, { rir: 2 })] });
+  assert.equal(effectiveIncrement(2.5, [h(50), h(45)]), 5);
+  assert.equal(effectiveIncrement(2.5, [h(50)]), 2.5, 'один вес — шаг не выводим');
+  assert.equal(effectiveIncrement(2, [h(12.5), h(15)]), 2.5, 'гантели с шагом 2,5');
+  assert.equal(effectiveIncrement(2.5, [h(52.5), h(50)]), 2.5);
+  const r = recommend({ exercise: ex, plannedSets: 2, repMin: 8, repMax: 10, targetRir: 2, history: [h(50), h(45)] });
+  assert.equal(r.weight, 55);
 });

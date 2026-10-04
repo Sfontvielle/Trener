@@ -50,6 +50,20 @@ export function e1rm(weight: number, reps: number): number {
   return weight * (1 + r / 30);
 }
 
+/**
+ * Реальный шаг весов в ТВОЁМ зале. Стандартный шаг упражнения (ex.increment) — минимальный; если все
+ * использованные веса кратны большему шагу (например, стек тренажёра по 5 кг или гантели 12,5/15/17,5),
+ * RYNJI предлагает именно его — чтобы рекомендация была весом, который реально можно поставить.
+ * ЭВРИСТИКА: нужно ≥2 разных рабочих веса в истории; шаг только увеличивается (не меньше ex.increment).
+ */
+const STEPS = [5, 4, 2.5, 2, 1.25, 1, 0.5];
+export function effectiveIncrement(base: number, history: ExerciseHistoryEntry[]): number {
+  const ws = [...new Set(history.flatMap((h) => h.sets.map((s) => s.weight)).filter((w) => w > 0))];
+  if (ws.length < 2 || base <= 0) return base;
+  const fits = (st: number) => ws.every((w) => Math.abs(w / st - Math.round(w / st)) < 1e-6);
+  return STEPS.find((st) => st >= base && fits(st)) ?? base;
+}
+
 function roundTo(x: number, step: number): number {
   if (step <= 0) return Math.round(x * 2) / 2;
   return Math.round(x / step) * step;
@@ -76,7 +90,8 @@ export function recommend(args: {
   volumeFactor?: number;
   rirDelta?: number;
 }): Recommendation {
-  const { exercise: ex, repMin, repMax, history, band } = args;
+  const { repMin, repMax, history, band } = args;
+  const ex = { ...args.exercise, increment: effectiveIncrement(args.exercise.increment, history) };
   const vf = args.volumeFactor ?? 1;
   const sets = Math.max(1, Math.round(args.plannedSets * vf));
   const rirDelta = args.rirDelta ?? (band === 'light' ? 1 : band === 'recover' ? 2 : 0);

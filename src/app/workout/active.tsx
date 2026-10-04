@@ -13,7 +13,7 @@ import { useProfile } from '@/stores/profile';
 import { useCheckins } from '@/stores/checkins';
 import { useHealth } from '@/stores/health';
 import { getExercise, GROUP_LABEL } from '@/data/exercises';
-import { historyFor, isPersonalRecord } from '@/features/training/progression';
+import { effectiveIncrement, historyFor, isPersonalRecord } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
@@ -589,7 +589,9 @@ function ExerciseFocus({
   const sessions = useWorkouts((s) => s.sessions);
   const sex = useProfile((s) => s.profile?.sex);
   const ex = getExercise(we.exerciseId, customs);
-  const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 3) : []), [ex, sessions]);
+  const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 6) : []), [ex, sessions]);
+  // Тот же шаг, что и в рекомендации: реальный шаг весов этого зала (по истории)
+  const step = ex ? effectiveIncrement(ex.increment || 2.5, history) : 2.5;
   const [whyOpen, setWhyOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   if (!ex) return null;
@@ -682,7 +684,7 @@ function ExerciseFocus({
             Первый раз — начни с веса, который даёт запас 2–3 повтора.
           </T>
         )}
-        {nextSet ? <QuickAdjust we={we} step={ex.increment || 2.5} unit={unit} bodyweight={isBw} /> : null}
+        {nextSet ? <QuickAdjust we={we} step={step} unit={unit} bodyweight={isBw} /> : null}
       </View>
 
       {lastDone && !lastDone.feel ? <FeelPicker weId={we.id} set={lastDone} /> : null}
@@ -706,7 +708,7 @@ function ExerciseFocus({
           ) : null}
         </View>
       </View>
-      <SetTip we={we} step={ex.increment || 2.5} unit={unit} />
+      <SetTip we={we} step={step} unit={unit} />
 
       {!nextSet ? (
         <View style={styles.doneCard}>
@@ -747,6 +749,9 @@ function FeelPicker({ weId, set }: { weId: string; set: ExerciseSet }) {
           <Pressable key={f} accessibilityRole="button" accessibilityLabel={`Подход: ${FEEL_LABEL[f]}`} onPress={() => pick(f)} style={[styles.feel, { flex: 1 }]}>
             <T v="small" style={{ fontSize: 12, fontWeight: '800', textAlign: 'center' }} color={f === 'max' ? colors.warning : colors.text} numberOfLines={1} adjustsFontSizeToFit>
               {FEEL_LABEL[f]}
+            </T>
+            <T v="small" style={{ fontSize: 10, textAlign: 'center' }}>
+              {f === 'easy' ? 'запас 3+' : f === 'max' ? 'запас 0' : `запас ${FEEL_RIR[f]}`}
             </T>
           </Pressable>
         ))}
