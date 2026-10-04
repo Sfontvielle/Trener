@@ -92,10 +92,57 @@ const ROWS: Row[] = [
   ['protein_bar', 'Протеиновый батончик', 350, 30, 10, 35, ['protein', 'snack'], ['1 шт', 60]],
 ];
 
+/**
+ * Клетчатка, г/100 г (USDA FoodData Central, округлено). Продукты животного происхождения, масла, сахар — 0.
+ * Для смешанных блюд (борщ, плов, пельмени, сырники) и батончиков состав сильно разнится — значение НЕ задано,
+ * и в сводке такие продукты показываются как «нет данных», а не 0.
+ */
+const ZERO_FIBER = ['chicken_breast', 'chicken_breast_raw', 'chicken_thigh', 'turkey_breast', 'beef_lean', 'beef_mince', 'pork_tenderloin', 'ham', 'salmon', 'cod', 'tuna_can', 'shrimp', 'egg', 'egg_white', 'cottage_5', 'cottage_0', 'cottage_9', 'skyr', 'greek_yogurt', 'kefir_1', 'milk_25', 'cheese', 'mozzarella', 'whey', 'olive_oil', 'butter', 'honey', 'sugar', 'coke_zero', 'coke', 'omelette'];
+const FIBER: Record<string, number> = {
+  ...Object.fromEntries(ZERO_FIBER.map((k) => [k, 0])),
+  tofu: 0.3,
+  rice_cooked: 0.4,
+  rice_dry: 1.3,
+  buckwheat_cooked: 2.7,
+  oats_dry: 10.1,
+  pasta_cooked: 1.8,
+  potato_boiled: 1.8,
+  sweet_potato: 3.3,
+  bulgur_cooked: 4.5,
+  quinoa_cooked: 2.8,
+  bread_rye: 5.8,
+  bread_white: 2.7,
+  lavash: 2.2,
+  granola: 6,
+  rice_cakes: 4.2,
+  banana: 2.6,
+  apple: 2.4,
+  orange: 2.4,
+  berries: 3.5,
+  dates: 8,
+  raisins: 3.7,
+  cucumber: 0.5,
+  tomato: 1.2,
+  broccoli: 3.3,
+  salad_mix: 1.3,
+  veg_mix: 4,
+  bell_pepper: 2.1,
+  carrot: 2.8,
+  lentils_cooked: 7.9,
+  chickpeas_cooked: 7.6,
+  beans_can: 6,
+  peanut_butter: 6,
+  almonds: 12.5,
+  walnuts: 6.7,
+  avocado: 6.7,
+  dark_chocolate: 10.9,
+  juice_orange: 0.2,
+};
+
 export const LOCAL_FOODS: FoodProduct[] = ROWS.map(([slug, name, kcal, protein, fat, carbs, tags, serving]) => ({
   id: `local:${slug}`,
   name,
-  per100: { kcal, protein, fat, carbs },
+  per100: FIBER[slug] !== undefined ? { kcal, protein, fat, carbs, fiber: FIBER[slug] } : { kcal, protein, fat, carbs },
   serving: serving ? { label: serving[0], grams: serving[1] } : undefined,
   source: 'local',
   tags,

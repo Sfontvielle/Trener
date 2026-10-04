@@ -168,10 +168,10 @@ export default function Scan() {
                 </T>
               </View>
             </View>
-            <Button title="Найти по названию" icon="search" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '' } })} />
-            <Button title="Ввести вручную" icon="create-outline" variant="secondary" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code } })} />
-            {phase.kind === 'error' ? <Button title="Повторить поиск" variant="secondary" onPress={() => void lookup(phase.code)} /> : null}
-            <Button title="Сканировать ещё раз" variant="ghost" onPress={retry} />
+            {phase.kind === 'error' ? <Button title="Повторить поиск" icon="refresh" onPress={() => void lookup(phase.code)} /> : null}
+            <Button title="Создать продукт" icon="add-circle-outline" variant={phase.kind === 'error' ? 'secondary' : 'primary'} onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code } })} />
+            <Button title="Попробовать снова" icon="scan-outline" variant="secondary" onPress={retry} />
+            <Button title="Ввести штрих-код вручную" icon="keypad-outline" variant="ghost" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', enterBarcode: '1' } })} />
           </View>
         ) : null}
         {phase.kind === 'scan' ? (

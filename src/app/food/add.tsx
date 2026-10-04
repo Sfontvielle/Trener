@@ -39,7 +39,7 @@ const TAB_HINT: Record<FoodTab, string> = {
 };
 
 export default function AddFood() {
-  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string }>();
+  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string; enterBarcode?: string }>();
   const date = params.date || today();
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
@@ -48,7 +48,7 @@ export default function AddFood() {
   const [result, setResult] = useState<{ q: string; items: FoodProduct[]; error: string | null }>({ q: '', items: [], error: null });
   // Возврат со сканера: продукт уже в кэше
   const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? null : null));
-  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [barcodeOpen, setBarcodeOpen] = useState(params.enterBarcode === '1');
   const [customOpen, setCustomOpen] = useState(params.manual === '1');
   const reqId = useRef(0);
 
@@ -233,6 +233,7 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
           <MacroCell label="Белки" v={m.protein} rem={rem?.protein} />
           <MacroCell label="Жиры" v={m.fat} rem={rem?.fat} />
           <MacroCell label="Углев." v={m.carbs} rem={rem?.carbs} />
+          <MacroCell label="Клетч." v={m.fiber} />
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {(Object.keys(MEAL_LABEL) as MealSlot[]).map((k) => (
@@ -267,15 +268,15 @@ function FavStar({ id }: { id: string }) {
   );
 }
 
-function MacroCell({ label, v, rem }: { label: string; v: number; rem?: number }) {
-  const over = rem !== undefined && v > rem + (label === 'Ккал' ? 50 : 5) && rem >= 0;
+function MacroCell({ label, v, rem }: { label: string; v: number | undefined; rem?: number }) {
+  const over = rem !== undefined && v !== undefined && v > rem + (label === 'Ккал' ? 50 : 5) && rem >= 0;
   return (
     <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
       <T v="caption" style={{ fontSize: 10 }}>
         {label}
       </T>
       <T v="num" style={{ fontSize: 18 }} color={over ? colors.warning : colors.text}>
-        {Math.round(v)}
+        {v === undefined ? '—' : Math.round(v)}
       </T>
       {rem !== undefined ? (
         <T v="small" style={{ fontSize: 10 }}>
@@ -318,7 +319,7 @@ function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose
 
 function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string; barcode?: string }) {
   const [name, setName] = useState('');
-  const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '' });
+  const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
   // При открытии листа подставляем то, что искали
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {
@@ -335,7 +336,7 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
   const kcal = v.kcal ? num(v.kcal) : Math.round(p * 4 + f * 9 + c * 4);
   const valid = name.trim().length > 1 && kcal > 0 && p <= 100 && f <= 100 && c <= 100;
   return (
-    <Sheet visible={visible} onClose={onClose} title="Свой продукт" subtitle="Данные с этикетки, на 100 г">
+    <Sheet visible={visible} onClose={onClose} title="Свой продукт" subtitle={barcode ? `Штрихкод ${barcode} · данные с этикетки, на 100 г` : 'Данные с этикетки, на 100 г'}>
       <View style={{ gap: space.md }}>
         <Field label="Название" value={name} onChangeText={setName} placeholder="Например: Сырники мамины" />
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -343,15 +344,19 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
           <Field style={{ flex: 1 }} label="Жиры, г" keyboardType="decimal-pad" value={v.fat} onChangeText={(t) => setV({ ...v, fat: t })} />
           <Field style={{ flex: 1 }} label="Углев., г" keyboardType="decimal-pad" value={v.carbs} onChangeText={(t) => setV({ ...v, carbs: t })} />
         </View>
-        <Field label="Ккал (если пусто — посчитаем)" keyboardType="decimal-pad" value={v.kcal} onChangeText={(t) => setV({ ...v, kcal: t })} placeholder={String(kcal)} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Field style={{ flex: 1 }} label="Ккал (пусто — посчитаем)" keyboardType="decimal-pad" value={v.kcal} onChangeText={(t) => setV({ ...v, kcal: t })} placeholder={String(kcal)} />
+          <Field style={{ flex: 1 }} label="Клетчатка, г" keyboardType="decimal-pad" value={v.fiber} onChangeText={(t) => setV({ ...v, fiber: t })} placeholder="если есть" />
+        </View>
         <Button
           title="Сохранить продукт"
           icon="checkmark"
           disabled={!valid}
           onPress={() => {
-            const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: { kcal, protein: p, fat: f, carbs: c }, source: 'custom', barcode: barcode || undefined };
+            const fib = v.fiber.trim() ? num(v.fiber) : undefined;
+            const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: fib !== undefined && fib <= 100 ? { kcal, protein: p, fat: f, carbs: c, fiber: fib } : { kcal, protein: p, fat: f, carbs: c }, source: 'custom', barcode: barcode || undefined };
             useNutrition.getState().cacheProduct(prod);
-            setV({ kcal: '', protein: '', fat: '', carbs: '' });
+            setV({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
             onCreated(prod);
           }}
         />
