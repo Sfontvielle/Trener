@@ -236,6 +236,8 @@ const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-
  * (без капса и разрядки), серым. Акцент — размером и жирностью, а не цветом и рамками.
  */
 export const type = themed({
+  /** Главный акцент экрана — одно слово или имя тренировки */
+  hero: { fontFamily: family, fontSize: 50, lineHeight: 54, fontWeight: '800', letterSpacing: -1.6, color: colors.text },
   display: { fontFamily: family, fontSize: 40, fontWeight: '800', letterSpacing: -1.1, color: colors.text },
   h1: { fontFamily: family, fontSize: 32, fontWeight: '800', letterSpacing: -0.8, color: colors.text },
   h2: { fontFamily: family, fontSize: 22, fontWeight: '700', letterSpacing: -0.4, color: colors.text },

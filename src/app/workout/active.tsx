@@ -39,7 +39,6 @@ import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
 import { prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
-import { GlassSurface } from '@/components/Glass';
 
 /** Обработчик свайпа текущего экрана тренировки (экран один — модульная переменная безопасна) */
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
@@ -249,27 +248,38 @@ export default function ActiveWorkout() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={[styles.top, { paddingTop: insets.top + 6 }]}>
         <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
-        <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setNavOpen(true)} accessibilityRole="button" accessibilityLabel="Все упражнения тренировки">
-          <T v="caption" numberOfLines={1} color={ssLabels[idx] ? colors.accent : colors.textDim}>
-            {ssLabels[idx] ? 'Суперсет · ' : ''}
-            {active.name}
-          </T>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          {ssLabels[idx] ? (
+            <T v="caption" numberOfLines={1} color={colors.accent}>
+              Суперсет
+            </T>
+          ) : null}
           {/* Время тренировки — крупно, как на секундомере */}
-          <T v="num" style={{ fontSize: 26, lineHeight: 30 }} testID="workout-elapsed">
+          <T v="num" style={{ fontSize: 30, lineHeight: 34 }} testID="workout-elapsed">
             <Elapsed startedAt={active.startedAt} />
           </T>
-          <T v="small" style={{ fontSize: 11, fontVariant: ['tabular-nums'] }}>
-            {count ? `${idx + 1} из ${count}` : '—'}
-            {energy && energy.kcal >= 5 ? ` · ${energy.source === 'health' ? '' : '≈ '}${energy.kcal} ккал` : ''}
-          </T>
-        </Pressable>
+          {/* Позиция и переход между упражнениями — в шапке, без отдельной панели */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} hitSlop={12} style={{ opacity: prevI < 0 ? 0.25 : 1 }}>
+              <Icon name="chevron-back" size={15} color={colors.textDim} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Все упражнения тренировки" onPress={() => setNavOpen(true)} hitSlop={6}>
+              <T v="small" style={{ fontSize: 13, fontVariant: ['tabular-nums'] }} testID="exercise-position">
+                {count ? `${idx + 1} из ${count}` : '—'}
+              </T>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} hitSlop={12} style={{ opacity: nextI < 0 ? 0.25 : 1 }}>
+              <Icon name="chevron-forward" size={15} color={colors.textDim} />
+            </Pressable>
+          </View>
+        </View>
         <IconButton name="list" label="Список упражнений" onPress={() => setNavOpen(true)} />
       </View>
       <AnimatedBar progress={progress} />
 
       <View style={{ flex: 1 }} {...pan.panHandlers}>
         <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
-          <ScrollView key={we?.id ?? 'empty'} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 10, paddingBottom: insets.bottom + 150, gap: 10 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
+          <ScrollView key={we?.id ?? 'empty'} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 14, paddingBottom: insets.bottom + 110, gap: 14 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
             {active.volumeFactor < 1 ? (
               <View style={styles.note}>
                 <Icon name="battery-half" size={14} color={colors.warning} />
@@ -307,9 +317,9 @@ export default function ActiveWorkout() {
       </View>
 
       {we ? (
-        <View style={[styles.cta, { bottom: insets.bottom + 66 }]}>
+        <View style={[styles.cta, { bottom: insets.bottom + 14 }]}>
           {allDone ? (
-            <Button title="ЗАВЕРШИТЬ ТРЕНИРОВКУ" icon="flag" size="lg" onPress={askFinish} />
+            <Button title="Завершить тренировку" icon="flag" size="lg" live onPress={askFinish} />
           ) : holding && hold ? (
             <HoldTimer startedAt={hold.startedAt} target={we.sets.find((x) => x.id === hold.setId)?.reps || we.repMax} onStop={stopHold} onCancel={() => setHold(null)} />
           ) : resting ? (
@@ -317,37 +327,16 @@ export default function ActiveWorkout() {
           ) : ctaSet && timed && !ctaSet.warmup ? (
             <Button title={`Старт · ${fmtSec(ctaSet.reps || we.repMax)}`} icon="timer-outline" size="lg" onPress={() => startHold(we.id, ctaSet.id)} />
           ) : ctaSet ? (
-            <Button title={ctaSet.warmup ? 'Разминка — готово' : `Завершить подход ${we.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => complete(we, ctaSet, idx)} />
+            <Button title={ctaSet.warmup ? 'Разминка — готово' : `Завершить подход ${we.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" live onPress={() => complete(we, ctaSet, idx)} />
           ) : nextI < 0 ? (
-            <Button title="ЗАВЕРШИТЬ ТРЕНИРОВКУ" icon="flag" size="lg" onPress={askFinish} />
+            <Button title="Завершить тренировку" icon="flag" size="lg" live onPress={askFinish} />
           ) : (
             <Button title={`Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`} icon="arrow-forward" size="lg" onPress={() => goTo(nextI, 1)} />
           )}
         </View>
       ) : null}
 
-      <GlassSurface style={[styles.navBar, { paddingBottom: insets.bottom + 8 }]} fallback={colors.bg}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} style={[styles.navBtn, prevI < 0 && { opacity: 0.35 }]}>
-          <Icon name="chevron-back" size={20} />
-          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-            Назад
-          </T>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Открыть список упражнений" onPress={() => setNavOpen(true)} style={[styles.navBtn, { flex: 1.2 }]}>
-          <Icon name="menu" size={18} />
-          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-            Упражнения
-          </T>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} style={[styles.navBtn, nextI < 0 && { opacity: 0.35 }]}>
-          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-            Вперёд
-          </T>
-          <Icon name="chevron-forward" size={20} />
-        </Pressable>
-      </GlassSurface>
-
-      {!we ? <RestTimerBar bottom={insets.bottom + 74} /> : null}
+      {!we ? <RestTimerBar bottom={insets.bottom + 16} /> : null}
       {pr ? <PrBanner key={pr.n} text={pr.text} top={insets.top + 70} /> : null}
 
       <WorkoutNavigator
@@ -374,7 +363,7 @@ export default function ActiveWorkout() {
         {menuWe ? (
           <View style={{ gap: 8 }}>
             <MenuRow icon="information-circle-outline" label="Карточка упражнения и история" onPress={() => { const exId = menuWe.exerciseId; setMenuFor(null); afterModalClose(() => router.push({ pathname: '/exercise/[id]', params: { id: exId } })); }} />
-            <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setPicker({ mode: 'swap', weId: id })); }} />
+            <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setSwapFor(id)); }} />
             {menuWe.superset || active.exercises.indexOf(menuWe) < count - 1 ? (
               <MenuRow
                 icon={menuWe.superset ? 'unlink-outline' : 'link-outline'}
@@ -666,7 +655,7 @@ function SwapSuggestions({ exerciseId, onPick }: { exerciseId: string; onPick: (
 
 function MenuRow({ icon, label, onPress, danger }: { icon: React.ComponentProps<typeof Icon>['name']; label: string; onPress: () => void; danger?: boolean }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}>
       <Icon name={icon} size={20} color={danger ? colors.danger : colors.text} />
       <T v="body" color={danger ? colors.danger : colors.text}>
         {label}
@@ -756,65 +745,55 @@ function ExerciseFocus({
               </T>
             </View>
           ) : null}
-          <T v="small" style={{ fontSize: 12 }} testID="exercise-position">
-            Упражнение {index + 1} из {count}
-          </T>
-          <T v="h2" numberOfLines={2} style={{ fontSize: 22, lineHeight: 26 }}>
+          <T v="h1" numberOfLines={2} style={{ fontSize: 28, lineHeight: 32 }}>
             {ex.name}
           </T>
         </View>
-        {/* Техника — отдельно, в листе: на основном экране только то, что нужно для подхода */}
-        <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => setTechOpen(true)} style={({ pressed }) => [styles.techBtn, pressed && { opacity: 0.7 }]} hitSlop={6}>
-          <Icon name="play-circle-outline" size={16} color={colors.text} />
-          <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
-            Техника
-          </T>
-        </Pressable>
-        <IconButton name="swap-horizontal" label="Заменить упражнение" onPress={onSwap} size={18} style={{ width: 40, height: 40 }} />
+        {/* Техника — в листе; замена и остальное — в «•••» */}
+        <IconButton name="play-circle-outline" label="Техника выполнения" onPress={() => setTechOpen(true)} size={20} style={{ width: 40, height: 40 }} />
         <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 40, height: 40 }} />
       </View>
 
       {rec ? (
         <View style={styles.recCard} testID="rec">
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-            <Pressable accessibilityRole="button" accessibilityLabel={layout ? 'Раскладка блинов' : 'Рекомендация'} disabled={!layout} onPress={() => setPlatesOpen(true)} hitSlop={4}>
-              <T v="num" style={{ fontSize: 26, textDecorationLine: layout ? 'underline' : 'none', textDecorationStyle: 'dotted' }}>
-                {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}
-              </T>
-            </Pressable>
-            {rec.delta && rec.action !== 'new' ? (
-              <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim}>
-                {rec.delta}
-              </T>
-            ) : null}
-            <Pressable accessibilityRole="button" accessibilityLabel="Рекомендация, почему" onPress={() => setWhyOpen(!whyOpen)} hitSlop={8} style={{ marginLeft: 'auto' }}>
-              <T v="small" style={{ fontWeight: '600' }}>
-                {whyOpen ? 'Скрыть' : 'Почему?'}
-              </T>
-            </Pressable>
-          </View>
-          {whyOpen ? (
-            <T v="small" style={{ fontSize: 12 }}>
-              {rec.rationale}
-              {lastTxt ? `\nПрошлый раз: ${lastTxt}` : ''}
-              {we.why ? `\n${we.why}` : ''}
+          <Pressable accessibilityRole="button" accessibilityLabel="Рекомендация, почему" accessibilityState={{ expanded: whyOpen }} onPress={() => { haptic.tap(); setWhyOpen(!whyOpen); }} hitSlop={6} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }, pressed && { opacity: 0.6 }]}>
+            <T v="num" style={{ fontSize: 24 }} color={colors.text}>
+              {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}
+              {rec.delta && rec.action !== 'new' ? (
+                <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim}>
+                  {`  ${rec.delta}`}
+                </T>
+              ) : null}
             </T>
+          </Pressable>
+          {whyOpen ? (
+            <View style={{ gap: 6 }}>
+              <T v="small" style={{ fontSize: 13 }}>
+                {rec.rationale}
+                {lastTxt ? `\nПрошлый раз: ${lastTxt}` : ''}
+                {we.why ? `\n${we.why}` : ''}
+              </T>
+              {layout ? (
+                <Pressable accessibilityRole="button" accessibilityLabel="Раскладка блинов" onPress={() => setPlatesOpen(true)} hitSlop={6} style={{ alignSelf: 'flex-start' }}>
+                  <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
+                    Раскладка блинов ›
+                  </T>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </View>
       ) : null}
 
       {warm.length ? (
-        <View style={styles.warm}>
-          <Icon name="flame-outline" size={15} color={colors.textDim} />
-          <T v="small" style={{ flex: 1, fontSize: 12 }} numberOfLines={2}>
-            Разминка: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}</T>
-          </T>
-          <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={6} style={({ pressed }) => [styles.warm, pressed && { opacity: 0.6 }]}>
+          <T v="small" style={{ fontSize: 13 }} numberOfLines={1}>
             <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
-              + Добавить
+              + Разминка
             </T>
-          </Pressable>
-        </View>
+            {`  ${warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}`}
+          </T>
+        </Pressable>
       ) : null}
 
       {/* Запас повторов спрашиваем только у силовых подходов: у планки и удержаний это бессмысленно */}
@@ -823,19 +802,18 @@ function ExerciseFocus({
 
       <View style={styles.block}>
         <View style={styles.headRow}>
-          <T v="caption" style={{ width: 28 }}>#</T>
+          <View style={{ width: 28 }} />
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{isBw ? `+${unitLabel(unit)}` : unitLabel(unit)}</T>
-          <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{timed ? 'Сек' : 'Повт'}</T>
-          <T v="caption" style={{ width: 40, textAlign: 'center' }}>RIR</T>
-          <View style={{ width: 48 }} />
+          <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{timed ? 'сек' : 'повт'}</T>
+          <View style={{ width: 40 + 48 + 8 }} />
         </View>
         {we.sets.map((x, i) => (
           <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={completeSet} current={x === nextSet} timed={timed} />
         ))}
         <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 4 }}>
-          <Button title="Добавить подход" icon="add" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ paddingHorizontal: 8 }} />
+          <Button title="Добавить подход" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ paddingHorizontal: 8 }} />
           {we.sets.length > 1 && !we.sets[we.sets.length - 1].done ? (
-            <Button title="Убрать подход" icon="remove" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id); }} style={{ paddingHorizontal: 8 }} />
+            <Button title="Убрать подход" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id); }} style={{ paddingHorizontal: 8 }} />
           ) : null}
         </View>
       </View>
@@ -1026,7 +1004,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
           style={{ width: 40, alignItems: 'center' }}
         >
           <T v="body" style={{ fontWeight: '800' }} color={set.rir === 0 ? colors.warning : set.done ? colors.text : colors.muted}>
-            {set.warmup ? '' : set.rir === undefined ? '–' : set.rir >= 4 ? '4+' : set.rir}
+            {set.warmup || !set.done ? '' : set.rir === undefined ? '–' : set.rir >= 4 ? '4+' : set.rir}
           </T>
         </Pressable>
         <Pressable
@@ -1079,8 +1057,6 @@ const styles = themed({
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },
   doneIcon: { width: 32, height: 32, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   cta: { position: 'absolute', left: space.lg, right: space.lg },
-  navBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, paddingHorizontal: space.lg, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
-  navBtn: { flex: 1, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md },
   navDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   navDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
@@ -1095,7 +1071,7 @@ const styles = themed({
   check: { width: 48, height: 42, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
-  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4 },
+  warm: { paddingVertical: 4, paddingHorizontal: 4 },
   tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface },
   quick: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: radius.lg, backgroundColor: colors.surface },
   qBtn: { width: 50, height: 48, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },

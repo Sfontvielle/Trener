@@ -141,5 +141,6 @@ RYNJI — фитнес-помощник и не ставит медицинск�
 npm test                     # логика (scripts/logic-test.ts) + Coach Engine, анализы, здоровье (scripts/coach-test.ts), дневник/суперсеты/время (scripts/journal-test.ts)
 npx expo start --web --port 8081 & node scripts/e2e-web.cjs   # UI в Expo Web (нужен Playwright)
 node scripts/crawl-web.cjs   # обход всех экранов + «нажать всё» на основных экранах (ошибки, console.error)
+node scripts/ux-fold.cjs --compare docs/ux-fold-baseline.json   # сколько видно на первом экране — к версии до упрощения
 npx expo export --platform ios   # проверка, что iOS-бандл собирается
 ```

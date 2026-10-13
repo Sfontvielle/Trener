@@ -79,17 +79,12 @@ export function exerciseDecision(args: { exercise: Exercise; sets: number; repMi
   const data = history.slice(0, 3).map(historyLine);
   if (args.readinessNote) data.push(args.readinessNote);
   let what: string;
-  if (rec.action === 'increase') what = `Попробовать увеличить ${lower(ex.name)} с ${fmtKg(from)} до ${fmtKg(rec.weight)} кг (${rec.repMin}–${rec.repMax} повт.)`;
+  if (rec.action === 'increase') what = `${ex.name}: увеличить вес ${fmtKg(from)} → ${fmtKg(rec.weight)} кг (${rec.repMin}–${rec.repMax} повт.)`;
   else if (rec.action === 'reps') what = `${ex.name}: ${rec.weight ? `${fmtKg(rec.weight)} кг, ` : ''}добрать повторы до ${rec.repMax}`;
   else if (rec.action === 'decrease') what = `${ex.name}: снизить до ${fmtKg(rec.weight)} кг и набрать повторы заново`;
   else if (rec.action === 'new') what = `${ex.name}: подобрать рабочий вес — ${rec.repMax} повторов с запасом ${rec.targetRir}`;
   else what = `${ex.name}: оставить ${rec.weight ? `${fmtKg(rec.weight)} кг` : 'нагрузку'}`;
   return { id: `ex_${ex.id}`, area: 'training', what, why: rec.rationale, data, confidence: conf.level, confidenceNote: conf.note, basis: PROG_BASIS, action: rec.action, weight: rec.weight, from };
-}
-
-function lower(name: string): string {
-  // «Жим лёжа» → «жим лёжа»; аббревиатуры (RDL) не трогаем
-  return /^[А-ЯЁ][а-яё]/.test(name) ? name.charAt(0).toLowerCase() + name.slice(1) : name;
 }
 
 export function coachToday(i: CoachTodayInput): CoachToday {

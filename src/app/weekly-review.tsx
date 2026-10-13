@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, Card, EmptyState, Icon, T, type IconName } from '@/components/ui';
 import { toast } from '@/components/Dialog';
+import { Appear, FadeIn } from '@/components/motion';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
@@ -46,6 +47,7 @@ export default function WeeklyReviewScreen() {
   const checkins = useCheckins((s) => s.byDate);
   const health = useHealth((s) => s.days);
   const [handled, setHandled] = useState<string[]>([]);
+  const [all, setAll] = useState(false);
 
   const review = useMemo(
     () => (profile ? buildWeeklyReview({ profile, plan, target, sessions, entries, weights, metrics, checkins, readiness: (d) => readinessFor(d, checkins, sessions, health)?.score }) : null),
@@ -75,28 +77,53 @@ export default function WeeklyReviewScreen() {
 
   return (
     <Screen>
-      <Header title="Отчёт недели" subtitle={`${formatDayShort(review.from)} – ${formatDayShort(review.to)}`} />
+      <Header title="Отчёт недели" />
       {empty ? (
         <EmptyState icon="newspaper-outline" title="Прошлая неделя пустая" text={`Записывай тренировки, еду и вес — в понедельник ${BRAND} соберёт отчёт и предложит, что изменить.`} />
       ) : (
         <>
-          <View style={styles.grid}>
-            <Tile icon="scale-outline" label="Вес, Δ" value={w?.weightDelta !== null && w?.weightDelta !== undefined ? `${w.weightDelta > 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг` : '—'} />
-            <Tile icon="resize-outline" label="Талия, Δ" value={review.waistDelta !== null ? `${review.waistDelta > 0 ? '+' : ''}${String(review.waistDelta).replace('.', ',')} см` : '—'} />
-            <Tile icon="flame-outline" label="Калории, ср." value={w?.avgKcal ? fmtNum(w.avgKcal) : '—'} sub={target && review.loggedDays ? `в цели ${review.kcalOnTargetDays}/${review.loggedDays} дн` : undefined} />
-            <Tile icon="footsteps-outline" label="Шаги/день" value={coach?.metrics.stepsPerDay ? fmtNum(coach.metrics.stepsPerDay) : '—'} />
-            <Tile icon="barbell-outline" label="Тренировки" value={w ? `${w.workouts}/${w.planned || w.workouts}` : '0'} sub={review.missed ? `пропущено ${review.missed}` : undefined} />
-            <Tile icon="trending-up" label="Сила" value={coach?.metrics.strengthPct !== null && coach?.metrics.strengthPct !== undefined ? `${coach.metrics.strengthPct > 0 ? '+' : ''}${String(coach.metrics.strengthPct).replace('.', ',')}%` : '—'} sub={review.prs.length ? `рекордов ${review.prs.length}` : 'к прошлым 4 нед.'} />
-            <Tile icon="moon-outline" label="Сон, ср." value={w?.avgSleep ? `${formatHours(w.avgSleep)} ч` : '—'} />
-            <Tile icon="pulse" label="Готовность, ср." value={review.avgReadiness !== null ? CATEGORY_LABEL[categoryForScore(review.avgReadiness)] : '—'} />
-          </View>
+          {/* Итог недели — крупно; три главные цифры — одной строкой; вся таблица — по «Все показатели» */}
+          <Appear i={0} style={{ gap: 6, marginTop: space.sm }}>
+            <T v="caption">
+              Тренировки · {formatDayShort(review.from)} – {formatDayShort(review.to)}
+            </T>
+            <T v="hero">{w ? `${w.workouts} из ${w.planned || w.workouts}` : '0'}</T>
+            <T v="bodyDim">
+              {[
+                w?.weightDelta !== null && w?.weightDelta !== undefined ? `вес ${w.weightDelta > 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг` : '',
+                coach?.metrics.strengthPct !== null && coach?.metrics.strengthPct !== undefined ? `сила ${coach.metrics.strengthPct > 0 ? '+' : ''}${String(coach.metrics.strengthPct).replace('.', ',')}%` : '',
+                review.prs.length ? `рекордов ${review.prs.length}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || 'данных пока мало'}
+            </T>
+          </Appear>
+          <Appear i={1}>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: all }} onPress={() => { haptic.tap(); setAll(!all); }} hitSlop={8} style={({ pressed }) => [{ alignSelf: 'flex-start', marginTop: space.md }, pressed && { opacity: 0.6 }]}>
+              <T v="body" style={{ fontWeight: '600' }}>
+                {all ? 'Скрыть показатели' : 'Все показатели ›'}
+              </T>
+            </Pressable>
+            {all ? (
+              <FadeIn from={6} style={styles.grid}>
+                <Tile icon="scale-outline" label="Вес, Δ" value={w?.weightDelta !== null && w?.weightDelta !== undefined ? `${w.weightDelta > 0 ? '+' : ''}${w.weightDelta.toFixed(1).replace('.', ',')} кг` : '—'} />
+                <Tile icon="resize-outline" label="Талия, Δ" value={review.waistDelta !== null ? `${review.waistDelta > 0 ? '+' : ''}${String(review.waistDelta).replace('.', ',')} см` : '—'} />
+                <Tile icon="flame-outline" label="Калории, ср." value={w?.avgKcal ? fmtNum(w.avgKcal) : '—'} sub={target && review.loggedDays ? `в цели ${review.kcalOnTargetDays}/${review.loggedDays} дн` : undefined} />
+                <Tile icon="footsteps-outline" label="Шаги/день" value={coach?.metrics.stepsPerDay ? fmtNum(coach.metrics.stepsPerDay) : '—'} />
+                <Tile icon="barbell-outline" label="Тренировки" value={w ? `${w.workouts}/${w.planned || w.workouts}` : '0'} sub={review.missed ? `пропущено ${review.missed}` : undefined} />
+                <Tile icon="trending-up" label="Сила" value={coach?.metrics.strengthPct !== null && coach?.metrics.strengthPct !== undefined ? `${coach.metrics.strengthPct > 0 ? '+' : ''}${String(coach.metrics.strengthPct).replace('.', ',')}%` : '—'} sub={review.prs.length ? `рекордов ${review.prs.length}` : 'к прошлым 4 нед.'} />
+                <Tile icon="moon-outline" label="Сон, ср." value={w?.avgSleep ? `${formatHours(w.avgSleep)} ч` : '—'} />
+                <Tile icon="pulse" label="Готовность, ср." value={review.avgReadiness !== null ? CATEGORY_LABEL[categoryForScore(review.avgReadiness)] : '—'} />
+              </FadeIn>
+            ) : null}
+          </Appear>
 
           {coach && coach.decisions.length ? (
-            <Card style={{ marginTop: space.md, gap: 10 }} testID="weekly-decisions">
+            <View style={{ marginTop: space.xl, gap: 0 }} testID="weekly-decisions">
               <T v="h3">Решения тренера на неделю</T>
-              {coach.decisions.map((d) => (
+              {coach.decisions.map((d, i) => (
                 <View key={d.id} style={{ gap: 6 }}>
-                  <DecisionCard d={d} />
+                  <DecisionCard d={d} last={i === coach.decisions.length - 1} />
                   {d.id === 'w_kcal' && coach.calorieDelta && !handled.includes('kcal') ? (
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <Button title={`Применить ${coach.calorieDelta > 0 ? '+' : ''}${coach.calorieDelta} ккал`} size="sm" style={{ flex: 1 }} onPress={() => { applyCalorieDelta(coach.calorieDelta, calories?.headline ?? 'отчёт недели', 'coach'); toast('Калорийность и КБЖУ обновлены'); setHandled([...handled, 'kcal']); }} />
@@ -105,7 +132,7 @@ export default function WeeklyReviewScreen() {
                   ) : null}
                 </View>
               ))}
-            </Card>
+            </View>
           ) : null}
 
           {comp && comp.kind !== 'insufficient' ? (
@@ -222,7 +249,7 @@ function Line({ icon, text, color = colors.textDim }: { icon: IconName; text: st
 }
 
 const styles = themed({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: radius.lg, paddingVertical: 8, paddingHorizontal: space.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: radius.lg, paddingVertical: 8, paddingHorizontal: space.md, marginTop: space.sm },
   tile: { width: '50%', paddingVertical: 10, paddingRight: 10, gap: 2 },
   proposal: { gap: 6, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
 });

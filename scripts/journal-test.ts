@@ -4,7 +4,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ExerciseSet, WorkoutExercise, WorkoutSession } from '../src/types';
+import type { ExerciseSet, WorkoutExercise, WorkoutPlan, WorkoutSession, WorkoutTemplate } from '../src/types';
+import { agendaProgress, weekAgenda } from '../src/features/training/weekAgenda';
 import { addDays, startOfWeek, today } from '../src/utils/date';
 import { getExercise } from '../src/data/exercises';
 import { fmtSec } from '../src/utils/format';
@@ -79,7 +80,9 @@ test('рекорд на время: при том же весе — дольше
 
 test('строки подходов как в дневнике: вес × повторы, без веса — повторы, на время — минуты:секунды', () => {
   const sets = [set(70, 10), set(80, 10), set(90, 8), set(40, 5, true, { warmup: true }), set(100, 3, false)];
-  assert.equal(setsLine(sets), '70 кг × 10, 80 кг × 10, 90 кг × 8');
+  assert.equal(setsLine(sets), '70 кг × 10 · 80 кг × 10 · 90 кг × 8');
+  // Один вес подряд — одной группой, без повтора веса
+  assert.equal(setsLine([set(67.5, 6), set(67.5, 7), set(70, 6), set(70, 5)]), '67,5 кг × 6, 7 · 70 кг × 6, 5');
   assert.equal(setsLine([set(0, 12), set(0, 12)]), '12, 12');
   assert.equal(setsLine([set(0, 30), set(0, 45)], { timed: true }), '0:30, 0:45');
   assert.equal(setText(set(24, 40), { timed: true }), '24 кг × 0:40');
@@ -270,4 +273,25 @@ test('рекорд — относительно всей истории: поб�
   const real = session(0, [we('bench_press', [set(105, 5)])]);
   assert.equal(prCounts([...all, real]).get(real.id), 1);
   assert.equal(isPersonalRecord(getExercise('bench_press')!, set(85, 8), historyFor('bench_press', all.slice(0, 4), Number.POSITIVE_INFINITY)), false);
+});
+
+test('неделя одним списком: сделано / сегодня / впереди по ротации / пропущено; перенос дня учтён', () => {
+  const tpl = (id: string): WorkoutTemplate => ({ id, name: id, focus: '', exercises: [], estMinutes: 50 }) as unknown as WorkoutTemplate;
+  const mon = startOfWeek('2026-10-14'); // среда 14 октября → неделя с понедельника 12-го
+  const schedule: (string | null)[] = ['A', null, 'B', null, 'A', null, null]; // пн, ср, пт
+  const plan = { id: 'p', templates: [tpl('A'), tpl('B')], schedule, rotation: ['A', 'B'] } as unknown as WorkoutPlan;
+  const done = (date: string, templateId: string): WorkoutSession => ({ id: `w${date}`, date, name: templateId, focus: '', source: 'plan', templateId, startedAt: Date.parse(`${date}T10:00:00`), finishedAt: Date.parse(`${date}T11:00:00`), volumeFactor: 1, status: 'completed', exercises: [] });
+  const today0 = addDays(mon, 2);
+  // Понедельник сделан (A) → сегодня B → пятница снова A
+  let days = weekAgenda({ today: today0, plan, sessions: [done(mon, 'A')] });
+  assert.deepEqual(days.map((d) => [d.date.slice(8), d.status, d.template?.id]), [[mon.slice(8), 'done', 'A'], [today0.slice(8), 'today', 'B'], [addDays(mon, 4).slice(8), 'planned', 'A']]);
+  assert.deepEqual(agendaProgress(days), { done: 1, planned: 3 });
+  // Понедельник пропущен — виден как пропуск; ротация продолжается от последней сделанной
+  days = weekAgenda({ today: today0, plan, sessions: [] });
+  assert.equal(days[0].status, 'missed');
+  // Сегодня перенесено на отдых — «сегодня отдых», пятница остаётся в плане
+  days = weekAgenda({ today: today0, plan, sessions: [done(mon, 'A')], overrides: { [today0]: { date: today0, mode: 'rest', createdAt: 0 } as never } });
+  assert.deepEqual(days.map((d) => d.status), ['done', 'rest', 'planned']);
+  // Без плана — только «сегодня отдых»
+  assert.deepEqual(weekAgenda({ today: today0, plan: null, sessions: [] }).map((d) => d.status), ['rest']);
 });

@@ -5,6 +5,7 @@ import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
+import { Appear } from '@/components/motion';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
@@ -112,21 +113,22 @@ export default function Profile() {
   return (
     <Screen keyboard>
       <Header title="Профиль" />
-      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      {/* Кто ты — крупно, без карточки; дальше — короткие строки разделов (значения — внутри) */}
+      <Appear i={0} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: space.sm }}>
         <View style={styles.avatar}>
           <T v="h1" color={colors.text}>
             {profile.name.charAt(0).toUpperCase()}
           </T>
         </View>
         <View style={{ flex: 1 }}>
-          <T v="h2" numberOfLines={1}>
+          <T v="h1" numberOfLines={1}>
             {profile.name}
           </T>
-          <T v="small">
+          <T v="bodyDim">
             {GOAL_LABEL[profile.goal]} · {LEVEL_LABEL[profile.level]}
           </T>
         </View>
-      </Card>
+      </Appear>
 
       <SectionTitle title="Данные" />
       <Card style={{ paddingVertical: 4 }}>
@@ -270,24 +272,20 @@ export default function Profile() {
   );
 }
 
+/** Строка раздела в стиле iOS: название; текущее значение — в VoiceOver и внутри раздела, на экране не шумит */
 function Row({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
-      <View style={{ flex: 1 }}>
-        <T v="body" style={{ fontWeight: '700' }}>
-          {label}
-        </T>
-        <T v="small" numberOfLines={1}>
-          {value}
-        </T>
-      </View>
+    <Pressable accessibilityRole="button" accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+      <T v="body" style={{ flex: 1, fontWeight: '600' }}>
+        {label}
+      </T>
       <Icon name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   );
 }
 
 const styles = themed({
-  avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 8, borderRadius: radius.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingVertical: 8, borderRadius: radius.sm },
 });

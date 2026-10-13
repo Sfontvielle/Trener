@@ -1,19 +1,19 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Exercise, ISODate, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
+import type { Exercise, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
 import { haptic } from '@/services/haptics';
-import { MiniBars } from '@/components/charts';
+import { Ambient, Appear, FadeIn, Progress, Tap } from '@/components/motion';
+import { afterModalClose } from '@/components/modalGate';
+import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/weekAgenda';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useUi } from '@/stores/ui';
 import { useTodayWorkout } from '@/hooks/useToday';
-import { getExercise } from '@/data/exercises';
-import { MODE_LABEL } from '@/features/training/today';
 import { scaleSets } from '@/features/training/scale';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { useProfile } from '@/stores/profile';
@@ -22,8 +22,6 @@ import { getPrefs, withPrefs } from '@/features/training/engine/prefs';
 import { estimateRecovery } from '@/features/training/engine/recovery';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { applyProfile } from '@/features/profile/applyProfile';
-import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
-import { TargetMuscles } from '@/features/exercises/TargetMuscles';
 import { generatePlan, planVolume } from '@/features/training/planGenerator';
 import { doneFineVolume } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
@@ -36,52 +34,71 @@ import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
-import { addDays, formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
+import { formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { journalDay, journalSections, KIND_COLOR, KIND_LABEL, prCounts, sessionEmoji, sessionKind, sessionStats, weekStreak, type SessionStats, type WeekStats } from '@/features/training/journal';
 import { BRAND } from '@/config/brand';
 
-type Seg = 'today' | 'plan' | 'history' | 'library';
+type Seg = 'today' | 'history' | 'library';
 
+/**
+ * Тренировки — три вкладки: неделя (что сделано и что дальше), дневник и упражнения. Сегодняшняя тренировка
+ * крупно — на главной; здесь — программа недели одним списком. План и сплит — в листе.
+ */
 export default function Training() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ seg?: Seg }>();
-  const [seg, setSeg] = useState<Seg>(params.seg ?? 'today');
+  const params = useLocalSearchParams<{ seg?: Seg | 'plan' }>();
+  const norm = (x?: Seg | 'plan') => (x === 'plan' ? 'today' : x);
+  const [seg, setSeg] = useState<Seg>(norm(params.seg) ?? 'today');
   // Переход из «+» → Библиотека: синхронизируем вкладку при новом параметре (без эффекта)
   const [lastParam, setLastParam] = useState(params.seg);
   if (params.seg !== lastParam) {
     setLastParam(params.seg);
-    if (params.seg) setSeg(params.seg);
+    if (params.seg) setSeg(norm(params.seg)!);
   }
   const bottom = insets.bottom + TAB_BAR_HEIGHT + space.lg;
+  const [calOpen, setCalOpen] = useState(false);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
+      <Ambient height={360} />
       <View style={{ paddingHorizontal: space.lg, gap: space.md, marginBottom: space.md }}>
-        <T v="h1">Тренировки</T>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <T v="h1" style={{ flex: 1 }}>
+            Тренировки
+          </T>
+          {seg === 'history' ? (
+            <Tap accessibilityRole="button" accessibilityLabel="Календарь тренировок" onPress={() => { haptic.tap(); setCalOpen(true); }} style={styles.calBtn} scaleTo={0.9}>
+              <Icon name="calendar-outline" size={19} color={colors.text} />
+            </Tap>
+          ) : null}
+        </View>
         <Segmented
           items={[
-            { key: 'today', label: 'Сегодня' },
-            { key: 'plan', label: 'План' },
+            { key: 'today', label: 'Неделя' },
             { key: 'history', label: 'Дневник' },
-            { key: 'library', label: 'Библиотека' },
+            { key: 'library', label: 'Упражнения' },
           ]}
           value={seg}
           onChange={setSeg}
-          bleed={space.lg}
         />
       </View>
-      <View style={{ flex: 1, paddingHorizontal: space.lg }}>
-        {seg === 'today' ? <TodayTab bottom={bottom} /> : null}
-        {seg === 'plan' ? <PlanTab bottom={bottom} /> : null}
-        {seg === 'history' ? <HistoryTab bottom={bottom} /> : null}
+      <FadeIn key={seg} style={{ flex: 1, paddingHorizontal: space.lg }} from={6}>
+        {seg === 'today' ? <WeekTab bottom={bottom} openPlan={params.seg === 'plan'} /> : null}
+        {seg === 'history' ? <HistoryTab bottom={bottom} calOpen={calOpen} setCalOpen={setCalOpen} /> : null}
         {seg === 'library' ? <ExerciseList onSelect={(e: Exercise) => router.push({ pathname: '/exercise/[id]', params: { id: e.id } })} contentPaddingBottom={bottom} /> : null}
-      </View>
+      </FadeIn>
     </View>
   );
 }
 
-function TodayTab({ bottom }: { bottom: number }) {
+const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+/**
+ * Неделя: крупно — сколько тренировок сделано из плана, ниже — дни недели одним списком (сделано ✓,
+ * сегодня — одна главная кнопка, дальше — по ротации, пропуски). План/сплит и объём — строками в листы.
+ */
+function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
   const tw = useTodayWorkout();
   const active = useWorkouts((s) => s.active);
   const sessions = useWorkouts((s) => s.sessions);
@@ -91,192 +108,199 @@ function TodayTab({ bottom }: { bottom: number }) {
   const customs = useWorkouts((s) => s.customExercises);
   // Прямые подходы по детальным группам: сделано с понедельника / запланировано на неделю
   const week = useMemo(() => doneFineVolume(sessions, startOfWeek(d), d, customs), [sessions, d, customs]);
-  const weekDone = useMemo(() => sessions.filter((x) => x.status === 'completed' && x.date >= startOfWeek(d) && x.date <= d).length, [sessions, d]);
   const planned = useMemo(() => (plan ? planVolume(plan, customs) : null), [plan, customs]);
   const checkins = useCheckins((s) => s.byDate);
   const overrides = usePlan((s) => s.overrides);
   const adjustments = usePlan((s) => s.adjustments);
+  const days = useMemo(() => weekAgenda({ today: d, plan, sessions, overrides }), [d, plan, sessions, overrides]);
+  const prog = agendaProgress(days);
   const deload = useMemo(() => checkDeload({ plan, sessions, checkins, adjustments, overrides }), [plan, sessions, checkins, adjustments, overrides]);
   const deloadActive = isDeloadActive(overrides);
   const [deloadPlanOpen, setDeloadPlanOpen] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
-  const [dayOpen, setDayOpen] = useState<ISODate | null>(null);
-  const daySrc = useDaySources();
+  const [planOpen, setPlanOpen] = useState(!!openPlan);
   const volGroups = VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
     const target = Math.round(planned?.[g] ?? 0);
     return { g, p: target ? Math.round(week[g] ?? 0) / target : 0 };
   });
+  if (!plan) return <EmptyState icon="calendar-outline" title="Плана пока нет" text={`Заполни профиль — ${BRAND} создаст план автоматически.`} action="Профиль" onAction={() => router.push('/profile')} />;
 
   return (
-    <FlatList
-      data={[]}
-      renderItem={null}
-      ListFooterComponent={
-        <>
-        <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
-        <Sheet visible={volOpen} onClose={() => setVolOpen(false)} title="Объём за неделю" subtitle="Прямые рабочие подходы с понедельника · сделано / план">
-          <View style={{ gap: 10 }}>
-            {VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
-              const done = Math.round(week[g] ?? 0);
-              const target = Math.round(planned?.[g] ?? 0);
-              const p = target ? done / target : 0;
-              return (
-                <View key={g} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <T v="small" style={{ width: 118 }} numberOfLines={1}>
-                    {VM_LABEL[g]}
-                  </T>
-                  <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' }}>
-                    <View style={{ width: `${Math.min(100, p * 100)}%`, height: 6, backgroundColor: p >= 0.9 ? colors.accent : colors.barSoft }} />
-                  </View>
-                  <T v="small" style={{ width: 54, textAlign: 'right', fontVariant: ['tabular-nums'] }}>
-                    {done}/{target}
-                  </T>
-                </View>
-              );
-            })}
+    <ScrollView contentContainerStyle={{ paddingBottom: bottom }} showsVerticalScrollIndicator={false}>
+      {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" onAction={resumeActive} /> : null}
+      {deloadActive ? (
+        <Banner tone="warning" icon="battery-charging" text="Идёт разгрузочная неделя: меньше подходов, больше запаса. Это и есть прогресс — сила вырастет после неё." action="Отменить" onAction={() => confirm('Отменить разгрузку?', 'Тренировки вернутся к обычному объёму.', 'Отменить разгрузку', () => { cancelDeload(); toast('Разгрузка отменена'); })} />
+      ) : deload.suggest ? (
+        <Card tone="warning" style={{ gap: 8, marginBottom: space.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="battery-half" size={20} color={colors.warning} />
+            <T v="h3">Пора разгрузиться</T>
           </View>
-        </Sheet>
-        </>
-      }
-      contentContainerStyle={{ paddingBottom: bottom }}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        <View style={{ gap: space.md }}>
-          <TrainingCalendar today={d} src={daySrc} onSelect={setDayOpen} />
-
-          {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" onAction={resumeActive} /> : null}
-          {deloadActive ? (
-            <Banner tone="warning" icon="battery-charging" text="Идёт разгрузочная неделя: меньше подходов, больше запаса. Это и есть прогресс — сила вырастет после неё." action="Отменить" onAction={() => confirm('Отменить разгрузку?', 'Тренировки вернутся к обычному объёму.', 'Отменить разгрузку', () => { cancelDeload(); toast('Разгрузка отменена'); })} />
-          ) : deload.suggest ? (
-            <Card tone="warning" style={{ gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Icon name="battery-half" size={20} color={colors.warning} />
-                <T v="h3">Пора разгрузиться</T>
-              </View>
-              {deload.reasons.map((r) => (
-                <T key={r} v="small">
-                  • {r}
-                </T>
-              ))}
+          {deload.reasons.map((r) => (
+            <T key={r} v="small">
+              • {r}
+            </T>
+          ))}
+          {deloadPlanOpen ? (
+            <View style={{ gap: 4, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
               <T v="small" style={{ fontSize: 12 }}>
                 Неделя с −40% подходов и запасом 3–4 повтора снимает накопленную усталость — после неё веса обычно снова растут.
               </T>
-              {deloadPlanOpen && plan ? (
-                <View style={{ gap: 4, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
-                  {deloadDates(plan).map((dd) => {
-                    const t = plan.templates.find((x) => x.id === plan.schedule[weekdayIndexOf(dd)]);
-                    const sets = t ? scaleSets(t.exercises.map((e) => e.sets), DELOAD_FACTOR).reduce((a, b) => a + b, 0) : 0;
-                    const was = t ? t.exercises.reduce((a, e) => a + e.sets, 0) : 0;
-                    return (
-                      <T key={dd} v="small" color={colors.text}>
-                        {formatDayShort(dd)} · {t?.name ?? '—'}: {was} → {sets} подходов, запас +{DELOAD_RIR} повт., веса без повышения
-                      </T>
-                    );
-                  })}
-                </View>
-              ) : null}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Button title={deloadPlanOpen ? 'Скрыть' : 'Посмотреть план'} size="sm" variant="secondary" onPress={() => setDeloadPlanOpen(!deloadPlanOpen)} style={{ flex: 1 }} />
-                <Button title="Применить" icon="battery-charging" size="sm" onPress={() => { const n = applyDeload(); toast(`Разгрузка: облегчено тренировок — ${n}`); }} style={{ flex: 1 }} />
-              </View>
-            </Card>
+              {deloadDates(plan).map((dd) => {
+                const t = plan.templates.find((x) => x.id === plan.schedule[weekdayIndexOf(dd)]);
+                const sets = t ? scaleSets(t.exercises.map((e) => e.sets), DELOAD_FACTOR).reduce((a, b) => a + b, 0) : 0;
+                const was = t ? t.exercises.reduce((a, e) => a + e.sets, 0) : 0;
+                return (
+                  <T key={dd} v="small" color={colors.text}>
+                    {formatDayShort(dd)} · {t?.name ?? '—'}: {was} → {sets} подходов, запас +{DELOAD_RIR} повт., веса без повышения
+                  </T>
+                );
+              })}
+            </View>
           ) : null}
-          {/* Тренировка дня — крупно, без карточки: название, одна строка параметров, мышцы, одна главная кнопка */}
-          <View style={styles.hero}>
-            {tw.kind === 'workout' && tw.template ? (
-              <>
-                <T v="caption">
-                  Сегодня
-                  {tw.mode !== 'normal' ? <T v="caption" color={colors.warning}>{` · ${MODE_LABEL[tw.mode].toLowerCase()}`}</T> : null}
-                </T>
-                <T v="display" numberOfLines={2}>
-                  {tw.template.name}
-                </T>
-                <T v="bodyDim">
-                  ~{tw.estMinutes} мин · {tw.template.exercises.length} упражнений · {tw.totalSets} подходов
-                </T>
-                {tw.reason ? <T v="small">{tw.reason}</T> : null}
-                <TargetMuscles compact max={3} items={tw.template.exercises} customs={customs} />
-                <WeekProgress done={weekDone} planned={plan?.schedule.filter(Boolean).length ?? 0} />
-                <Button title="Начать" icon="play" size="lg" style={{ marginTop: space.md }} onPress={() => startTodayPlanned()} />
-                <Button title="Детали" variant="ghost" size="sm" onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: tw.template!.id } })} />
-                {(['compound', 'isolation'] as const).map((mech) => {
-                  const counts = scaleSets(tw.template!.exercises.map((pe) => pe.sets), tw.volumeFactor);
-                  const items = tw.template!.exercises.map((pe, i) => ({ pe, i })).filter(({ pe }) => (getExercise(pe.exerciseId, customs)?.mechanic === 'isolation') === (mech === 'isolation'));
-                  if (!items.length) return null;
-                  return (
-                    <View key={mech} style={{ marginTop: space.lg }}>
-                      <T v="caption" style={{ marginBottom: 4 }}>
-                        {mech === 'compound' ? 'Базовые' : 'Изолирующие'}
-                      </T>
-                      {items.map(({ pe, i }, k) => {
-                        const ex = getExercise(pe.exerciseId, customs);
-                        return (
-                          <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} style={({ pressed }) => [styles.exRow, k < items.length - 1 && styles.exLine, pressed && { opacity: 0.6 }]}>
-                            {ex ? <ExerciseThumb ex={ex} size={40} /> : null}
-                            <T v="body" numberOfLines={2} style={{ flex: 1 }}>
-                              {ex?.name}
-                            </T>
-                            <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
-                              {counts[i]} × {pe.repMin}–{pe.repMax}
-                            </T>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
-              </>
-            ) : tw.kind === 'done' ? (
-              <>
-                <T v="caption">Сегодня</T>
-                <T v="display">Выполнено ✓</T>
-                <T v="bodyDim">{tw.completedSession?.name}</T>
-                <Button title="Смотреть итоги" size="lg" style={{ marginTop: space.md }} onPress={() => tw.completedSession && router.push({ pathname: '/workout/[id]', params: { id: tw.completedSession.id } })} />
-              </>
-            ) : (
-              <>
-                <T v="caption">Сегодня</T>
-                <T v="display">Отдых</T>
-                <T v="bodyDim">{tw.reason ?? (tw.nextWorkout ? `Следующая — ${tw.nextWorkout.template.name}, ${formatDayShort(tw.nextWorkout.date)}` : 'Восстановление')}</T>
-                <Button title="Тренировка вне плана" icon="add" size="lg" variant="secondary" style={{ marginTop: space.md }} onPress={openHub} />
-              </>
-            )}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title={deloadPlanOpen ? 'Скрыть' : 'Посмотреть план'} size="sm" variant="secondary" onPress={() => setDeloadPlanOpen(!deloadPlanOpen)} style={{ flex: 1 }} />
+            <Button title="Применить" icon="battery-charging" size="sm" onPress={() => { const n = applyDeload(); toast(`Разгрузка: облегчено тренировок — ${n}`); }} style={{ flex: 1 }} />
           </View>
+        </Card>
+      ) : null}
 
-          <Pressable accessibilityRole="button" accessibilityLabel="Объём за неделю" onPress={() => { haptic.tap(); setVolOpen(true); }} style={({ pressed }) => [styles.volBtn, pressed && { opacity: 0.6 }]}>
-            <T v="body" style={{ flex: 1 }}>
-              Объём за неделю
+      {/* Главное: сколько сделано из плана недели — крупно, полоса наливается */}
+      <Appear i={0} style={styles.weekHero}>
+        <View accessibilityLabel={`Неделя: сделано ${prog.done} из ${prog.planned} тренировок`}>
+          <T v="caption">Эта неделя</T>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
+            <T v="hero">
+              {prog.done} из {prog.planned}
             </T>
-            <T v="small">
-              в норме {volGroups.filter((g) => g.p >= 0.9).length} из {volGroups.length}
-            </T>
-            <Icon name="chevron-forward" size={16} color={colors.muted} />
-          </Pressable>
+            <T v="bodyDim">{plural(prog.planned, 'тренировка', 'тренировки', 'тренировок')}</T>
+          </View>
         </View>
-      }
-    />
+        <Progress value={prog.planned ? prog.done / prog.planned : 0} color={prog.done >= prog.planned && prog.planned ? colors.accent : colors.text} height={5} style={{ marginTop: space.md }} />
+      </Appear>
+
+      {/* Дни недели — один спокойный список */}
+      <View style={{ marginTop: space.xl }}>
+        {days.map((day, i) => (
+          <Appear key={day.date} i={1 + i}>
+            <AgendaRow day={day} last={i === days.length - 1} customs={customs} tw={tw} onRestTrain={openHub} />
+          </Appear>
+        ))}
+      </View>
+
+      {/* Второстепенное — строками */}
+      <Appear i={2 + days.length} style={styles.navList}>
+        <NavRow title={`План · ${plan.splitLabel}`} label="План и сплит" onPress={() => setPlanOpen(true)} />
+        <NavRow title={`Объём · в норме ${volGroups.filter((g) => g.p >= 0.9).length} из ${volGroups.length}`} label="Объём за неделю" onPress={() => setVolOpen(true)} last />
+      </Appear>
+
+      <Sheet visible={volOpen} onClose={() => setVolOpen(false)} title="Объём за неделю" subtitle="Прямые рабочие подходы с понедельника · сделано / план">
+        <View style={{ gap: 12 }}>
+          {VOLUME_MUSCLES.filter((m) => (planned?.[m] ?? 0) > 0).map((g) => {
+            const done = Math.round(week[g] ?? 0);
+            const target = Math.round(planned?.[g] ?? 0);
+            const p = target ? done / target : 0;
+            return (
+              <View key={g} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <T v="small" style={{ width: 118 }} numberOfLines={1}>
+                  {VM_LABEL[g]}
+                </T>
+                <Progress value={p} color={p >= 0.9 ? colors.accent : colors.barSoft} height={6} style={{ flex: 1 }} />
+                <T v="small" style={{ width: 54, textAlign: 'right', fontVariant: ['tabular-nums'] }}>
+                  {done}/{target}
+                </T>
+              </View>
+            );
+          })}
+        </View>
+      </Sheet>
+      <Sheet visible={planOpen} onClose={() => setPlanOpen(false)} title="План и сплит" subtitle="Тренировки плана и формат недели">
+        <PlanContent onDone={() => setPlanOpen(false)} />
+      </Sheet>
+    </ScrollView>
   );
 }
 
-/** «Неделя: 2 из 4» — сколько плановых тренировок уже сделано */
-function WeekProgress({ done, planned }: { done: number; planned: number }) {
-  if (!planned) return null;
-  const p = Math.min(1, done / planned);
+/** День недели: дата слева, тренировка и её параметры, справа — статус. Сегодня — единственная лаймовая кнопка */
+function AgendaRow({ day, last, customs, tw, onRestTrain }: { day: AgendaDay; last: boolean; customs: Exercise[]; tw: ReturnType<typeof useTodayWorkout>; onRestTrain: () => void }) {
+  const wd = WD[weekdayIndexOf(day.date)];
+  const num = Number(day.date.slice(8, 10));
+  const t = day.template;
+  const s = day.session;
+  const isToday = day.status === 'today' || (day.status === 'rest' && day.date === today());
+  const title = s?.name ?? t?.name ?? 'Отдых';
+  const sub =
+    day.status === 'done' && s
+      ? (() => {
+          const st = sessionStats(s, [s], customs, new Map());
+          return `${st.minutes} мин · ${st.sets} подх.${st.tonnage ? ` · ${fmtTonnage(st.tonnage)}` : ''}`;
+        })()
+      : day.status === 'today'
+        ? `~${tw.estMinutes || t?.estMinutes || 0} мин · ${tw.totalSets || t?.exercises.reduce((a, e) => a + e.sets, 0) || 0} подходов`
+        : day.status === 'missed'
+          ? 'пропущено'
+          : '';
+  const open = () => {
+    haptic.tap();
+    if (s) router.push({ pathname: '/workout/[id]', params: { id: s.id } });
+    else if (t) router.push({ pathname: '/workout/preview', params: { templateId: t.id } });
+  };
   return (
-    <View style={{ gap: 4, marginTop: 10 }} accessibilityLabel={`Неделя: сделано ${done} из ${planned} тренировок`}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <T v="small" style={{ fontSize: 11 }}>
-          Неделя
+    <View style={[styles.agendaRow, !last && styles.agendaLine]}>
+    <Tap
+      accessibilityRole="button"
+      accessibilityLabel={`${wd} ${num}: ${title}, ${day.status === 'done' ? 'сделано' : day.status === 'today' ? 'сегодня' : day.status === 'missed' ? 'пропущено' : day.status === 'rest' ? 'отдых' : 'по плану'}`}
+      onPress={open}
+      disabled={!s && !t}
+      scaleTo={0.985}
+      style={styles.agendaTap}
+    >
+      <T v="small" style={styles.agendaDate} color={isToday ? colors.text : colors.muted}>
+        {wd}
+        {'\n'}
+        <T v="h3" color={isToday ? colors.text : day.status === 'done' ? colors.textDim : colors.text}>
+          {num}
         </T>
-        <T v="small" style={{ fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] }} color={done >= planned ? colors.accent : colors.text}>
-          {done} из {planned}
+      </T>
+      <View style={{ flex: 1, gap: 2 }}>
+        <T v="body" style={{ fontWeight: isToday ? '800' : '600', fontSize: isToday ? 18 : 16 }} color={day.status === 'missed' || day.status === 'rest' ? colors.textDim : colors.text} numberOfLines={1}>
+          {title}
         </T>
+        {sub ? (
+          <T v="small" numberOfLines={1} style={{ fontSize: 13 }}>
+            {sub}
+          </T>
+        ) : null}
       </View>
-      <View style={{ height: 5, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' }}>
-        <View style={{ width: `${p * 100}%`, height: 5, borderRadius: 3, backgroundColor: colors.text }} />
-      </View>
+    </Tap>
+      {day.status === 'done' ? (
+        <View style={styles.doneMark}>
+          <Icon name="checkmark" size={15} color={colors.bg} />
+        </View>
+      ) : day.status === 'today' ? (
+        <Button title="Начать" size="sm" onPress={() => startTodayPlanned()} />
+      ) : day.status === 'rest' && isToday ? (
+        <Button title="Всё равно" size="sm" variant="secondary" onPress={onRestTrain} accessibilityLabel="Тренировка вне плана" />
+      ) : null}
     </View>
+  );
+}
+
+function NavRow({ title, sub, label, onPress, last }: { title: string; sub?: string; label: string; onPress: () => void; last?: boolean }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { haptic.tap(); onPress(); }} style={({ pressed }) => [styles.navRow, !last && styles.navLine, pressed && { opacity: 0.6 }]}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <T v="body" style={{ fontWeight: '600' }}>
+          {title}
+        </T>
+        {sub ? (
+          <T v="small" numberOfLines={1} style={{ fontSize: 13 }}>
+            {sub}
+          </T>
+        ) : null}
+      </View>
+      <Icon name="chevron-forward" size={16} color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -299,7 +323,7 @@ type Choice = Exclude<SplitPreference, 'auto' | 'custom'>;
  * список вариантов. Для выбранного варианта FORM собирает тренировки ПОД ТЕБЯ — дни и время, недельный объём,
  * исключённые упражнения, ограничения, оборудование, восстановление — и показывает до применения.
  */
-function PlanTab({ bottom }: { bottom: number }) {
+function PlanContent({ onDone }: { onDone: () => void }) {
   const plan = usePlan((s) => s.plan);
   const profile = useProfile((s) => s.profile);
   const sessions = useWorkouts((s) => s.sessions);
@@ -325,13 +349,7 @@ function PlanTab({ bottom }: { bottom: number }) {
   };
 
   return (
-    <FlatList
-      data={shown.templates}
-      keyExtractor={(t) => t.id}
-      contentContainerStyle={{ paddingBottom: bottom, gap: 10 }}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        <View style={{ gap: space.sm, marginBottom: space.sm }}>
+        <View style={{ gap: space.sm }}>
           {/* 1. Твой план — крупно, без карточки */}
           <View style={{ gap: 6, marginTop: space.sm }}>
             <T v="caption">Твой план</T>
@@ -418,6 +436,7 @@ function PlanTab({ bottom }: { bottom: number }) {
                   onPress={() => {
                     applyProfile(withPrefs(profile, { preferredSplit: pick! }));
                     setPick(null);
+                    setListOpen(false);
                     haptic.success();
                     toast('План перестроен — упражнения с прогрессом сохранены');
                   }}
@@ -427,123 +446,93 @@ function PlanTab({ bottom }: { bottom: number }) {
             </Card>
           ) : null}
           <T v="h3" style={{ marginTop: space.lg }}>{changing ? 'Тренировки нового сплита' : 'Тренировки плана'}</T>
+          <View style={styles.navList}>
+            {shown.templates.map((t, i) => (
+              <TemplateRow key={t.id} t={t} editable={!changing} last={i === shown.templates.length - 1} onOpen={onDone} />
+            ))}
+          </View>
         </View>
-      }
-      renderItem={({ item: t }) => <TemplateCard t={t} editable={!changing} customs={customs} />}
-    />
   );
 }
 
-/** Тренировка плана: упражнения сгруппированы — сначала базовые, затем изолирующие */
-function TemplateCard({ t, editable, customs }: { t: WorkoutTemplate; editable: boolean; customs: Exercise[] }) {
-  const groups = [
-    { key: 'compound', label: 'Базовые', items: t.exercises.filter((pe) => getExercise(pe.exerciseId, customs)?.mechanic !== 'isolation') },
-    { key: 'isolation', label: 'Изолирующие', items: t.exercises.filter((pe) => getExercise(pe.exerciseId, customs)?.mechanic === 'isolation') },
-  ].filter((g) => g.items.length);
+/** Тренировка плана одной строкой: тап — состав (упражнения, мышцы), карандаш — изменить */
+function TemplateRow({ t, editable, last, onOpen }: { t: WorkoutTemplate; editable: boolean; last: boolean; onOpen: () => void }) {
   return (
-    <View style={styles.tplCard}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Pressable style={{ flex: 1 }} disabled={!editable} onPress={() => router.push({ pathname: '/workout/preview', params: { templateId: t.id } })} accessibilityRole="button">
-          <T v="h3">{t.name}</T>
-          <T v="small">
-            {t.focus} · ~{t.estMinutes} мин · {t.exercises.reduce((a, e) => a + e.sets, 0)} подх.
-          </T>
+    <View style={[styles.navRow, !last && styles.navLine]}>
+      <Pressable
+        style={{ flex: 1, gap: 2 }}
+        disabled={!editable}
+        onPress={() => {
+          onOpen();
+          afterModalClose(() => router.push({ pathname: '/workout/preview', params: { templateId: t.id } }));
+        }}
+        accessibilityRole="button"
+      >
+        <T v="body" style={{ fontWeight: '700' }}>
+          {t.name}
+        </T>
+        <T v="small" style={{ fontSize: 13 }}>
+          {t.focus} · ~{t.estMinutes} мин · {t.exercises.reduce((a, e) => a + e.sets, 0)} подх.
+        </T>
+      </Pressable>
+      {editable ? (
+        <Pressable
+          hitSlop={8}
+          onPress={() => {
+            onOpen();
+            afterModalClose(() => router.push({ pathname: '/workout/builder', params: { templateId: t.id } }));
+          }}
+          accessibilityLabel={`Изменить ${t.name}`}
+          style={{ padding: 6 }}
+        >
+          <Icon name="create-outline" size={20} color={colors.textDim} />
         </Pressable>
-        {editable ? (
-          <Pressable hitSlop={8} onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: t.id } })} accessibilityLabel={`Изменить ${t.name}`} style={{ padding: 6 }}>
-            <Icon name="create-outline" size={20} color={colors.textDim} />
-          </Pressable>
-        ) : null}
-      </View>
-      {groups.map((g) => (
-        <View key={g.key} style={{ gap: 8, marginTop: 14 }}>
-          <T v="caption">{g.label}</T>
-          {g.items.map((pe, i) => {
-            const ex = getExercise(pe.exerciseId, customs);
-            return (
-              <Pressable key={`${pe.exerciseId}-${i}`} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} accessibilityRole="button">
-                {ex ? <ExerciseThumb ex={ex} size={34} /> : null}
-                <T v="body" numberOfLines={2} style={{ flex: 1, fontSize: 15 }}>
-                  {ex?.name}
-                </T>
-                <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
-                  {pe.sets} × {pe.repMin}–{pe.repMax}
-                </T>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
+      ) : null}
     </View>
   );
 }
 
-type JournalRow = { kind: 'week'; key: string; title: string; stats: WeekStats } | { kind: 'item'; key: string; s: WorkoutSession; stats: SessionStats };
+type JournalRow = { kind: 'week'; key: string; title: string; stats: WeekStats; first?: boolean } | { kind: 'item'; key: string; s: WorkoutSession; stats: SessionStats };
 
 /**
  * Дневник (по мотивам Fitsession): итоги недели плашками, календарь с цветами тренировок,
  * лента по неделям — название, смайл ощущения, время, объём, рекорды, заметка. Тап — подробности и «Повторить».
  */
-function HistoryTab({ bottom }: { bottom: number }) {
+function HistoryTab({ bottom, calOpen, setCalOpen }: { bottom: number; calOpen: boolean; setCalOpen: (v: boolean) => void }) {
   const sessions = useWorkouts((s) => s.sessions);
   const customs = useWorkouts((s) => s.customExercises);
   const d = today();
-  const { rows, week, streak, total, weekly } = useMemo(() => {
+  const [dayOpen, setDayOpen] = useState<string | null>(null);
+  const daySrc = useDaySources();
+  const { rows, streak, total } = useMemo(() => {
     const prs = prCounts(sessions, customs);
     const sections = journalSections(sessions, d, customs, prs);
     const out: JournalRow[] = [];
     for (const sec of sections) {
-      out.push({ kind: 'week', key: `w${sec.weekStart}`, title: sec.title, stats: sec.stats });
+      out.push({ kind: 'week', key: `w${sec.weekStart}`, title: sec.title, stats: sec.stats, first: !out.length });
       for (const x of sec.sessions) out.push({ kind: 'item', key: x.id, s: x, stats: sessionStats(x, sessions, customs, prs) });
     }
-    const cur = sections[0]?.weekStart === startOfWeek(d) ? sections[0].stats : null;
-    const done = sessions.filter((x) => x.status === 'completed');
-    const bars = Array.from({ length: 8 }, (_, i) => {
-      const from = addDays(startOfWeek(d), -7 * (7 - i));
-      const to = addDays(from, 6);
-      return done.filter((x) => x.date >= from && x.date <= to).length;
-    });
-    return { rows: out, week: cur, streak: weekStreak(sessions, d), total: done.length, weekly: bars };
+    return { rows: out, streak: weekStreak(sessions, d), total: sessions.filter((x) => x.status === 'completed').length };
   }, [sessions, customs, d]);
-  const renderItem = useCallback(({ item }: { item: JournalRow }) => (item.kind === 'week' ? <WeekHeader title={item.title} stats={item.stats} /> : <JournalCard s={item.s} stats={item.stats} customs={customs} />), [customs]);
+  const renderItem = useCallback(({ item }: { item: JournalRow }) => (item.kind === 'week' ? <WeekHeader title={item.title} stats={item.stats} streak={item.first ? streak : 0} /> : <JournalCard s={item.s} stats={item.stats} customs={customs} />), [customs, streak]);
   if (!total) return <EmptyState icon="book-outline" title="Дневник пуст" text="Заверши первую тренировку — здесь появятся результаты, веса и рекорды по неделям." />;
   return (
-    <FlatList
-      data={rows}
-      keyExtractor={(r) => r.key}
-      renderItem={renderItem}
-      initialNumToRender={14}
-      windowSize={9}
-      contentContainerStyle={{ paddingBottom: bottom, gap: 8 }}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        <View style={{ gap: space.md, marginTop: space.sm, marginBottom: space.sm }} testID="journal-week">
-          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-            <T v="h2" style={{ flex: 1 }}>
-              На этой неделе
-            </T>
-            {streak >= 2 ? (
-              <T v="small" color={colors.warning} style={{ fontWeight: '600' }} accessibilityLabel={`Серия: ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд с тренировками`}>
-                🔥 {streak} {plural(streak, 'неделя', 'недели', 'недель')} подряд
-              </T>
-            ) : null}
-          </View>
-          {/* Итоги недели — крупными числами, без плашек */}
-          <View style={{ flexDirection: 'row' }}>
-            <BigStat value={String(week?.workouts ?? 0)} label={plural(week?.workouts ?? 0, 'тренировка', 'тренировки', 'тренировок')} />
-            <BigStat value={String(week?.prs ?? 0)} label={plural(week?.prs ?? 0, 'рекорд', 'рекорда', 'рекордов')} />
-            <BigStat value={fmtTonnage(week?.tonnage ?? 0)} label="объём" />
-            <BigStat value={String(week?.minutes ?? 0)} label="мин" />
-          </View>
-          <View style={{ gap: 6 }}>
-            <MiniBars values={weekly} height={32} />
-            <T v="small" style={{ fontSize: 12 }}>
-              8 недель · всего {total}
-            </T>
-          </View>
-        </View>
-      }
-    />
+    <>
+      <FlatList
+        data={rows}
+        keyExtractor={(r) => r.key}
+        renderItem={renderItem}
+        initialNumToRender={14}
+        windowSize={9}
+        contentContainerStyle={{ paddingBottom: bottom }}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={<View testID="journal-week" />}
+      />
+      <Sheet visible={calOpen} onClose={() => setCalOpen(false)} title="Календарь" subtitle="Тап по дню — тренировка, сон, питание и вес">
+        <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setCalOpen(false); afterModalClose(() => setDayOpen(x)); }} />
+      </Sheet>
+      <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
+    </>
   );
 }
 
@@ -551,70 +540,61 @@ function fmtTonnage(kg: number): string {
   return kg >= 1000 ? `${fmtNum(kg / 1000, 1)} т` : `${fmtNum(kg)} кг`;
 }
 
-function BigStat({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={{ flex: 1, gap: 2 }}>
-      <T v="num" style={{ fontSize: 26 }} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </T>
-      <T v="small" numberOfLines={1}>
-        {label}
-      </T>
-    </View>
-  );
-}
-
-const WeekHeader = React.memo(function WeekHeader({ title, stats }: { title: string; stats: WeekStats }) {
+const WeekHeader = React.memo(function WeekHeader({ title, stats, streak }: { title: string; stats: WeekStats; streak: number }) {
   return (
     <View style={styles.weekHead} accessibilityRole="header">
-      <T v="caption">{title}</T>
-      <T v="small" style={{ fontSize: 11 }}>
-        {stats.workouts} {plural(stats.workouts, 'тренировка', 'тренировки', 'тренировок')} · {fmtTonnage(stats.tonnage)}
-        {stats.prs ? ` · ${stats.prs} ЛР` : ''}
+      <T v="h3">
+        {title}
+        <T v="small" style={{ fontSize: 13 }}>
+          {`   ${stats.workouts} ${plural(stats.workouts, 'тренировка', 'тренировки', 'тренировок')}${stats.prs ? ` · ${stats.prs} ${plural(stats.prs, 'рекорд', 'рекорда', 'рекордов')}` : ''}`}
+        </T>
+        {streak >= 2 ? (
+          <T v="small" style={{ fontSize: 13 }} color={colors.warning} accessibilityLabel={`Серия: ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд с тренировками`}>
+            {`  🔥 ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд`}
+          </T>
+        ) : null}
       </T>
     </View>
   );
 });
 
+/** Тренировка в дневнике — строка без карточки: цвет типа, название, дата и объём одной строкой, ощущение, заметка */
 const JournalCard = React.memo(function JournalCard({ s, stats, customs }: { s: WorkoutSession; stats: SessionStats; customs: Exercise[] }) {
   const kind = sessionKind(s, customs);
   const emoji = sessionEmoji(s);
-  const parts = [`${stats.minutes} мин`, stats.tonnage ? fmtTonnage(stats.tonnage) : '', `${stats.sets} подх.`, stats.prs ? `🏆 ${stats.prs}` : '', s.energy && s.energy.kcal >= 5 ? `${s.energy.source === 'health' ? '' : '≈'}${s.energy.kcal} ккал` : ''].filter(Boolean);
+  const parts = [journalDay(s.date, today()), `${stats.minutes} мин`, stats.tonnage ? fmtTonnage(stats.tonnage) : '', stats.prs ? `🏆 ${stats.prs}` : ''].filter(Boolean);
   return (
-    <Card onPress={() => router.push({ pathname: '/workout/[id]', params: { id: s.id } })} style={{ gap: 4, paddingVertical: 14 }} accessibilityLabel={`${s.name}, ${journalDay(s.date, today())}, ${KIND_LABEL[kind]}`}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={[styles.kindDot, { backgroundColor: colors[KIND_COLOR[kind]] }]} />
-        <T v="small" style={{ fontSize: 13 }}>
-          {journalDay(s.date, today())} · {KIND_LABEL[kind]}
-        </T>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <T v="h3" style={{ flex: 1 }} numberOfLines={1}>
+    <Tap accessibilityRole="button" onPress={() => { haptic.tap(); router.push({ pathname: '/workout/[id]', params: { id: s.id } }); }} accessibilityLabel={`${s.name}, ${journalDay(s.date, today())}, ${KIND_LABEL[kind]}`} scaleTo={0.985} style={styles.jRow}>
+      <View style={[styles.kindDot, { backgroundColor: colors[KIND_COLOR[kind]] }]} />
+      <View style={{ flex: 1, gap: 3 }}>
+        <T v="body" style={{ fontWeight: '700', fontSize: 17 }} numberOfLines={1}>
           {s.name}
+          {emoji ? ` ${emoji}` : ''}
         </T>
-        {emoji ? <T v="body">{emoji}</T> : null}
+        <T v="small" style={{ fontVariant: ['tabular-nums'], fontSize: 13 }} numberOfLines={s.notes ? 2 : 1}>
+          {parts.join(' · ')}
+          {s.notes ? <T v="small" style={{ fontStyle: 'italic', fontSize: 13 }}>{`\n«${s.notes}»`}</T> : null}
+        </T>
       </View>
-      <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
-        {parts.join(' · ')}
-      </T>
-      {s.notes ? (
-        <T v="small" style={{ fontStyle: 'italic' }} numberOfLines={2}>
-          «{s.notes}»
-        </T>
-      ) : null}
-    </Card>
+    </Tap>
   );
 });
 
 const styles = themed({
-  hero: { gap: 8, marginTop: space.lg },
-  dropBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 12, borderRadius: radius.lg, backgroundColor: colors.surface },
-  dropList: { borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' },
+  weekHero: { marginTop: space.md },
+  agendaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66 },
+  agendaTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 },
+  agendaLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  agendaDate: { width: 34, textAlign: 'center', fontSize: 12, lineHeight: 18 },
+  doneMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
+  navList: { marginTop: space.xl, borderRadius: radius.lg, backgroundColor: colors.surface, paddingLeft: space.md },
+  navRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingRight: space.md, minHeight: 56 },
+  navLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  dropBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 12, borderRadius: radius.lg, backgroundColor: colors.surface2 },
+  dropList: { borderRadius: radius.lg, backgroundColor: colors.surface2, overflow: 'hidden' },
   dropItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 14 },
-  tplCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.lg },
-  volBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, minHeight: 54, borderRadius: radius.lg, backgroundColor: colors.surface, marginTop: space.lg },
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, minHeight: 56 },
-  exLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
-  weekHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: space.lg, marginBottom: 2, paddingHorizontal: 2 },
-  kindDot: { width: 8, height: 8, borderRadius: 4 },
+  weekHead: { gap: 2, marginTop: space.xl, marginBottom: space.xs },
+  kindDot: { width: 8, height: 8, borderRadius: 4, marginTop: 8, alignSelf: 'flex-start' },
+  jRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  calBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
 });

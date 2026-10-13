@@ -3,8 +3,9 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, Divider, EmptyState, IconButton, T } from '@/components/ui';
+import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
+import { Ambient, Appear } from '@/components/motion';
 import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
@@ -24,7 +25,6 @@ import { BRAND } from '@/config/brand';
 import { feelIndex, isTimed, KIND_LABEL, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
 import { supersetLabels } from '@/features/training/workoutNav';
 import { repeatSession } from '@/features/training/actions';
-import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
 
 
 export default function SessionDetail() {
@@ -37,6 +37,7 @@ export default function SessionDetail() {
   const healthDays = useHealth((s) => s.days);
   const s = sessions.find((x) => x.id === id);
   const [energyOpen, setEnergyOpen] = useState(false);
+  const [allPrs, setAllPrs] = useState(false);
   const [note, setNote] = useState(s?.notes ?? '');
 
   const debrief = useMemo(() => (s ? workoutDebrief(s, sessions, customs) : null), [s, sessions, customs]);
@@ -76,97 +77,9 @@ export default function SessionDetail() {
   const feelIdx = feelIndex(s.sessionRpe);
   const kind = sessionKind(s, customs);
   const labels = supersetLabels(s.exercises);
+  const delta = Object.fromEntries(progress.map((p) => [p.name, p]));
 
-  return (
-    <Screen keyboard>
-      <Header
-        title={fresh ? 'Тренировка завершена' : s.name}
-        subtitle={`${formatDayLong(s.date)}${s.focus ? ` · ${s.focus}` : ''}`}
-        onBack={() => (fresh ? router.replace('/') : router.back())}
-        right={
-          <IconButton
-            name="trash-outline"
-            label="Удалить тренировку"
-            onPress={() => confirm('Удалить тренировку?', 'Она пропадёт из истории и статистики.', 'Удалить', () => { useWorkouts.getState().deleteSession(s.id); router.back(); }, true)}
-          />
-        }
-      />
-
-      {/* Главное — название и одна кнопка «Повторить»; цифры — крупно в ряд, без плиток */}
-      <View style={{ gap: 6, marginTop: space.sm }}>
-        <T v="caption">{KIND_LABEL[kind]}</T>
-        <T v="display" numberOfLines={2}>
-          {s.name}
-        </T>
-        <T v="bodyDim">
-          {debrief.prs.length ? `Новых рекордов: ${debrief.prs.length}` : debrief.volumeDeltaPct !== null ? `Объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}% к прошлой такой же` : 'Тренировка записана'}
-        </T>
-        {!fresh ? (
-          <Button
-            title="Повторить"
-            icon="repeat"
-            size="lg"
-            onPress={() => {
-              haptic.tap();
-              repeatSession(s);
-            }}
-            style={{ marginTop: space.md }}
-          />
-        ) : null}
-      </View>
-
-      <View style={styles.stats}>
-        <BigStat label="Время" value={`${v.durationMin}`} unit="мин" />
-        <BigStat label="Подходов" value={`${v.sets}`} unit={planned ? `из ${planned}` : ''} />
-        <BigStat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
-        <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={styles.stat}>
-          <T v="small">Активные калории</T>
-          <T v="num" style={{ fontSize: 28 }}>
-            {energy.kcal < 5 ? '—' : `${energy.source === 'health' ? '' : '≈'}${energy.kcal}`}
-            {energy.kcal < 5 ? null : <T v="small"> ккал</T>}
-          </T>
-          <T v="small" style={{ fontSize: 12 }}>
-            {energy.source === 'health' ? 'Apple Health ›' : 'оценка ›'}
-          </T>
-        </Pressable>
-      </View>
-
-      {debrief.prs.length ? (
-        <Section title="Новые личные рекорды">
-          {debrief.prs.map((p) => (
-            <T key={p} v="body" style={{ paddingVertical: 4 }}>
-              🏆 {p}
-            </T>
-          ))}
-        </Section>
-      ) : null}
-
-      {progress.length ? (
-        <Section title="К прошлому разу">
-          {progress.map((p) => (
-            <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
-              <T v="body" style={{ flex: 1 }} numberOfLines={2} color={colors.textDim}>
-                {p.name}
-              </T>
-              <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }} color={p.up ? colors.text : p.text === '=' ? colors.textDim : colors.warning}>
-                {p.text}
-              </T>
-            </View>
-          ))}
-        </Section>
-      ) : null}
-
-      {debrief.lines.length ? (
-        <Section title={`Тренер ${BRAND}`}>
-          {debrief.lines.map((l) => (
-            <T key={l} v="body" style={{ lineHeight: 22 }}>
-              {l}
-            </T>
-          ))}
-          <Button title="Разобрать с тренером" size="sm" variant="ghost" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} style={{ alignSelf: 'flex-start', paddingHorizontal: 0 }} />
-        </Section>
-      ) : null}
-
+  const feelSection = (
       <Section title="Как ощущалась тренировка?">
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {SESSION_FEEL.map((f, i) => (
@@ -189,6 +102,77 @@ export default function SessionDetail() {
         </View>
         <Field placeholder="Заметка" value={note} onChangeText={setNote} multiline maxLength={400} onBlur={() => note.trim() !== (s.notes ?? '') && useWorkouts.getState().updateSession(s.id, { notes: note.trim() || undefined })} style={{ marginTop: 6 }} />
       </Section>
+  );
+
+  return (
+    <Screen keyboard>
+      <Ambient height={380} />
+      <Header
+        title={fresh ? 'Тренировка завершена' : ''}
+        onBack={() => (fresh ? router.replace('/') : router.back())}
+        right={
+          <IconButton
+            name="trash-outline"
+            label="Удалить тренировку"
+            onPress={() => confirm('Удалить тренировку?', 'Она пропадёт из истории и статистики.', 'Удалить', () => { useWorkouts.getState().deleteSession(s.id); router.back(); }, true)}
+          />
+        }
+      />
+
+      {/* Главное — название, одна строка итога и «Повторить»; три цифры — в ряд */}
+      <Appear i={0} style={{ gap: 6 }}>
+        <T v="caption">
+          {formatDayLong(s.date)} · {KIND_LABEL[kind]}
+        </T>
+        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {s.name}
+        </T>
+        <T v="bodyDim">
+          {v.sets}
+          {planned ? ` из ${planned}` : ''} подходов{debrief.volumeDeltaPct !== null ? ` · объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}%` : ''}
+          {feelIdx >= 0 ? ` · ${SESSION_FEEL[feelIdx].emoji} ${SESSION_FEEL[feelIdx].label}` : ''}
+        </T>
+      </Appear>
+      {!fresh ? (
+        <Appear i={1} style={{ marginTop: space.lg }}>
+          <Button
+            title="Повторить"
+            icon="repeat"
+            size="lg"
+            live
+            onPress={() => {
+              haptic.tap();
+              repeatSession(s);
+            }}
+          />
+        </Appear>
+      ) : null}
+
+      <Appear i={2} style={styles.stats}>
+        <BigStat label="Время" value={`${v.durationMin}`} unit="мин" />
+        <BigStat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
+        <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={styles.stat}>
+          <T v="small" numberOfLines={1}>
+            Активные калории
+          </T>
+          <T v="num" style={{ fontSize: 26 }}>
+            {energy.kcal < 5 ? '—' : `${energy.source === 'health' ? '' : '≈'}${energy.kcal}`}
+            {energy.kcal < 5 ? null : <T v="small">{energy.source === 'health' ? ' ккал' : ' ккал ›'}</T>}
+          </T>
+        </Pressable>
+      </Appear>
+
+      {debrief.prs.length ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: allPrs }} onPress={() => setAllPrs(!allPrs)} style={({ pressed }) => [styles.prLine, pressed && { opacity: 0.6 }]}>
+          <T v="body" numberOfLines={allPrs ? undefined : 1} style={{ flex: 1 }}>
+            <T v="body" style={{ fontWeight: '700' }}>{`🏆 Новые личные рекорды · ${debrief.prs.length}`}</T>
+            {allPrs ? `\n${debrief.prs.join('\n')}` : `  ${debrief.prs[0]}`}
+          </T>
+          <Icon name={allPrs ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+        </Pressable>
+      ) : null}
+
+      {fresh || feelIdx < 0 ? feelSection : null}
 
       <T v="h3" style={{ marginTop: space.xl, marginBottom: space.sm }}>
         Упражнения
@@ -198,16 +182,17 @@ export default function SessionDetail() {
         {s.exercises.map((we, i) => {
           const ex = getExercise(we.exerciseId, customs);
           const ws = workingSets(we.sets);
-          const kcal = energy.perExercise[we.exerciseId];
           const timed = isTimed(ex);
           const ss = labels[i];
           return (
             <View key={we.id}>
               {i && !(ss && labels[i - 1] && ss[0] === labels[i - 1]![0]) ? <Divider /> : null}
               <View style={[styles.exRow, ss && styles.exRowSs]} testID="session-exercise">
-                <T v="body" style={{ width: 26, fontWeight: '800' }} color={ss ? colors.accent : colors.textDim}>
-                  {ss ?? i + 1}
-                </T>
+                {ss ? (
+                  <T v="body" style={{ width: 26, fontWeight: '800' }} color={colors.accent}>
+                    {ss}
+                  </T>
+                ) : null}
                 <View style={{ flex: 1, gap: 2 }}>
                   <T v="body" style={{ fontWeight: '700' }}>
                     {ex?.name ?? we.exerciseId}
@@ -215,19 +200,32 @@ export default function SessionDetail() {
                   <T v="small" color={ws.length ? colors.text : colors.textDim}>
                     {ws.length ? setsLine(we.sets, { unit, timed }) : 'не выполнено'}
                     {ws.length && ws.length < we.plannedSets ? `  (план ${we.plannedSets})` : ''}
+                    {timed && ws.length ? `  · всего ${fmtSec(ws.reduce((a, x) => a + x.reps, 0))}` : ''}
                   </T>
-                  {kcal ? (
-                    <T v="small" style={{ fontSize: 11 }}>
-                      ≈{kcal} ккал{timed && ws.length ? ` · всего ${fmtSec(ws.reduce((a, x) => a + x.reps, 0))}` : ''}
-                    </T>
-                  ) : null}
                 </View>
-                {ex ? <ExerciseThumb ex={ex} size={44} /> : null}
+                {/* К прошлому разу — прямо в строке упражнения, без отдельного списка */}
+                {delta[ex?.name ?? ''] ? (
+                  <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }} color={delta[ex!.name].up ? colors.text : delta[ex!.name].text === '=' ? colors.textDim : colors.warning}>
+                    {delta[ex!.name].text}
+                  </T>
+                ) : null}
               </View>
             </View>
           );
         })}
       </Card>
+      {debrief.lines.length ? (
+        <Section title={`Тренер ${BRAND}`}>
+          {debrief.lines.map((l) => (
+            <T key={l} v="body" style={{ lineHeight: 22 }}>
+              {l}
+            </T>
+          ))}
+          <Button title="Разобрать с тренером" size="sm" variant="ghost" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} style={{ alignSelf: 'flex-start', paddingHorizontal: 0 }} />
+        </Section>
+      ) : null}
+
+      {!(fresh || feelIdx < 0) ? feelSection : null}
       {fresh ? (
         <Button
           title="Готово"
@@ -270,8 +268,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const styles = themed({
-  stats: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.lg, marginTop: space.xl },
-  stat: { width: '50%', gap: 2, paddingRight: 8 },
+  stats: { flexDirection: 'row', marginTop: space.xl },
+  prLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: space.xl, paddingVertical: 14, paddingHorizontal: space.md, borderRadius: radius.lg, backgroundColor: colors.surface },
+  stat: { flex: 1, gap: 2, paddingRight: 8 },
   feel: { width: '47%', flexGrow: 1, height: 46, borderRadius: radius.pill, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   exRowSs: { borderLeftWidth: 2, borderLeftColor: colors.accent, paddingLeft: 8, marginLeft: -8 },
