@@ -47,12 +47,16 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
 
-  const dismiss = async () => {
+  // Окно «У тебя есть незавершённая тренировка» появляется после загрузки (через очередь окон) — ждём его
+  // и закрываем тапом по фону: «Продолжить» увело бы с проверяемого экрана, а позднее окно перекрыло бы кнопки
+  const dismiss = async (wait = 2500) => {
     const d = page.getByText('У тебя есть незавершённая тренировка');
+    const hasActive = await page.evaluate(() => { try { return !!JSON.parse(localStorage.getItem('form.workouts') || '{}').state?.active; } catch { return false; } }).catch(() => false);
+    if (wait && hasActive) await d.waitFor({ timeout: wait }).catch(() => {});
     if (await d.count()) {
       await page.waitForTimeout(400);
-      await page.getByText('Продолжить', { exact: true }).first().click().catch(() => {});
-      await page.waitForTimeout(300);
+      await page.mouse.click(12, 12);
+      await d.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
     }
   };
   const logBox = async (pg = page) => {
@@ -115,6 +119,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       const el = page.getByRole('button', { name, exact: true }).first();
       if (!(await el.count())) continue;
       where = `${route} → «${name}»`;
+      await dismiss(0);
       try {
         await el.scrollIntoViewIfNeeded({ timeout: 1500 });
         await el.click({ timeout: 1500 });

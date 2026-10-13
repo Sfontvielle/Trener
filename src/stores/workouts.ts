@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Exercise, ExerciseSet, WorkoutDraft, WorkoutExercise, WorkoutSession } from '@/types';
 import { persistOptions } from '@/storage/persist';
 import { localizeWorkoutName } from '@/features/training/names';
+import { linkWithNext, normalizeSupersets, unlinkSuperset } from '@/features/training/workoutNav';
 import { uid } from '@/utils/id';
 import { cancelRestEnd, scheduleRestEnd } from '@/services/notifications';
 import { useProfile } from './profile';
@@ -36,6 +37,8 @@ interface WorkoutState {
   removeExercise: (weId: string) => void;
   replaceExercise: (weId: string, we: WorkoutExercise) => void;
   moveExercise: (weId: string, dir: -1 | 1) => void;
+  /** Суперсет: объединить со следующим упражнением или убрать из суперсета */
+  toggleSuperset: (weId: string) => void;
   /** Открыть упражнение по индексу (focus mode) */
   setCurrent: (index: number) => void;
   finish: (patch: Partial<WorkoutSession>) => WorkoutSession | null;
@@ -87,10 +90,11 @@ export const useWorkouts = create<WorkoutState>()(
       addExercise: (we) => get().patchActive((s) => ({ ...s, exercises: [...s.exercises, we] })),
       removeExercise: (weId) =>
         get().patchActive((s) => {
-          const exercises = s.exercises.filter((x) => x.id !== weId);
+          const exercises = normalizeSupersets(s.exercises.filter((x) => x.id !== weId));
           return { ...s, exercises, currentIndex: clampIndex(s.currentIndex ?? 0, exercises.length) };
         }),
-      replaceExercise: (weId, we) => get().patchActive((s) => ({ ...s, exercises: s.exercises.map((x) => (x.id === weId ? we : x)) })),
+      // Замена сохраняет место в суперсете
+      replaceExercise: (weId, we) => get().patchActive((s) => ({ ...s, exercises: s.exercises.map((x) => (x.id === weId ? { ...we, superset: x.superset } : x)) })),
       moveExercise: (weId, dir) =>
         get().patchActive((s) => {
           const i = s.exercises.findIndex((x) => x.id === weId);
@@ -98,7 +102,13 @@ export const useWorkouts = create<WorkoutState>()(
           if (i < 0 || j < 0 || j >= s.exercises.length) return s;
           const arr = [...s.exercises];
           [arr[i], arr[j]] = [arr[j], arr[i]];
-          return { ...s, exercises: arr };
+          return { ...s, exercises: normalizeSupersets(arr) };
+        }),
+      toggleSuperset: (weId) =>
+        get().patchActive((s) => {
+          const i = s.exercises.findIndex((x) => x.id === weId);
+          if (i < 0) return s;
+          return { ...s, exercises: s.exercises[i].superset ? unlinkSuperset(s.exercises, i) : linkWithNext(s.exercises, i) };
         }),
       setCurrent: (index) => get().patchActive((s) => ({ ...s, currentIndex: clampIndex(index, s.exercises.length) })),
       finish: (patch) => {

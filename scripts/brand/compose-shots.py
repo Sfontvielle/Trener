@@ -21,6 +21,7 @@ CAPTIONS = {
     '5-labs': ('Анализы: что изменилось', 'PDF или фото бланка, история показателей.\nБез диагнозов — с подсказкой, когда к врачу'),
     '6-nutrition': ('Питание подстраивается под тебя', 'Формула — только старт.\nДальше — твой фактический расход'),
     '7-progress': ('Видно, как ты меняешься', 'Тренды веса и силы, замеры\nи фото «месяц назад / сейчас»'),
+    '8-diary': ('Дневник без лишних движений', 'Подходы одной строкой, рекорды,\nсуперсеты и «Повторить»'),
 }
 
 
@@ -33,7 +34,10 @@ def compose(name, title, sub):
     img.paste(Image.alpha_composite(img.convert('RGBA'), glow.filter(ImageFilter.GaussianBlur(160))).convert('RGB'))
     d = ImageDraw.Draw(img)
     d.text((W / 2, 150), 'RYNJI', font=ImageFont.truetype(FONT_B, 44), fill=LIME, anchor='mm')
-    d.text((W / 2, 285), title, font=ImageFont.truetype(FONT_B, 82), fill=(245, 246, 240), anchor='mm')
+    size = 82
+    while ImageFont.truetype(FONT_B, size).getlength(title) > W - 120 and size > 40:
+        size -= 2
+    d.text((W / 2, 285), title, font=ImageFont.truetype(FONT_B, size), fill=(245, 246, 240), anchor='mm')
     d.multiline_text((W / 2, 440), sub, font=ImageFont.truetype(FONT, 46), fill=(170, 174, 165), anchor='mm', align='center', spacing=16)
     # экран в рамке со скруглением
     sw = 1050

@@ -16,7 +16,9 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { checkAllowed } from '@/features/training/engine/scoring';
 import { guardExercise, prefDislike, prefExclude, prefFavorite, prefInclude } from '@/features/training/prefActions';
 import { formatDayShort } from '@/utils/date';
-import { fmtWeight } from '@/utils/format';
+import { fmtNum, fmtSec, fmtWeight } from '@/utils/format';
+import { exerciseSeries, isTimed, setText } from '@/features/training/journal';
+import { SessionBars } from '@/components/charts';
 import { BRAND } from '@/config/brand';
 
 export default function ExerciseScreen() {
@@ -27,6 +29,7 @@ export default function ExerciseScreen() {
   const ex = getExercise(String(id), customs);
   const history = useMemo(() => (ex ? historyFor(ex.id, sessions, 8) : []), [ex, sessions]);
   const alts = useMemo(() => (ex && profile ? alternativesFor(ex.id, profile, customs).slice(0, 5) : []), [ex, profile, customs]);
+  const series = useMemo(() => (ex ? exerciseSeries(ex.id, sessions, customs, 12) : []), [ex, sessions, customs]);
 
   if (!ex) {
     return (
@@ -36,7 +39,10 @@ export default function ExerciseScreen() {
       </Screen>
     );
   }
-  const best = history.reduce((m, h) => Math.max(m, ...h.sets.map((s) => e1rm(s.weight, s.reps))), 0);
+  const timed = isTimed(ex);
+  const best = timed ? 0 : history.reduce((m, h) => Math.max(m, ...h.sets.map((s) => e1rm(s.weight, s.reps))), 0);
+  const weighted = !timed && series.some((p) => p.best.weight > 0);
+  const volUnit = timed ? 'сек' : weighted ? 'кг' : 'повт';
 
   return (
     <Screen>
@@ -51,7 +57,7 @@ export default function ExerciseScreen() {
         ))}
         <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: colors.surface2 }}>
           <T v="small" style={{ fontSize: 12, fontWeight: '700' }}>
-            {ex.defaultReps[0]}–{ex.defaultReps[1]} {ex.pattern === 'core' || ex.pattern === 'carry' ? (ex.defaultReps[1] >= 30 ? 'сек/повт' : 'повт') : 'повт'}
+            {timed ? `${fmtSec(ex.defaultReps[0])}–${fmtSec(ex.defaultReps[1])}` : `${ex.defaultReps[0]}–${ex.defaultReps[1]} повт`}
           </T>
         </View>
       </View>
@@ -62,6 +68,20 @@ export default function ExerciseScreen() {
       <SectionTitle title="Твоя история" />
       {history.length ? (
         <Card style={{ gap: 8 }}>
+          {series.length >= 2 ? (
+            <View style={{ gap: 6, marginBottom: 6 }}>
+              <T v="caption">{timed ? 'Время за тренировку' : weighted ? 'Объём за тренировку, кг × повт' : 'Повторы за тренировку'}</T>
+              <SessionBars
+                points={series.map((p) => ({
+                  label: formatDayShort(p.date),
+                  value: p.volume,
+                  valueText: timed ? fmtSec(p.volume) : `${fmtNum(p.volume)} ${volUnit}`,
+                  detail: `лучший ${setText(p.best, { timed })}`,
+                  pr: p.pr,
+                }))}
+              />
+            </View>
+          ) : null}
           {best > 0 ? (
             <T v="small">
               Лучший расчётный 1ПМ: <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>{fmtWeight(Math.round(best))} кг</T>
@@ -73,7 +93,7 @@ export default function ExerciseScreen() {
                 {formatDayShort(h.date)}
               </T>
               <T v="body" style={{ flex: 1, fontSize: 14 }}>
-                {h.sets.map((s) => (s.weight ? `${fmtWeight(s.weight)}×${s.reps}` : `${s.reps}`)).join('  ·  ')}
+                {h.sets.map((s) => setText(s, { timed })).join(', ')}
               </T>
             </View>
           ))}

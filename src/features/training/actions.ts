@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import type { WorkoutDraft, WorkoutTemplate } from '@/types';
+import type { WorkoutDraft, WorkoutSession, WorkoutTemplate } from '@/types';
 import { useWorkouts } from '@/stores/workouts';
 import { usePlan } from '@/stores/plan';
 import { useCheckins } from '@/stores/checkins';
@@ -17,6 +17,7 @@ import { haptic } from '@/services/haptics';
 import { ensurePermission } from '@/services/notifications';
 import { healthTraining } from '@/features/profile/health';
 import { noIncreaseReason } from '@/features/health/current';
+import { repeatPlanned } from './journal';
 
 /** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
 function askRestPermission() {
@@ -83,6 +84,16 @@ export function startDraft(draft: WorkoutDraft) {
     askRestPermission();
     router.replace('/workout/active');
   });
+}
+
+/**
+ * «Повторить» прошлую тренировку: те же упражнения, подходы, диапазоны и суперсеты.
+ * Веса — по прогрессии тренера от этой же тренировки (не копия, а следующий шаг).
+ */
+export function repeatSession(s: WorkoutSession) {
+  const planned = repeatPlanned(s);
+  if (!planned.length) return;
+  startDraft({ id: uid('d_'), name: s.name, focus: s.focus, source: 'custom', exercises: planned, createdAt: Date.now() });
 }
 
 /** Тренировка из выбранных упражнений (от тренера или «Тренировать сейчас» на карточке упражнения) */

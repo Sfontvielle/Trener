@@ -9,6 +9,7 @@ import { TrainingHub } from '@/features/training/TrainingHub';
 import { useUi } from '@/stores/ui';
 import { useWorkouts } from '@/stores/workouts';
 import { haptic } from '@/services/haptics';
+import { GlassSurface } from '@/components/Glass';
 
 const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName }> = {
   index: { label: 'Сегодня', icon: 'home-outline', iconActive: 'home' },
@@ -49,7 +50,8 @@ function TabBar({ state, navigation }: any) {
     );
   };
   return (
-    <View style={[styles.bar, { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]}>
+    // iOS 26 — «жидкое стекло», иначе полупрозрачная панель в цветах темы
+    <GlassSurface style={[styles.bar, { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]} fallback={colors.tabBar} testID="tab-bar">
       {routes.slice(0, 2).map((r, i) => item(r, i))}
       <View style={styles.centerWrap}>
         <Pressable
@@ -66,7 +68,7 @@ function TabBar({ state, navigation }: any) {
         </Pressable>
       </View>
       {routes.slice(2).map((r, i) => item(r, i + 2))}
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -91,7 +93,6 @@ const styles = themed({
     right: 0,
     bottom: 0,
     flexDirection: 'row',
-    backgroundColor: colors.tabBar,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderStrong,
   },

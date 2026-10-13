@@ -24,6 +24,7 @@ import { uid } from '@/utils/id';
 import { keyHit, norm } from './text';
 import { formatHours } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { scaleSets } from '@/features/training/scale';
 import type { CoachToday } from '../decisions/today';
 import { CONFIDENCE_LABEL, type Decision } from '../decisions/types';
 
@@ -150,10 +151,11 @@ function todayAnswer(c: LocalCtx): LocalReply {
   if (t.kind === 'workout' && t.template) {
     out.push(`**Сегодня — ${t.template.name}** (${t.template.focus.toLowerCase()}): ~${t.estMinutes} мин, ${t.totalSets} рабочих подходов${t.mode !== 'normal' ? `, режим «${MODE_LABEL[t.mode].toLowerCase()}»` : ''}.`);
     if (t.reason) out.push(t.reason);
+    const counts = scaleSets(t.template.exercises.map((pe) => pe.sets), t.volumeFactor);
     const lines = t.template.exercises.slice(0, 9).map((pe, i) => {
       const ex = getExercise(pe.exerciseId, c.customs);
       if (!ex) return '';
-      const sets = Math.max(1, Math.round(pe.sets * t.volumeFactor));
+      const sets = counts[i];
       const w = pe.targetWeight ? `${fmtWeight(pe.targetWeight)} кг` : nextTarget(ex, c, pe.repMin, pe.repMax, sets).text;
       return `${i + 1}. ${ex.name} — ${sets}×${pe.repMin}–${pe.repMax}, ${w}`;
     });

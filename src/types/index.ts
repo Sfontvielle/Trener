@@ -267,6 +267,8 @@ export interface PlannedExercise {
   targetRir: number;
   restSec: number;
   note?: string;
+  /** Суперсет: подряд идущие упражнения с одинаковым ключом выполняются по кругу, отдых — после круга */
+  superset?: string;
   /** Слот программы (для преемственности упражнений при перестройке плана) */
   slot?: string;
   /** Почему столько подходов / почему это упражнение — для UX «Почему?» */
@@ -481,6 +483,8 @@ export interface Exercise {
   /** Папка в free-exercise-db (фото фаз движения) */
   media?: string;
   custom?: boolean;
+  /** 'time' — подход измеряется временем: поле reps = секунды (планка, прогулка фермера) */
+  metric?: 'time';
 }
 
 // ─── Workouts ───────────────────────────────────────────────────────────────
@@ -524,6 +528,8 @@ export interface WorkoutExercise {
   recommendation?: Recommendation;
   note?: string;
   why?: string;
+  /** Суперсет: см. PlannedExercise.superset */
+  superset?: string;
 }
 
 export type WorkoutSource = 'plan' | 'generated' | 'custom' | 'quick';

@@ -447,7 +447,10 @@ const check = async (name, fn) => {
     assert.match(t, /Активные калории/i);
     assert.match(t, /как ощущалась тренировка\?/i);
     assert.ok(!/\bRPE\b|Тоннаж/.test(t), 'нет RPE и «Тоннажа»');
-    await page.getByText('Нормально', { exact: true }).click();
+    // Кнопки ощущения — со смайлом; для VoiceOver — просто «Нормально»
+    await page.getByLabel('Нормально', { exact: true }).click();
+    await page.waitForTimeout(300);
+    assert.match(await page.evaluate(() => document.body.innerText), /🙂 Нормально/);
     await shot('summary');
   });
 
@@ -932,6 +935,183 @@ const check = async (name, fn) => {
     await page.getByLabel(/^Сбалансированный/).click();
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(400);
+  });
+
+  // ─── Дневник, суперсеты, упражнения на время (по мотивам Fitsession / YouCan) ───
+  const isoLocal = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  const newWorkout = async () => {
+    // «Есть незавершённая тренировка» → начать новую
+    const c = page.getByText('Начать новую', { exact: true });
+    await c.waitFor({ timeout: 1500 }).catch(() => {});
+    if (await c.count()) await c.last().click();
+    await page.waitForTimeout(1500);
+  };
+  const activeState = () => page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.active);
+
+  await check('46. Дневник: итоги недели плашками, лента по неделям со смайлом и заметкой → подробности → «Повторить»', async () => {
+    await page.evaluate((iso) => {
+      const raw = JSON.parse(localStorage.getItem('form.workouts'));
+      const st = (w, r, extra = {}) => ({ id: Math.random().toString(36).slice(2), weight: w, reps: r, done: true, ...extra });
+      const t0 = Date.parse(`${iso}T18:00:00`);
+      raw.state.sessions = raw.state.sessions.filter((x) => x.id !== 'e2e_ss');
+      raw.state.sessions.push({ id: 'e2e_ss', date: iso, name: 'Грудь и спина', focus: 'суперсеты', source: 'custom', startedAt: t0, finishedAt: t0 + 52 * 60000, volumeFactor: 1, status: 'completed', sessionRpe: 7, notes: 'Отличная тренировка!', exercises: [
+        { id: 'e1', exerciseId: 'bench_press', plannedSets: 3, repMin: 6, repMax: 10, targetRir: 2, restSec: 120, superset: 'ss0', sets: [st(40, 8, { warmup: true }), st(80, 10), st(85, 8), st(85, 8)] },
+        { id: 'e2', exerciseId: 'barbell_row', plannedSets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 90, superset: 'ss0', sets: [st(70, 10), st(70, 10), st(70, 9)] },
+        { id: 'e3', exerciseId: 'plank', plannedSets: 2, repMin: 30, repMax: 60, targetRir: 2, restSec: 60, sets: [st(0, 45), st(0, 50)] },
+      ] });
+      localStorage.setItem('form.workouts', JSON.stringify(raw));
+    }, isoLocal(new Date(Date.now() - 86400000)));
+    await page.goto(`${URL}/training?seg=history`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1800);
+    await dismiss();
+    const w = await page.getByTestId('journal-week').innerText();
+    assert.match(w, /На этой неделе/);
+    assert.match(w, /\d+ трениров/);
+    assert.match(w, /\d+ рекорд/);
+    assert.match(w, /\d+ мин/);
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /Эта неделя|Прошлая неделя/i);
+    assert.match(t, /«Отличная тренировка!»/);
+    assert.match(t, /🙂/);
+    await shot('diary');
+    await page.getByLabel(/^Грудь и спина, (Вчера|Сегодня)/).first().click();
+    await page.waitForTimeout(1500);
+    const d = await page.evaluate(() => document.body.innerText);
+    assert.match(d, /80 кг × 10, 85 кг × 8, 85 кг × 8/, 'подходы одной строкой, без разминки');
+    assert.match(d, /0:45, 0:50/, 'планка — время');
+    assert.match(d, /A1[\s\S]*A2/, 'суперсет помечен');
+    assert.match(d, /🙂 Нормально/);
+    await shot('session-detail');
+    await page.getByText('Повторить', { exact: true }).click();
+    await newWorkout();
+    assert.match(page.url(), /workout\/active/);
+    const a = await activeState();
+    assert.deepEqual(a.exercises.map((x) => x.exerciseId), ['bench_press', 'barbell_row', 'plank']);
+    assert.deepEqual(a.exercises.map((x) => x.sets.length), [3, 3, 2], 'столько же рабочих подходов');
+    assert.ok(a.exercises[0].superset && a.exercises[0].superset === a.exercises[1].superset, 'суперсет сохранён');
+    assert.ok(await page.getByTestId('superset-chip').isVisible(), 'на экране — «Суперсет A1»');
+  });
+
+  await check('47. Суперсет: подход A → сразу B без отдыха → отдых → снова A; меню «Убрать / Суперсет со следующим»', async () => {
+    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 1 из 3/);
+    await page.getByText(/^Завершить подход 1$/).click();
+    await page.waitForTimeout(1000);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 2 из 3/, 'после A1 — сразу B');
+    assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'без отдыха между участниками');
+    await page.getByText(/^Завершить подход 1$/).click();
+    await page.waitForTimeout(1000);
+    assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'после круга — отдых');
+    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 1 из 3/, 'и снова A');
+    assert.match(await page.evaluate(() => document.body.innerText), /Следующий: Жим штанги лёжа/i);
+    await page.getByLabel('Пропустить отдых').click();
+    await page.waitForTimeout(400);
+    await page.getByLabel('Действия с упражнением').click();
+    await page.waitForTimeout(700);
+    await page.getByText('Убрать из суперсета', { exact: true }).click();
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByTestId('superset-chip').count(), 0, 'суперсет распался');
+    await page.getByLabel('Действия с упражнением').click();
+    await page.waitForTimeout(700);
+    await page.getByText(/^Суперсет со следующим: Тяга штанги в наклоне$/).click();
+    await page.waitForTimeout(900);
+    assert.ok(await page.getByTestId('superset-chip').isVisible(), 'снова суперсет');
+  });
+
+  await check('48. Планка — подход на время: «Старт» → таймер → «Стоп» записывает секунды; запас повторов не спрашивается', async () => {
+    await page.getByLabel('Список упражнений', { exact: true }).click();
+    await page.waitForTimeout(700);
+    await page.getByLabel(/^Планка, /).click();
+    await page.waitForTimeout(900);
+    const skip = page.getByLabel('Пропустить отдых');
+    if (await skip.count()) await skip.click();
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /СЕК|Сек/);
+    assert.match(t, /Свой вес × \d:\d\d–\d:\d\d/, 'рекомендация в минутах:секундах');
+    await page.getByText(/^Старт · \d:\d\d$/).click();
+    await page.waitForTimeout(400);
+    assert.ok(await page.getByTestId('hold-timer').isVisible(), 'таймер удержания');
+    await page.waitForTimeout(2600);
+    await page.getByLabel('Стоп — записать время').click();
+    await page.waitForTimeout(800);
+    const a = await activeState();
+    const s0 = a.exercises[2].sets[0];
+    assert.ok(s0.done && s0.reps >= 2 && s0.reps <= 6, `записано ${s0.reps} с`);
+    assert.ok(!/Сколько повторений осталось в запасе/.test(await page.evaluate(() => document.body.innerText)), 'RIR у планки не спрашиваем');
+    await shot('plank');
+  });
+
+  await check('49. Конструктор: «Объединить в суперсет» → A1/A2 → тренировка начинается с суперсетом', async () => {
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('form.workouts'));
+      raw.state.draft = { id: 'd_e2e', name: 'Руки', focus: '', source: 'custom', createdAt: Date.now(), exercises: [
+        { exerciseId: 'barbell_curl', sets: 2, repMin: 8, repMax: 12, targetRir: 1, restSec: 75 },
+        { exerciseId: 'triceps_pushdown', sets: 2, repMin: 10, repMax: 15, targetRir: 1, restSec: 75 },
+        { exerciseId: 'plank', sets: 2, repMin: 30, repMax: 60, targetRir: 2, restSec: 60 },
+      ] };
+      localStorage.setItem('form.workouts', JSON.stringify(raw));
+    });
+    await page.goto(`${URL}/workout/builder`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    assert.match(await page.evaluate(() => document.body.innerText), /2 × 0:30–1:00/, 'планка в конструкторе — секунды');
+    await page.getByLabel('Суперсет со следующим: Подъём штанги на бицепс').click();
+    await page.waitForTimeout(500);
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /A1[\s\S]*A2/);
+    assert.ok(await page.getByLabel('Разъединить суперсет: Подъём штанги на бицепс').isVisible());
+    await page.getByText('Начать тренировку', { exact: true }).click();
+    await newWorkout();
+    const a = await activeState();
+    assert.equal(a.name, 'Руки');
+    assert.ok(a.exercises[0].superset && a.exercises[0].superset === a.exercises[1].superset && !a.exercises[2].superset);
+    assert.ok(await page.getByTestId('superset-chip').isVisible());
+  });
+
+  await check('50. Экспорт тренировок в CSV: заголовок, строка на подход, планка — в секундах', async () => {
+    await page.goto(`${URL}/data`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 8000 }), page.getByText('Экспорт в CSV', { exact: true }).click()]);
+    assert.match(dl.suggestedFilename(), /^rynji-trenirovki-\d{4}-\d{2}-\d{2}\.csv$/);
+    const csv = require('node:fs').readFileSync(await dl.path(), 'utf8');
+    const lines = csv.replace(/^\uFEFF/, '').trim().split(/\r\n/);
+    assert.match(lines[0], /^Дата;Начало;Тренировка;/);
+    assert.ok(lines.length > 20, `строк: ${lines.length}`);
+    assert.ok(lines.some((l) => /;Планка;;1;;;;45;/.test(l)), 'планка: секунды в своей колонке');
+    assert.ok(lines.some((l) => /;Жим штанги лёжа;A1;/.test(l)), 'суперсет в таблице');
+  });
+
+  await check('51. Карточка упражнения: объём по тренировкам с рекордами, тап по столбику — дата и лучший подход', async () => {
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const bars = page.getByTestId('session-bars');
+    await bars.scrollIntoViewIfNeeded();
+    const before = await bars.innerText();
+    assert.match(before, /кг/);
+    assert.match(before, /лучший \d+(,\d)? кг × \d+/);
+    const first = page.getByLabel(/^\d+ [а-я]{3}: [\d\s ]+ кг/).first();
+    await first.click();
+    await page.waitForTimeout(300);
+    const after = await bars.innerText();
+    assert.notEqual(after.split('\n')[0], before.split('\n')[0], 'показан выбранный день');
+    await shot('exercise-bars');
+  });
+
+  await check('52. Сегодня: плашки тренировки, прогресс недели и целевые мышцы в процентах; в деталях — карта мышц', async () => {
+    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const det = page.getByText('Детали', { exact: true });
+    if (!(await det.count())) return; // день отдыха — карточки тренировки нет
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /Неделя\s*\n?\s*\d+ из \d+/);
+    assert.match(await page.getByTestId('target-muscles').first().innerText(), /\d+%/);
+    await det.first().click();
+    await page.waitForTimeout(1500);
+    const tm = await page.getByTestId('target-muscles').innerText();
+    assert.match(tm, /Целевые мышцы/i);
+    const pcts = [...tm.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
+    assert.ok(pcts.length >= 2 && pcts.every((x, i) => i === 0 || x <= pcts[i - 1]), `по убыванию: ${pcts}`);
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

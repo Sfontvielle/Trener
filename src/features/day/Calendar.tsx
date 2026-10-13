@@ -5,7 +5,8 @@ import { Icon, T } from '@/components/ui';
 import { colors, radius, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
 import { addDays, parseISODate, startOfWeek, toISODate, WEEKDAYS_SHORT } from '@/utils/date';
-import { dayMarkers, type DaySources } from './summary';
+import { dayMarkers, type DayMarker, type DaySources } from './summary';
+import { KIND_COLOR, KIND_LABEL, type WorkoutKind } from '@/features/training/journal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -129,7 +130,10 @@ export function TrainingCalendar({ today: d, src, onSelect, initiallyOpen = fals
             </View>
           ))}
           <View style={styles.legend}>
-            <Legend color={colors.accent} label="тренировка" />
+            {kindsIn(markers).map((k) => (
+              <Legend key={k} color={colors[KIND_COLOR[k]]} label={KIND_LABEL[k].toLowerCase()} />
+            ))}
+            {!kindsIn(markers).length ? <Legend color={colors.accent} label="тренировка" /> : null}
             <Legend color={colors.warning} label="рекорд" star />
             <Legend color={colors.surface3} label="отдых" />
           </View>
@@ -145,14 +149,20 @@ export function TrainingCalendar({ today: d, src, onSelect, initiallyOpen = fals
   );
 }
 
-function DayCell({ date, today: t, m, label, dim, compact, onPress }: { date: ISODate; today: ISODate; m?: { trained: boolean; record: boolean; rest: boolean; data: boolean }; label?: string; dim?: boolean; compact?: boolean; onPress: () => void }) {
+/** Типы тренировок, которые видны в сетке (для легенды) */
+function kindsIn(markers: Record<ISODate, DayMarker>): WorkoutKind[] {
+  return [...new Set(Object.values(markers).map((m) => m.kind).filter((k): k is WorkoutKind => !!k))];
+}
+
+function DayCell({ date, today: t, m, label, dim, compact, onPress }: { date: ISODate; today: ISODate; m?: DayMarker; label?: string; dim?: boolean; compact?: boolean; onPress: () => void }) {
   const isToday = date === t;
   const num = parseISODate(date).getDate();
   const trained = !!m?.trained;
+  const fill = m?.kind ? colors[KIND_COLOR[m.kind]] : colors.accent;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${num}${isToday ? ', сегодня' : ''}${trained ? ', тренировка' : m?.rest ? ', отдых' : ''}${m?.record ? ', рекорд' : ''}`}
+      accessibilityLabel={`${num}${isToday ? ', сегодня' : ''}${trained ? `, тренировка${m?.kind ? `: ${KIND_LABEL[m.kind].toLowerCase()}` : ''}` : m?.rest ? ', отдых' : ''}${m?.record ? ', рекорд' : ''}`}
       onPress={() => {
         haptic.tap();
         onPress();
@@ -165,7 +175,7 @@ function DayCell({ date, today: t, m, label, dim, compact, onPress }: { date: IS
           {label}
         </T>
       ) : null}
-      <View style={[styles.num, trained ? { backgroundColor: colors.accent } : m?.rest ? { backgroundColor: colors.surface2 } : null]}>
+      <View style={[styles.num, trained ? { backgroundColor: fill } : m?.rest ? { backgroundColor: colors.surface2 } : null]}>
         <T v="body" style={{ fontSize: 14, fontWeight: isToday || trained ? '800' : '600', fontVariant: ['tabular-nums'] }} color={trained ? colors.onAccent : isToday ? colors.accent : colors.text}>
           {num}
         </T>
@@ -195,5 +205,5 @@ const styles = themed({
   num: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted },
   nav: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  legend: { flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 4 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 14, rowGap: 4, marginTop: 4 },
 });

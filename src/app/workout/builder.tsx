@@ -19,6 +19,10 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { analyzeWorkout, suggestOrder } from '@/features/training/engine/order';
 import { weeklyTargets } from '@/features/training/engine/volume';
 import { startDraft } from '@/features/training/actions';
+import { normalizeSupersets, supersetLabels, toggleLinkAfter } from '@/features/training/workoutNav';
+import { isTimed } from '@/features/training/journal';
+import { fmtSec } from '@/utils/format';
+import { haptic } from '@/services/haptics';
 
 /**
  * Конструктор тренировки. Два режима:
@@ -44,10 +48,13 @@ export default function Builder() {
   const isTemplate = !!template;
   const draftExercises = draft?.exercises;
   const exercises = useMemo(() => (isTemplate ? tplExercises : draftExercises ?? []), [isTemplate, tplExercises, draftExercises]);
-  const setExercises = (next: PlannedExercise[]) => {
+  // Суперсеты держатся только у соседних упражнений: после любой перестановки ключи нормализуются
+  const setExercises = (list: PlannedExercise[]) => {
+    const next = normalizeSupersets(list);
     if (isTemplate) setTplExercises(next);
     else if (draft) setDraft({ ...draft, exercises: next });
   };
+  const ssLabels = supersetLabels(exercises);
   const minutes = useMemo(() => estimateMinutes(exercises, customs), [exercises, customs]);
   const groups = useMemo(() => {
     const m = new Map<string, number>();
@@ -197,12 +204,16 @@ export default function Builder() {
         {exercises.map((pe, i) => {
           const ex = getExercise(pe.exerciseId, customs);
           const open = expanded === i;
+          const timed = isTimed(ex);
+          const range = timed ? `${fmtSec(pe.repMin)}–${fmtSec(pe.repMax)}` : `${pe.repMin}–${pe.repMax}`;
+          const linked = !!pe.superset && pe.superset === exercises[i + 1]?.superset;
           return (
-            <View key={`${pe.exerciseId}-${i}`} style={styles.item}>
+            <React.Fragment key={`${pe.exerciseId}-${i}`}>
+            <View style={[styles.item, !!ssLabels[i] && { borderColor: colors.accentLine }]}>
               <Pressable style={styles.itemHead} onPress={() => setExpanded(open ? null : i)} accessibilityRole="button" accessibilityLabel={`${ex?.name}, изменить`}>
-                <View style={styles.idx}>
-                  <T v="small" style={{ fontWeight: '800' }}>
-                    {i + 1}
+                <View style={[styles.idx, !!ssLabels[i] && { backgroundColor: colors.accent }]}>
+                  <T v="small" style={{ fontWeight: '800' }} color={ssLabels[i] ? colors.onAccent : colors.text}>
+                    {ssLabels[i] ?? i + 1}
                   </T>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -210,7 +221,8 @@ export default function Builder() {
                     {ex?.name ?? pe.exerciseId}
                   </T>
                   <T v="small">
-                    {pe.sets} × {pe.repMin}–{pe.repMax} · RIR {pe.targetRir}
+                    {pe.sets} × {range}
+                    {timed ? '' : ` · RIR ${pe.targetRir}`}
                   </T>
                 </View>
                 <Icon name={open ? 'chevron-up' : 'create-outline'} size={18} color={colors.muted} />
@@ -227,8 +239,8 @@ export default function Builder() {
                     <NumberStepper compact label="RIR" value={pe.targetRir} onChange={(v) => patch(i, { targetRir: Math.round(v) })} min={0} max={5} style={{ flex: 1 }} />
                   </View>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <NumberStepper compact label="Повт. от" value={pe.repMin} onChange={(v) => patch(i, { repMin: Math.round(v), repMax: Math.max(pe.repMax, Math.round(v)) })} min={1} max={60} style={{ flex: 1 }} />
-                    <NumberStepper compact label="до" value={pe.repMax} onChange={(v) => patch(i, { repMax: Math.round(v), repMin: Math.min(pe.repMin, Math.round(v)) })} min={1} max={60} style={{ flex: 1 }} />
+                    <NumberStepper compact label={timed ? 'Сек от' : 'Повт. от'} value={pe.repMin} onChange={(v) => patch(i, { repMin: Math.round(v), repMax: Math.max(pe.repMax, Math.round(v)) })} min={timed ? 5 : 1} max={timed ? 600 : 60} step={timed ? 5 : 1} style={{ flex: 1 }} />
+                    <NumberStepper compact label="до" value={pe.repMax} onChange={(v) => patch(i, { repMax: Math.round(v), repMin: Math.min(pe.repMin, Math.round(v)) })} min={timed ? 5 : 1} max={timed ? 600 : 60} step={timed ? 5 : 1} style={{ flex: 1 }} />
                   </View>
                   <NumberStepper compact label="Отдых, сек" value={pe.restSec} onChange={(v) => patch(i, { restSec: Math.round(v) })} step={15} min={15} max={600} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -241,6 +253,21 @@ export default function Builder() {
                 </View>
               ) : null}
             </View>
+            {i < exercises.length - 1 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={linked ? `Разъединить суперсет: ${ex?.name ?? ''}` : `Суперсет со следующим: ${ex?.name ?? ''}`}
+                onPress={() => { haptic.tap(); setExercises(toggleLinkAfter(exercises, i)); }}
+                hitSlop={4}
+                style={[styles.link, linked && styles.linkOn]}
+              >
+                <Icon name={linked ? 'link' : 'link-outline'} size={14} color={linked ? colors.onAccent : colors.muted} />
+                <T v="small" style={{ fontSize: 11, fontWeight: '800' }} color={linked ? colors.onAccent : colors.muted}>
+                  {linked ? 'Суперсет' : 'Объединить в суперсет'}
+                </T>
+              </Pressable>
+            ) : null}
+            </React.Fragment>
           );
         })}
       </View>
@@ -263,4 +290,6 @@ const styles = themed({
   suggest: { gap: 8, padding: space.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, marginBottom: space.md },
   issue: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: 8 },
   idx: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', paddingHorizontal: 10, height: 26, marginVertical: -4, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
+  linkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
 });

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Platform, StyleProp, View, ViewStyle } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleProp, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { colors } from '@/theme';
-import { T } from './ui';
+import { Icon, T } from './ui';
 
 /** Кольцо прогресса с плавной анимацией заполнения (анимируем число, а не SVG-компонент — работает и на web) */
 export function Ring({
@@ -205,6 +205,61 @@ export function MiniBars({ values, max, height = 48, highlightLast = true, color
           }}
         />
       ))}
+    </View>
+  );
+}
+
+/**
+ * Столбики по тренировкам (объём за тренировку) с отметкой рекордов — как в «Результатах» Fitsession.
+ * Тап по столбику — дата и подробности над графиком (по умолчанию — последняя тренировка).
+ */
+export function SessionBars({ points, height = 110 }: { points: { label: string; value: number; valueText: string; detail?: string; pr?: boolean }[]; height?: number }) {
+  const [sel, setSel] = useState<number | null>(null);
+  if (!points.length) return null;
+  const i = sel ?? points.length - 1;
+  const p = points[i];
+  const max = Math.max(1, ...points.map((x) => x.value));
+  return (
+    <View style={{ gap: 6 }} testID="session-bars">
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }} accessibilityLiveRegion="polite">
+        <T v="num" style={{ fontSize: 20 }}>
+          {p.valueText}
+        </T>
+        <T v="small" style={{ fontSize: 12 }}>
+          {p.label}
+          {p.detail ? ` · ${p.detail}` : ''}
+        </T>
+        {p.pr ? (
+          <T v="small" color={colors.warning} style={{ fontSize: 12, fontWeight: '800' }}>
+            🏆 рекорд
+          </T>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: height + 14 }}>
+        {points.map((x, k) => (
+          <Pressable
+            key={k}
+            accessibilityRole="button"
+            accessibilityLabel={`${x.label}: ${x.valueText}${x.pr ? ', рекорд' : ''}`}
+            onPress={() => setSel(k)}
+            hitSlop={{ top: 8, bottom: 8 }}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: height + 14 }}
+          >
+            {x.pr ? <Icon name="trophy" size={10} color={colors.warning} /> : null}
+            <View style={{ width: '100%', height: Math.max(3, (x.value / max) * height), borderRadius: 3, backgroundColor: x.pr ? colors.warning : k === i ? colors.accent : colors.barSoft, opacity: k === i || x.pr ? 1 : 0.85, borderWidth: k === i ? 1.5 : 0, borderColor: colors.text }} />
+          </Pressable>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <T v="small" style={{ fontSize: 10 }}>
+          {points[0].label}
+        </T>
+        {points.length > 1 ? (
+          <T v="small" style={{ fontSize: 10 }}>
+            {points[points.length - 1].label}
+          </T>
+        ) : null}
+      </View>
     </View>
   );
 }

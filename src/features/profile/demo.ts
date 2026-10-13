@@ -89,7 +89,9 @@ export function seedDemoData(days = 28) {
     const menu = ['local:oats_dry', 'local:cottage_5', 'local:chicken_breast', 'local:rice_cooked', 'local:buckwheat_cooked', 'local:egg', 'local:banana', 'local:greek_yogurt', 'local:olive_oil', 'local:veg_mix'];
     const entries: FoodEntry[] = [];
     for (let i = days; i >= 1; i--) {
-      if (rand() < 0.2) continue;
+      // Вчера заполнено всегда — чтобы в демо были видны «Как вчера» и копирование дня
+      const skip = rand() < 0.2;
+      if (skip && i > 1) continue;
       const date = addDays(d0, -i);
       const k = 0.88 + rand() * 0.24;
       const plan: [string, number][] = [['local:oats_dry', 80], ['local:cottage_5', 180], ['local:chicken_breast', 220], ['local:rice_cooked', 250], ['local:egg', 110], ['local:banana', 120], ['local:olive_oil', 15], ['local:veg_mix', 200], ['local:buckwheat_cooked', 200]];

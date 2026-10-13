@@ -1,6 +1,6 @@
 import type { Exercise, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
-import { historyFor, isPersonalRecord, workingSets } from './progression';
+import { historyFor, isPersonalRecord, PR_HISTORY, workingSets } from './progression';
 import { sessionVolume } from './analytics';
 
 /**
@@ -33,7 +33,7 @@ export function workoutDebrief(s: WorkoutSession, all: WorkoutSession[], customs
     const ex = getExercise(we.exerciseId, customs);
     const ws = workingSets(we.sets);
     if (!ex || !ws.length) continue;
-    const hist = historyFor(ex.id, before, 6);
+    const hist = historyFor(ex.id, before, PR_HISTORY);
     const best = ws.filter((x) => isPersonalRecord(ex, x, hist)).sort((a, b) => b.weight - a.weight)[0];
     if (best) prs.push(`${ex.name} ${best.weight ? `${kg(best.weight)} × ${best.reps}` : `${best.reps} повт.`}`);
     const lastTop = hist[0] ? Math.max(...hist[0].sets.map((x) => x.weight)) : 0;

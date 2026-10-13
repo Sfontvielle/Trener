@@ -18,17 +18,14 @@ import { historyFor, workingSets } from '@/features/training/progression';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { EnergySheet } from '@/features/training/EnergySheet';
 import { formatDayLong } from '@/utils/date';
-import { fmtNum, fmtWeight } from '@/utils/format';
+import { fmtNum, fmtSec, fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
+import { feelIndex, isTimed, KIND_COLOR, KIND_LABEL, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
+import { supersetLabels } from '@/features/training/workoutNav';
+import { repeatSession } from '@/features/training/actions';
+import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
 
-/** Ответ «Как ощущалась тренировка?» → внутренняя шкала тяжести для адаптации нагрузки */
-const SESSION_FEEL: { label: string; rpe: number }[] = [
-  { label: 'Легко', rpe: 5 },
-  { label: 'Нормально', rpe: 7 },
-  { label: 'Тяжело', rpe: 8.5 },
-  { label: 'Очень тяжело', rpe: 10 },
-];
 
 export default function SessionDetail() {
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
@@ -77,7 +74,9 @@ export default function SessionDetail() {
   const planned = s.exercises.reduce((a, e) => a + e.plannedSets, 0);
   const doneEx = s.exercises.filter((we) => workingSets(we.sets).length > 0).length;
   const lifted = unit === 'lb' ? v.tonnage * 2.20462 : v.tonnage;
-  const feelIdx = s.sessionRpe !== undefined ? SESSION_FEEL.reduce((best, f, i) => (Math.abs(f.rpe - s.sessionRpe!) < Math.abs(SESSION_FEEL[best].rpe - s.sessionRpe!) ? i : best), 0) : -1;
+  const feelIdx = feelIndex(s.sessionRpe);
+  const kind = sessionKind(s, customs);
+  const labels = supersetLabels(s.exercises);
 
   return (
     <Screen keyboard>
@@ -102,6 +101,29 @@ export default function SessionDetail() {
         <T v="small" style={{ textAlign: 'center' }}>
           {debrief.prs.length ? `Новых рекордов: ${debrief.prs.length}` : debrief.volumeDeltaPct !== null ? `Объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}% к прошлой такой же` : 'Тренировка записана'}
         </T>
+        <View style={[styles.kind, { borderColor: colors[KIND_COLOR[kind]] }]}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors[KIND_COLOR[kind]] }} />
+          <T v="small" style={{ fontSize: 11, fontWeight: '800' }} color={colors.text}>
+            {KIND_LABEL[kind]}
+          </T>
+        </View>
+        {!fresh ? (
+          <Button
+            title="Повторить"
+            icon="repeat"
+            size="sm"
+            onPress={() => {
+              haptic.tap();
+              repeatSession(s);
+            }}
+            style={{ marginTop: 8, minWidth: 170 }}
+          />
+        ) : null}
+        {!fresh ? (
+          <T v="small" style={{ fontSize: 11, textAlign: 'center' }}>
+            Те же упражнения и подходы — веса подберёт тренер
+          </T>
+        ) : null}
       </View>
 
       <View style={styles.grid}>
@@ -177,6 +199,7 @@ export default function SessionDetail() {
             <Pressable
               key={f.label}
               accessibilityRole="button"
+              accessibilityLabel={f.label}
               accessibilityState={{ selected: feelIdx === i }}
               onPress={() => {
                 haptic.tap();
@@ -185,7 +208,7 @@ export default function SessionDetail() {
               style={[styles.feel, feelIdx === i && { backgroundColor: i === 3 ? colors.warning : colors.accent, borderColor: 'transparent' }]}
             >
               <T v="small" style={{ fontWeight: '800', fontSize: 12, textAlign: 'center' }} color={feelIdx === i ? colors.onAccent : colors.text} numberOfLines={1} adjustsFontSizeToFit>
-                {f.label}
+                {f.emoji} {f.label}
               </T>
             </Pressable>
           ))}
@@ -197,28 +220,35 @@ export default function SessionDetail() {
       </Card>
 
       <Card style={{ marginTop: space.md, paddingVertical: 6 }}>
+        {/* Как в дневнике: номер, упражнение, все подходы одной строкой; суперсет — общей линией слева */}
         {s.exercises.map((we, i) => {
           const ex = getExercise(we.exerciseId, customs);
           const ws = workingSets(we.sets);
           const kcal = energy.perExercise[we.exerciseId];
+          const timed = isTimed(ex);
+          const ss = labels[i];
           return (
             <View key={we.id}>
-              {i ? <Divider /> : null}
-              <View style={{ paddingVertical: 10, gap: 2 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <T v="body" style={{ fontWeight: '700', flex: 1 }}>
+              {i && !(ss && labels[i - 1] && ss[0] === labels[i - 1]![0]) ? <Divider /> : null}
+              <View style={[styles.exRow, ss && styles.exRowSs]} testID="session-exercise">
+                <T v="body" style={{ width: 26, fontWeight: '800' }} color={ss ? colors.accent : colors.textDim}>
+                  {ss ?? i + 1}
+                </T>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <T v="body" style={{ fontWeight: '700' }}>
                     {ex?.name ?? we.exerciseId}
+                  </T>
+                  <T v="small" color={ws.length ? colors.text : colors.textDim}>
+                    {ws.length ? setsLine(we.sets, { unit, timed }) : 'не выполнено'}
+                    {ws.length && ws.length < we.plannedSets ? `  (план ${we.plannedSets})` : ''}
                   </T>
                   {kcal ? (
                     <T v="small" style={{ fontSize: 11 }}>
-                      ≈{kcal} ккал
+                      ≈{kcal} ккал{timed && ws.length ? ` · всего ${fmtSec(ws.reduce((a, x) => a + x.reps, 0))}` : ''}
                     </T>
                   ) : null}
                 </View>
-                <T v="small">
-                  {ws.length ? ws.map((x) => `${x.weight ? `${fmtWeight(x.weight, unit)}×` : ''}${x.reps}${x.feel === 'max' ? '!' : ''}`).join('  ·  ') : 'не выполнено'}
-                  {ws.length < we.plannedSets ? `  (план ${we.plannedSets})` : ''}
-                </T>
+                {ex ? <ExerciseThumb ex={ex} size={44} /> : null}
               </View>
             </View>
           );
@@ -260,5 +290,8 @@ const styles = themed({
   hero: { alignItems: 'center', gap: 4, paddingVertical: space.lg, paddingHorizontal: space.md, borderRadius: radius.xl, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: space.md },
   stat: { flexGrow: 1, minWidth: '30%', padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  kind: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  exRowSs: { borderLeftWidth: 3, borderLeftColor: colors.accent, paddingLeft: 8, marginLeft: -8 },
   feel: { width: '48%', flexGrow: 1, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
 });
