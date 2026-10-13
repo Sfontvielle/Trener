@@ -13,7 +13,7 @@ import { useProfile } from '@/stores/profile';
 import { useCheckins } from '@/stores/checkins';
 import { useHealth } from '@/stores/health';
 import { getExercise, GROUP_LABEL } from '@/data/exercises';
-import { effectiveIncrement, historyFor, isPersonalRecord } from '@/features/training/progression';
+import { effectiveIncrement, historyFor, isPersonalRecord, PR_HISTORY } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
@@ -24,19 +24,22 @@ import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
 import { useBody } from '@/stores/body';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
-import { currentIndexOf, isExerciseDone, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress } from '@/features/training/workoutNav';
+import { afterSetTarget, currentIndexOf, isExerciseDone, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, supersetLabels, supersetMembers, workoutProgress } from '@/features/training/workoutNav';
+import { isTimed } from '@/features/training/journal';
+import { HoldTimer } from '@/features/training/HoldTimer';
 import { RestTimerBar } from '@/features/training/RestTimer';
 import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, prefFavorite } from '@/features/training/prefActions';
 import { warmupPlan } from '@/features/training/warmup';
 import { DEFAULT_GYM, equipmentStep, loadKind, plateLayout } from '@/features/training/equipment';
 import { autoregulate } from '@/features/training/autoreg';
 import { formatDuration, today } from '@/utils/date';
-import { fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
+import { fmtSec, fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
 import { prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
+import { GlassSurface } from '@/components/Glass';
 
 /** Обработчик свайпа текущего экрана тренировки (экран один — модульная переменная безопасна) */
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
@@ -70,6 +73,8 @@ export default function ActiveWorkout() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [energyOpen, setEnergyOpen] = useState(false);
   const [pr, setPr] = useState<{ text: string; n: number } | null>(null);
+  // Подход на время: идёт таймер удержания (планка и т. п.)
+  const [hold, setHold] = useState<{ weId: string; setId: string; startedAt: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [slide] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(1));
@@ -151,6 +156,24 @@ export default function ActiveWorkout() {
   // Во время отдыха нижняя зона — таймер (с «Пропустить»), после — снова главная кнопка
   const resting = !!rest && rest.endsAt + 1500 > now;
   const prevI = prevIndex(active, idx);
+  const ssLabels = supersetLabels(active.exercises);
+  const curEx = we ? getExercise(we.exerciseId, customs) : undefined;
+  const timed = isTimed(curEx);
+  const holding = !!hold && !!we && hold.weId === we.id && we.sets.some((x) => x.id === hold.setId && !x.done);
+  const onPrCb = (text: string) => setPr({ text, n: (pr?.n ?? 0) + 1 });
+  const complete = (w: WorkoutExercise, set: ExerciseSet, i: number) => completeSetFor({ we: w, set, index: i, unit, onPr: onPrCb, onNavigate: (j) => setTimeout(() => goTo(j, j > i ? 1 : -1), 260) });
+  const startHold = (weId: string, setId: string) => {
+    haptic.timerStart();
+    setHold(holdStart(weId, setId));
+  };
+  const stopHold = (sec: number) => {
+    if (!hold || !we) return;
+    const set = we.sets.find((x) => x.id === hold.setId);
+    setHold(null);
+    if (!set) return;
+    useWorkouts.getState().updateSet(we.id, set.id, { reps: sec });
+    complete(we, { ...set, reps: sec }, idx);
+  };
 
   const ctx = () => {
     const r = readinessFor(today(), useCheckins.getState().byDate, sessions, useHealth.getState().days);
@@ -227,14 +250,16 @@ export default function ActiveWorkout() {
       <View style={[styles.top, { paddingTop: insets.top + 6 }]}>
         <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
         <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setNavOpen(true)} accessibilityRole="button" accessibilityLabel="Все упражнения тренировки">
-          <T v="caption" numberOfLines={1} color={colors.textDim}>
+          <T v="caption" numberOfLines={1} color={ssLabels[idx] ? colors.accent : colors.textDim}>
+            {ssLabels[idx] ? 'Суперсет · ' : ''}
             {active.name}
           </T>
-          <T v="h3" style={{ fontVariant: ['tabular-nums'] }}>
-            {count ? `${idx + 1} из ${count}` : '—'}
+          {/* Время тренировки — крупно, как на секундомере */}
+          <T v="num" style={{ fontSize: 26, lineHeight: 30 }} testID="workout-elapsed">
+            <Elapsed startedAt={active.startedAt} />
           </T>
           <T v="small" style={{ fontSize: 11, fontVariant: ['tabular-nums'] }}>
-            <Elapsed startedAt={active.startedAt} />
+            {count ? `${idx + 1} из ${count}` : '—'}
             {energy && energy.kcal >= 5 ? ` · ${energy.source === 'health' ? '' : '≈ '}${energy.kcal} ккал` : ''}
           </T>
         </Pressable>
@@ -265,7 +290,14 @@ export default function ActiveWorkout() {
                 allDone={allDone}
                 onMenu={() => setMenuFor(we.id)}
                 onSwap={() => setSwapFor(we.id)}
-                onPr={(text) => setPr({ text, n: (pr?.n ?? 0) + 1 })}
+                onComplete={(set) => complete(we, set, idx)}
+                ssLabel={ssLabels[idx]}
+                ssNext={(() => {
+                  const m = supersetMembers(active.exercises, idx);
+                  if (m.length < 2) return undefined;
+                  const j = m[(m.indexOf(idx) + 1) % m.length];
+                  return `${ssLabels[j]} ${getExercise(active.exercises[j].exerciseId, customs)?.name ?? ''}`;
+                })()}
               />
             ) : (
               <EmptyState icon="add-circle-outline" title="Пока пусто" text="Добавь первое упражнение." action="Добавить упражнение" onAction={() => setPicker({ mode: 'add' })} />
@@ -278,10 +310,14 @@ export default function ActiveWorkout() {
         <View style={[styles.cta, { bottom: insets.bottom + 66 }]}>
           {allDone ? (
             <Button title="ЗАВЕРШИТЬ ТРЕНИРОВКУ" icon="flag" size="lg" onPress={askFinish} />
+          ) : holding && hold ? (
+            <HoldTimer startedAt={hold.startedAt} target={we.sets.find((x) => x.id === hold.setId)?.reps || we.repMax} onStop={stopHold} onCancel={() => setHold(null)} />
           ) : resting ? (
             <RestTimerBar inline />
+          ) : ctaSet && timed && !ctaSet.warmup ? (
+            <Button title={`Старт · ${fmtSec(ctaSet.reps || we.repMax)}`} icon="timer-outline" size="lg" onPress={() => startHold(we.id, ctaSet.id)} />
           ) : ctaSet ? (
-            <Button title={ctaSet.warmup ? 'Разминка — готово' : `Завершить подход ${we.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => completeSetFor({ we, set: ctaSet, index: idx, unit, onPr: (text) => setPr({ text, n: (pr?.n ?? 0) + 1 }) })} />
+            <Button title={ctaSet.warmup ? 'Разминка — готово' : `Завершить подход ${we.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1}`} icon="checkmark" size="lg" onPress={() => complete(we, ctaSet, idx)} />
           ) : nextI < 0 ? (
             <Button title="ЗАВЕРШИТЬ ТРЕНИРОВКУ" icon="flag" size="lg" onPress={askFinish} />
           ) : (
@@ -290,7 +326,7 @@ export default function ActiveWorkout() {
         </View>
       ) : null}
 
-      <View style={[styles.navBar, { paddingBottom: insets.bottom + 8 }]}>
+      <GlassSurface style={[styles.navBar, { paddingBottom: insets.bottom + 8 }]} fallback={colors.bg}>
         <Pressable accessibilityRole="button" accessibilityLabel="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} style={[styles.navBtn, prevI < 0 && { opacity: 0.35 }]}>
           <Icon name="chevron-back" size={20} />
           <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
@@ -309,12 +345,13 @@ export default function ActiveWorkout() {
           </T>
           <Icon name="chevron-forward" size={20} />
         </Pressable>
-      </View>
+      </GlassSurface>
 
       {!we ? <RestTimerBar bottom={insets.bottom + 74} /> : null}
       {pr ? <PrBanner key={pr.n} text={pr.text} top={insets.top + 70} /> : null}
 
       <WorkoutNavigator
+        labels={ssLabels}
         visible={navOpen}
         onClose={() => setNavOpen(false)}
         current={idx}
@@ -338,6 +375,19 @@ export default function ActiveWorkout() {
           <View style={{ gap: 8 }}>
             <MenuRow icon="information-circle-outline" label="Карточка упражнения и история" onPress={() => { const exId = menuWe.exerciseId; setMenuFor(null); afterModalClose(() => router.push({ pathname: '/exercise/[id]', params: { id: exId } })); }} />
             <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setPicker({ mode: 'swap', weId: id })); }} />
+            {menuWe.superset || active.exercises.indexOf(menuWe) < count - 1 ? (
+              <MenuRow
+                icon={menuWe.superset ? 'unlink-outline' : 'link-outline'}
+                label={menuWe.superset ? 'Убрать из суперсета' : `Суперсет со следующим: ${getExercise(active.exercises[active.exercises.indexOf(menuWe) + 1]?.exerciseId ?? '', customs)?.name ?? ''}`}
+                onPress={() => {
+                  const was = !!menuWe.superset;
+                  useWorkouts.getState().toggleSuperset(menuWe.id);
+                  haptic.tap();
+                  toast(was ? 'Убрано из суперсета' : 'Суперсет: подходы по очереди, отдых после круга', 'link');
+                  setMenuFor(null);
+                }}
+              />
+            ) : null}
             <MenuRow icon={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'star' : 'star-outline'} label={exerciseFlag(menuWe.exerciseId) === 'favorite' ? 'Убрать из избранного' : 'Добавить в избранное'} onPress={() => { toast(prefFavorite(menuWe.exerciseId), 'star'); setMenuFor(null); }} />
             <MenuRow icon="thumbs-down-outline" label={exerciseFlag(menuWe.exerciseId) === 'disliked' ? 'Снять «не нравится»' : 'Мне не нравится'} onPress={() => { toast(prefDislike(menuWe.exerciseId)); setMenuFor(null); }} />
             <MenuRow icon="medkit-outline" label="Дискомфорт при выполнении" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setPainFor(id)); }} />
@@ -425,7 +475,7 @@ export default function ActiveWorkout() {
  * Отметка подхода (из строки подхода или «липкой» кнопки). Сохраняется сразу — persist пишет на диск,
  * поэтому подход не теряется при сворачивании/закрытии приложения.
  */
-function completeSetFor({ we, set, index, unit, onPr }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void }) {
+function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void; onNavigate?: (i: number) => void }) {
   const st = useWorkouts.getState();
   const customs = st.customExercises;
   const ex = getExercise(we.exerciseId, customs);
@@ -435,10 +485,10 @@ function completeSetFor({ we, set, index, unit, onPr }: { we: WorkoutExercise; s
     return;
   }
   if (set.reps <= 0) {
-    toast('Укажи количество повторений', 'alert-circle');
+    toast(isTimed(ex) ? 'Укажи время в секундах' : 'Укажи количество повторений', 'alert-circle');
     return;
   }
-  const history = historyFor(ex.id, st.sessions, 3);
+  const history = historyFor(ex.id, st.sessions, PR_HISTORY);
   const rec = we.recommendation;
   const prevDone = [...we.sets].reverse().find((x) => x.done && x.completedAt);
   st.updateSet(we.id, set.id, { done: true, completedAt: Date.now(), restSec: prevDone?.completedAt ? Math.round((Date.now() - prevDone.completedAt) / 1000) : undefined });
@@ -449,19 +499,38 @@ function completeSetFor({ we, set, index, unit, onPr }: { we: WorkoutExercise; s
   if (next && !next.done && next.weight !== set.weight && next.weight === (rec?.weight ?? 0)) st.updateSet(we.id, next.id, { weight: set.weight });
   if (!set.warmup && isPersonalRecord(ex, { ...set, done: true }, history)) {
     haptic.record();
-    onPr(`${ex.name} · ${set.weight ? `${fmtWeight(set.weight)} × ${set.reps}` : `${set.reps} повт.`}`);
+    onPr(`${ex.name} · ${isTimed(ex) ? `${set.weight ? `${fmtWeight(set.weight)} × ` : ''}${fmtSec(set.reps)}` : set.weight ? `${fmtWeight(set.weight)} × ${set.reps}` : `${set.reps} повт.`}`);
   }
   const settings = useProfile.getState().settings;
   const a = useWorkouts.getState().active;
   // После последнего подхода тренировки отдых не нужен — сразу показываем «Завершить тренировку»
   const workoutComplete = !!a && a.exercises.every((x) => x.sets.every((y) => y.done));
   if (workoutComplete) st.stopRest?.();
-  if (settings.restTimerAuto && a && !workoutComplete) {
-    const label = nextSetLabel(a, index, (w) => `${fmtWeight(w, unit)}`, (id) => getExercise(id, customs)?.name ?? '');
-    // Отдых по программе: тяжёлые базовые — дольше, изоляция — короче (задано в плане); после разминки — 45 с
-    st.startRest(set.warmup ? 45 : we.restSec || settings.defaultRestSec, label);
+  if (!a || workoutComplete) return;
+  // Суперсет: после рабочего подхода — к следующему участнику без отдыха; отдых — после круга
+  const nav = set.warmup ? { index, rest: true } : afterSetTarget(a, index);
+  if (nav.index !== index) onNavigate?.(nav.index);
+  if (!nav.rest) {
+    st.stopRest();
+    return;
+  }
+  if (settings.restTimerAuto) {
+    const timedId = (id: string) => isTimed(getExercise(id, customs));
+    const members = supersetMembers(a.exercises, index);
+    const nameOf = (id: string) => getExercise(id, customs)?.name ?? '';
+    const base = nextSetLabel(a, nav.index, (w) => `${fmtWeight(w, unit)}`, nameOf, timedId);
+    const label = members.length > 1 && nav.index !== index ? `${nameOf(a.exercises[nav.index].exerciseId)}: ${base}` : base;
+    // Отдых по программе: тяжёлые базовые — дольше, изоляция — короче (задано в плане); после разминки — 45 с;
+    // после круга суперсета — самый длинный отдых из участников
+    const restSec = set.warmup ? 45 : members.length > 1 ? Math.max(...members.map((m) => a.exercises[m].restSec || settings.defaultRestSec)) : we.restSec || settings.defaultRestSec;
+    st.startRest(restSec, label);
     haptic.timerStart();
   }
+}
+
+/** Старт удержания для подхода на время (вне рендера: время берётся в момент нажатия) */
+function holdStart(weId: string, setId: string) {
+  return { weId, setId, startedAt: Date.now() };
 }
 
 /** Плавный прогресс тренировки */
@@ -527,7 +596,7 @@ function PrBanner({ text, top }: { text: string; top: number }) {
 }
 
 /** Навигатор тренировки (выдвижная панель): ✓ выполнено · ● текущее · ◐ начато · ○ впереди */
-function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, perExercise }: { visible: boolean; onClose: () => void; current: number; onGo: (i: number) => void; onAdd: () => void; onFinish: () => void; perExercise?: Record<string, number> }) {
+function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, perExercise, labels = [] }: { visible: boolean; onClose: () => void; current: number; onGo: (i: number) => void; onAdd: () => void; onFinish: () => void; perExercise?: Record<string, number>; labels?: (string | undefined)[] }) {
   const active = useWorkouts((s) => s.active);
   const customs = useWorkouts((s) => s.customExercises);
   if (!active) return null;
@@ -553,16 +622,17 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
           const full = it.total > 0 && it.done === it.total;
           const kcal = perExercise?.[it.we.exerciseId];
           return (
-            <Pressable key={it.we.id} accessibilityRole="button" accessibilityLabel={`${ex?.name}, ${full ? 'выполнено' : it.state === 'current' ? 'текущее' : it.done ? 'начато' : 'впереди'}`} onPress={() => onGo(it.index)} style={[styles.navItem, it.state === 'current' && { borderColor: colors.accent, backgroundColor: colors.accentDim }]}>
+            <Pressable key={it.we.id} accessibilityRole="button" accessibilityLabel={`${ex?.name}${labels[it.index] ? `, суперсет ${labels[it.index]}` : ''}, ${full ? 'выполнено' : it.state === 'current' ? 'текущее' : it.done ? 'начато' : 'впереди'}`} onPress={() => onGo(it.index)} style={[styles.navItem, it.state === 'current' && { borderColor: colors.accent, backgroundColor: colors.accentDim }, labels[it.index] && styles.navItemSs]}>
               <View style={[styles.navDot, full && { backgroundColor: colors.accent, borderColor: colors.accent }, it.state === 'current' && !full && { borderColor: colors.accent }]}>
                 {full ? <Icon name="checkmark" size={14} color={colors.onAccent} /> : it.state === 'current' ? <View style={styles.navDotInner} /> : it.done ? <View style={[styles.navDotInner, { backgroundColor: colors.textDim }]} /> : null}
               </View>
               <View style={{ flex: 1 }}>
                 <T v="body" style={{ fontWeight: it.state === 'current' ? '800' : '600', fontSize: 15 }} numberOfLines={2} color={full && it.state !== 'current' ? colors.textDim : colors.text}>
-                  {it.index + 1}. {ex?.name ?? it.we.exerciseId}
+                  {it.index + 1}. {labels[it.index] ? <T v="body" color={colors.accent} style={{ fontWeight: '800', fontSize: 15 }}>{labels[it.index]} </T> : null}
+                  {ex?.name ?? it.we.exerciseId}
                 </T>
                 <T v="small" style={{ fontSize: 12 }}>
-                  {it.done}/{it.total} подходов · {it.we.repMin}–{it.we.repMax}
+                  {it.done}/{it.total} подходов · {isTimed(ex) ? `${fmtSec(it.we.repMin)}–${fmtSec(it.we.repMax)}` : `${it.we.repMin}–${it.we.repMax}`}
                   {kcal ? ` · ≈${kcal} ккал` : ''}
                 </T>
               </View>
@@ -615,7 +685,9 @@ function ExerciseFocus({
   isLast,
   allDone,
   onSwap,
-  onPr,
+  onComplete,
+  ssLabel,
+  ssNext,
 }: {
   we: WorkoutExercise;
   index: number;
@@ -626,7 +698,10 @@ function ExerciseFocus({
   isLast: boolean;
   allDone: boolean;
   onSwap: () => void;
-  onPr: (text: string) => void;
+  onComplete: (set: ExerciseSet) => void;
+  /** Суперсет: «A1» и следующий участник круга */
+  ssLabel?: string;
+  ssNext?: string;
 }) {
   const customs = useWorkouts((s) => s.customExercises);
   const sessions = useWorkouts((s) => s.sessions);
@@ -649,7 +724,8 @@ function ExerciseFocus({
   const doneCount = we.sets.filter((s) => s.done).length;
   const lastDone = [...we.sets].reverse().find((s) => s.done);
 
-  const completeSet = (set: ExerciseSet) => completeSetFor({ we, set, index, unit, onPr });
+  const completeSet = onComplete;
+  const timed = isTimed(ex);
 
   const primary = ex.groups.primary.map((g) => GROUP_LABEL[g]);
   const secondary = ex.groups.secondary.map((g) => GROUP_LABEL[g]);
@@ -665,12 +741,21 @@ function ExerciseFocus({
   const prevWarm = lastWarmupCount(ex.id, sessions);
   const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
   const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
-  const lastTxt = last ? last.sets.map((x) => (x.weight ? `${fmtWeight(x.weight, unit)}×${x.reps}` : `${x.reps}`)).join(' · ') : '';
+  const lastTxt = last ? last.sets.map((x) => { const v = timed ? fmtSec(x.reps) : String(x.reps); return x.weight ? `${fmtWeight(x.weight, unit)}×${v}` : v; }).join(' · ') : '';
 
   return (
     <View style={{ gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{ flex: 1 }}>
+          {ssLabel ? (
+            <View style={styles.ssChip} testID="superset-chip">
+              <Icon name="link" size={12} color={colors.onAccent} />
+              <T v="small" color={colors.onAccent} style={{ fontSize: 11, fontWeight: '800' }} numberOfLines={1}>
+                Суперсет {ssLabel}
+                {ssNext ? ` → ${ssNext}` : ''}
+              </T>
+            </View>
+          ) : null}
           <T v="small" style={{ fontSize: 12 }} testID="exercise-position">
             Упражнение {index + 1} из {count}
           </T>
@@ -694,7 +779,7 @@ function ExerciseFocus({
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
             <Pressable accessibilityRole="button" accessibilityLabel={layout ? 'Раскладка блинов' : 'Рекомендация'} disabled={!layout} onPress={() => setPlatesOpen(true)} hitSlop={4}>
               <T v="num" style={{ fontSize: 22, textDecorationLine: layout ? 'underline' : 'none', textDecorationStyle: 'dotted' }}>
-                {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {rec.repMin}–{rec.repMax}
+                {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}
               </T>
             </Pressable>
             {rec.delta && rec.action !== 'new' ? (
@@ -732,19 +817,20 @@ function ExerciseFocus({
         </View>
       ) : null}
 
-      {lastDone && lastDone.rir === undefined && !lastDone.warmup ? <RirPicker weId={we.id} set={lastDone} /> : null}
+      {/* Запас повторов спрашиваем только у силовых подходов: у планки и удержаний это бессмысленно */}
+      {lastDone && lastDone.rir === undefined && !lastDone.warmup && !timed ? <RirPicker weId={we.id} set={lastDone} /> : null}
       <AutoregTip we={we} step={step} unit={unit} />
 
       <View style={styles.block}>
         <View style={styles.headRow}>
           <T v="caption" style={{ width: 28 }}>#</T>
           <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{isBw ? `+${unitLabel(unit)}` : unitLabel(unit)}</T>
-          <T v="caption" style={{ flex: 1, textAlign: 'center' }}>Повт</T>
+          <T v="caption" style={{ flex: 1, textAlign: 'center' }}>{timed ? 'Сек' : 'Повт'}</T>
           <T v="caption" style={{ width: 40, textAlign: 'center' }}>RIR</T>
           <View style={{ width: 48 }} />
         </View>
         {we.sets.map((x, i) => (
-          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={completeSet} current={x === nextSet} />
+          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={completeSet} current={x === nextSet} timed={timed} />
         ))}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
           <Button title="Добавить подход" icon="add" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ flex: 1 }} />
@@ -868,7 +954,7 @@ function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number
   return n > 0 ? n : undefined;
 }
 
-const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean }) {
+const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current, timed }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean; timed?: boolean }) {
   const [pop] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!set.done) return;
@@ -892,7 +978,8 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
   const upd = (patch: Partial<ExerciseSet>) => useWorkouts.getState().updateSet(weId, set.id, patch);
   return (
     <View>
-      <View style={[styles.setRow, set.done && { backgroundColor: colors.doneRow }, current && styles.setRowCurrent]}>
+      {/* Текущий подход — крупные цифры; будущие приглушены, выполненные — отмечены */}
+      <View style={[styles.setRow, set.done && { backgroundColor: colors.doneRow }, current && styles.setRowCurrent, !set.done && !current && { opacity: 0.6 }]}>
         <View style={{ width: 28 }}>
           <T v="body" style={{ fontWeight: '800' }} color={set.warmup ? colors.muted : set.done ? colors.accent : colors.textDim}>
             {no}
@@ -910,7 +997,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
           keyboardType="decimal-pad"
           selectTextOnFocus
           accessibilityLabel={`Вес, подход ${idx + 1}`}
-          style={[styles.input, set.done && styles.inputDone]}
+          style={[styles.input, current && styles.inputCurrent, set.done && styles.inputDone]}
         />
         <TextInput
           value={r}
@@ -923,8 +1010,8 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
           placeholderTextColor={colors.muted}
           keyboardType="number-pad"
           selectTextOnFocus
-          accessibilityLabel={`Повторы, подход ${idx + 1}`}
-          style={[styles.input, set.done && styles.inputDone]}
+          accessibilityLabel={`${timed ? 'Секунды' : 'Повторы'}, подход ${idx + 1}`}
+          style={[styles.input, current && styles.inputCurrent, set.done && styles.inputDone]}
         />
         <Pressable
           accessibilityRole="button"
@@ -985,11 +1072,14 @@ const styles = themed({
   block: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 },
   rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
-  setRowCurrent: { borderWidth: 1, borderColor: colors.accentLine },
+  setRowCurrent: { borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, paddingVertical: 6 },
+  inputCurrent: { height: 54, fontSize: 26 },
+  ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.accent, marginBottom: 4, maxWidth: '100%' },
+  navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
   doneIcon: { width: 32, height: 32, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   cta: { position: 'absolute', left: space.lg, right: space.lg },
-  navBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, paddingHorizontal: space.lg, paddingTop: 8, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
+  navBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, paddingHorizontal: space.lg, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
   navBtn: { flex: 1, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: 'transparent' },
   navDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },

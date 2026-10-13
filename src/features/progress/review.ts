@@ -1,7 +1,7 @@
 import type { BodyMetric, DailyCheckIn, FoodEntry, ISODate, NutritionTarget, UserProfile, WeightEntry, WorkoutPlan, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
 import { addDays, formatHours, startOfWeek, today } from '@/utils/date';
-import { bestSet, historyFor, isPersonalRecord, workingSets } from '@/features/training/progression';
+import { bestSet, historyFor, isPersonalRecord, PR_HISTORY, workingSets } from '@/features/training/progression';
 import { doneFineVolume, weeklyTargets } from '@/features/training/engine/volume';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
@@ -65,7 +65,7 @@ export function buildWeeklyReview(args: {
       const ex = getExercise(we.exerciseId);
       const b = bestSet(we.sets);
       if (!ex || !b) continue;
-      const hist = historyFor(ex.id, before, 10);
+      const hist = historyFor(ex.id, before, PR_HISTORY);
       const set = workingSets(we.sets).find((x) => x.weight === b.weight && x.reps === b.reps);
       if (set && isPersonalRecord(ex, set, hist) && !prs.some((p) => p.startsWith(ex.name))) prs.push(`${ex.name}: ${set.weight ? `${String(set.weight).replace('.', ',')} кг × ${set.reps}` : `${set.reps} повт.`}`);
       if (seen.has(ex.id) || !hist[0]) continue;

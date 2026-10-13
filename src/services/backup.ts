@@ -14,6 +14,7 @@ import { useCoach } from '@/stores/coach';
 import { useJournal } from '@/stores/journal';
 import { today } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { workoutsCsv } from '@/features/training/csv';
 
 /**
  * Резервная копия всех локальных данных в один JSON-файл.
@@ -105,6 +106,30 @@ export async function exportBackup(): Promise<'shared' | 'downloaded'> {
  */
 const AUTO_NAME = 'rynji-autobackup.json';
 const AUTO_EVERY_MS = 3 * 86400000;
+
+/** Тренировки в CSV (Excel / Numbers / Google Таблицы) — поделиться файлом или скачать в вебе */
+export async function exportWorkoutsCsv(): Promise<'shared' | 'downloaded'> {
+  const ws = useWorkouts.getState();
+  const csv = workoutsCsv(ws.sessions, ws.customExercises);
+  const name = `rynji-trenirovki-${today()}.csv`;
+  if (Platform.OS === 'web') {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return 'downloaded';
+  }
+  const file = new File(Paths.cache, name);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(csv);
+  if (!(await Sharing.isAvailableAsync())) throw new Error('Шаринг недоступен на этом устройстве');
+  await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text', dialogTitle: 'Тренировки (CSV)' });
+  return 'shared';
+}
 
 export function autoBackupInfo(): { exists: boolean; at?: string } {
   if (Platform.OS === 'web') return { exists: false };

@@ -14,8 +14,8 @@ import { useUi } from '@/stores/ui';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { getExercise } from '@/data/exercises';
 import { MODE_LABEL } from '@/features/training/today';
+import { scaleSets } from '@/features/training/scale';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
-import { sessionVolume } from '@/features/training/analytics';
 import { useProfile } from '@/stores/profile';
 import { useHealth } from '@/stores/health';
 import { getPrefs, withPrefs } from '@/features/training/engine/prefs';
@@ -23,6 +23,7 @@ import { estimateRecovery } from '@/features/training/engine/recovery';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
+import { TargetMuscles } from '@/features/exercises/TargetMuscles';
 import { generatePlan, planVolume } from '@/features/training/planGenerator';
 import { doneFineVolume } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
@@ -35,7 +36,9 @@ import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
-import { addDays, formatDayShort, relativeDay, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
+import { addDays, formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
+import { fmtNum } from '@/utils/format';
+import { journalDay, journalSections, KIND_COLOR, KIND_LABEL, prCounts, sessionEmoji, sessionKind, sessionStats, weekStreak, type SessionStats, type WeekStats } from '@/features/training/journal';
 import { BRAND } from '@/config/brand';
 
 type Seg = 'today' | 'plan' | 'history' | 'library';
@@ -60,7 +63,7 @@ export default function Training() {
           items={[
             { key: 'today', label: 'Сегодня' },
             { key: 'plan', label: 'План' },
-            { key: 'history', label: 'История' },
+            { key: 'history', label: 'Дневник' },
             { key: 'library', label: 'Библиотека' },
           ]}
           value={seg}
@@ -87,6 +90,7 @@ function TodayTab({ bottom }: { bottom: number }) {
   const customs = useWorkouts((s) => s.customExercises);
   // Прямые подходы по детальным группам: сделано с понедельника / запланировано на неделю
   const week = useMemo(() => doneFineVolume(sessions, startOfWeek(d), d, customs), [sessions, d, customs]);
+  const weekDone = useMemo(() => sessions.filter((x) => x.status === 'completed' && x.date >= startOfWeek(d) && x.date <= d).length, [sessions, d]);
   const planned = useMemo(() => (plan ? planVolume(plan, customs) : null), [plan, customs]);
   const checkins = useCheckins((s) => s.byDate);
   const overrides = usePlan((s) => s.overrides);
@@ -160,7 +164,7 @@ function TodayTab({ bottom }: { bottom: number }) {
                 <View style={{ gap: 4, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
                   {deloadDates(plan).map((dd) => {
                     const t = plan.templates.find((x) => x.id === plan.schedule[weekdayIndexOf(dd)]);
-                    const sets = t ? t.exercises.reduce((a, e) => a + Math.max(1, Math.round(e.sets * DELOAD_FACTOR)), 0) : 0;
+                    const sets = t ? scaleSets(t.exercises.map((e) => e.sets), DELOAD_FACTOR).reduce((a, b) => a + b, 0) : 0;
                     const was = t ? t.exercises.reduce((a, e) => a + e.sets, 0) : 0;
                     return (
                       <T key={dd} v="small" color={colors.text}>
@@ -190,12 +194,17 @@ function TodayTab({ bottom }: { bottom: number }) {
                   <Meta icon="layers-outline" text={`${tw.totalSets} подх.`} />
                   <Meta icon="speedometer-outline" text={MODE_LABEL[tw.mode]} warn={tw.mode !== 'normal'} />
                 </View>
+                <WeekProgress done={weekDone} planned={plan?.schedule.filter(Boolean).length ?? 0} />
                 {tw.reason ? (
                   <T v="small" style={{ marginTop: 6 }}>
                     {tw.reason}
                   </T>
                 ) : null}
+                <View style={{ marginTop: 8 }}>
+                  <TargetMuscles compact max={3} items={tw.template.exercises} customs={customs} />
+                </View>
                 {(['compound', 'isolation'] as const).map((mech) => {
+                  const counts = scaleSets(tw.template!.exercises.map((pe) => pe.sets), tw.volumeFactor);
                   const items = tw.template!.exercises.map((pe, i) => ({ pe, i })).filter(({ pe }) => (getExercise(pe.exerciseId, customs)?.mechanic === 'isolation') === (mech === 'isolation'));
                   if (!items.length) return null;
                   return (
@@ -212,7 +221,7 @@ function TodayTab({ bottom }: { bottom: number }) {
                               {ex?.name}
                             </T>
                             <T v="small">
-                              {Math.max(1, Math.round(pe.sets * tw.volumeFactor))}×{pe.repMin}–{pe.repMax}
+                              {counts[i]}×{pe.repMin}–{pe.repMax}
                             </T>
                           </Pressable>
                         );
@@ -262,13 +271,35 @@ function TodayTab({ bottom }: { bottom: number }) {
   );
 }
 
+/** Плашка параметра тренировки (время, упражнения, подходы, режим) */
 function Meta({ icon, text, warn }: { icon: React.ComponentProps<typeof Icon>['name']; text: string; warn?: boolean }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <Icon name={icon} size={14} color={warn ? colors.warning : colors.textDim} />
-      <T v="small" color={warn ? colors.warning : colors.textDim}>
+    <View style={[styles.meta, warn && { backgroundColor: colors.warningDim, borderColor: colors.warningLine }]}>
+      <Icon name={icon} size={13} color={warn ? colors.warning : colors.textDim} />
+      <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={warn ? colors.warning : colors.text}>
         {text}
       </T>
+    </View>
+  );
+}
+
+/** «Неделя: 2 из 4» — сколько плановых тренировок уже сделано */
+function WeekProgress({ done, planned }: { done: number; planned: number }) {
+  if (!planned) return null;
+  const p = Math.min(1, done / planned);
+  return (
+    <View style={{ gap: 4, marginTop: 10 }} accessibilityLabel={`Неделя: сделано ${done} из ${planned} тренировок`}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <T v="small" style={{ fontSize: 11 }}>
+          Неделя
+        </T>
+        <T v="small" style={{ fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] }} color={done >= planned ? colors.accent : colors.text}>
+          {done} из {planned}
+        </T>
+      </View>
+      <View style={{ height: 5, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' }}>
+        <View style={{ width: `${p * 100}%`, height: 5, borderRadius: 3, backgroundColor: colors.accent }} />
+      </View>
     </View>
   );
 }
@@ -480,43 +511,77 @@ function TemplateCard({ t, editable, customs }: { t: WorkoutTemplate; editable: 
   );
 }
 
+type JournalRow = { kind: 'week'; key: string; title: string; stats: WeekStats } | { kind: 'item'; key: string; s: WorkoutSession; stats: SessionStats };
+
+/**
+ * Дневник (по мотивам Fitsession): итоги недели плашками, календарь с цветами тренировок,
+ * лента по неделям — название, смайл ощущения, время, объём, рекорды, заметка. Тап — подробности и «Повторить».
+ */
 function HistoryTab({ bottom }: { bottom: number }) {
   const sessions = useWorkouts((s) => s.sessions);
+  const customs = useWorkouts((s) => s.customExercises);
   const daySrc = useDaySources();
   const [dayOpen, setDayOpen] = useState<ISODate | null>(null);
-  const data = useMemo(() => sessions.filter((s) => s.status === 'completed').sort((a, b) => b.startedAt - a.startedAt), [sessions]);
-  const weekly = useMemo(() => {
-    const d = today();
-    return Array.from({ length: 8 }, (_, i) => {
+  const d = today();
+  const { rows, week, streak, total, weekly } = useMemo(() => {
+    const prs = prCounts(sessions, customs);
+    const sections = journalSections(sessions, d, customs, prs);
+    const out: JournalRow[] = [];
+    for (const sec of sections) {
+      out.push({ kind: 'week', key: `w${sec.weekStart}`, title: sec.title, stats: sec.stats });
+      for (const x of sec.sessions) out.push({ kind: 'item', key: x.id, s: x, stats: sessionStats(x, sessions, customs, prs) });
+    }
+    const cur = sections[0]?.weekStart === startOfWeek(d) ? sections[0].stats : null;
+    const done = sessions.filter((x) => x.status === 'completed');
+    const bars = Array.from({ length: 8 }, (_, i) => {
       const from = addDays(startOfWeek(d), -7 * (7 - i));
       const to = addDays(from, 6);
-      return data.filter((s) => s.date >= from && s.date <= to).length;
+      return done.filter((x) => x.date >= from && x.date <= to).length;
     });
-  }, [data]);
-  const renderItem = useCallback(({ item }: { item: WorkoutSession }) => <HistoryRow s={item} />, []);
-  if (!data.length) return <EmptyState icon="time-outline" title="История пуста" text="Заверши первую тренировку — здесь появятся результаты, веса и рекорды." />;
+    return { rows: out, week: cur, streak: weekStreak(sessions, d), total: done.length, weekly: bars };
+  }, [sessions, customs, d]);
+  const renderItem = useCallback(({ item }: { item: JournalRow }) => (item.kind === 'week' ? <WeekHeader title={item.title} stats={item.stats} /> : <JournalCard s={item.s} stats={item.stats} customs={customs} />), [customs]);
+  if (!total) return <EmptyState icon="book-outline" title="Дневник пуст" text="Заверши первую тренировку — здесь появятся результаты, веса и рекорды по неделям." />;
   return (
     <FlatList
-      data={data}
-      keyExtractor={(s) => s.id}
+      data={rows}
+      keyExtractor={(r) => r.key}
       renderItem={renderItem}
-      initialNumToRender={12}
+      initialNumToRender={14}
+      windowSize={9}
       contentContainerStyle={{ paddingBottom: bottom, gap: 8 }}
       showsVerticalScrollIndicator={false}
       ListFooterComponent={<DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />}
       ListHeaderComponent={
-        <View style={{ gap: 8, marginBottom: 8 }}>
-          <Card>
-            <TrainingCalendar today={today()} src={daySrc} onSelect={setDayOpen} />
+        <View style={{ gap: 8, marginBottom: 4 }}>
+          <Card style={{ gap: 10 }} testID="journal-week">
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <T v="h3" style={{ flex: 1 }}>
+                На этой неделе
+              </T>
+              {streak >= 2 ? (
+                <View style={styles.streak} accessibilityLabel={`Серия: ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд с тренировками`}>
+                  <T v="small" style={{ fontSize: 12, fontWeight: '800' }} color={colors.warning}>
+                    🔥 {streak} {plural(streak, 'неделя', 'недели', 'недель')} подряд
+                  </T>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.chips}>
+              <Chip icon="barbell-outline" text={`${week?.workouts ?? 0} ${plural(week?.workouts ?? 0, 'тренировка', 'тренировки', 'тренировок')}`} />
+              <Chip icon="trophy-outline" text={`${week?.prs ?? 0} ${plural(week?.prs ?? 0, 'рекорд', 'рекорда', 'рекордов')}`} accent={(week?.prs ?? 0) > 0} />
+              <Chip icon="layers-outline" text={fmtTonnage(week?.tonnage ?? 0)} />
+              <Chip icon="time-outline" text={`${week?.minutes ?? 0} мин`} />
+            </View>
+            <View style={{ gap: 4 }}>
+              <T v="small" style={{ fontSize: 11 }}>
+                Тренировок в неделю · 8 недель · всего {total}
+              </T>
+              <MiniBars values={weekly} height={36} />
+            </View>
           </Card>
           <Card>
-            <T v="caption">Тренировок в неделю · 8 недель</T>
-            <View style={{ marginTop: 10 }}>
-              <MiniBars values={weekly} height={44} />
-            </View>
-            <T v="small" style={{ marginTop: 8 }}>
-              Всего: {data.length}
-            </T>
+            <TrainingCalendar today={d} src={daySrc} onSelect={setDayOpen} />
           </Card>
         </View>
       }
@@ -524,22 +589,77 @@ function HistoryTab({ bottom }: { bottom: number }) {
   );
 }
 
-const HistoryRow = React.memo(function HistoryRow({ s }: { s: WorkoutSession }) {
-  const v = sessionVolume(s);
+function fmtTonnage(kg: number): string {
+  return kg >= 1000 ? `${fmtNum(kg / 1000, 1)} т` : `${fmtNum(kg)} кг`;
+}
+
+function Chip({ icon, text, accent }: { icon: React.ComponentProps<typeof Icon>['name']; text: string; accent?: boolean }) {
   return (
-    <Card onPress={() => router.push({ pathname: '/workout/[id]', params: { id: s.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
-      <View style={{ flex: 1 }}>
-        <T v="body" style={{ fontWeight: '700' }} numberOfLines={1}>
+    <View style={[styles.chip, accent && { backgroundColor: colors.accentDim, borderColor: colors.accentLine }]}>
+      <Icon name={icon} size={13} color={accent ? colors.accent : colors.textDim} />
+      <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={accent ? colors.accent : colors.text}>
+        {text}
+      </T>
+    </View>
+  );
+}
+
+const WeekHeader = React.memo(function WeekHeader({ title, stats }: { title: string; stats: WeekStats }) {
+  return (
+    <View style={styles.weekHead} accessibilityRole="header">
+      <T v="caption">{title}</T>
+      <T v="small" style={{ fontSize: 11 }}>
+        {stats.workouts} {plural(stats.workouts, 'тренировка', 'тренировки', 'тренировок')} · {fmtTonnage(stats.tonnage)}
+        {stats.prs ? ` · ${stats.prs} ЛР` : ''}
+      </T>
+    </View>
+  );
+});
+
+const JournalCard = React.memo(function JournalCard({ s, stats, customs }: { s: WorkoutSession; stats: SessionStats; customs: Exercise[] }) {
+  const kind = sessionKind(s, customs);
+  const emoji = sessionEmoji(s);
+  const color = colors[KIND_COLOR[kind]];
+  return (
+    <Card onPress={() => router.push({ pathname: '/workout/[id]', params: { id: s.id } })} style={{ flexDirection: 'row', gap: 12, paddingVertical: 12 }} accessibilityLabel={`${s.name}, ${journalDay(s.date, today())}, ${KIND_LABEL[kind]}`}>
+      <View style={[styles.kindDot, { backgroundColor: color }]}>
+        <Icon name="barbell" size={16} color={colors.onAccent} />
+      </View>
+      <View style={{ flex: 1, gap: 4 }}>
+        <T v="small" style={{ fontSize: 11 }}>
+          {journalDay(s.date, today())} · {KIND_LABEL[kind]}
+        </T>
+        <T v="body" style={{ fontWeight: '800' }} numberOfLines={1}>
           {s.name}
         </T>
-        <T v="small" numberOfLines={1}>
-          {relativeDay(s.date)} · {v.durationMin} мин · {v.sets} подх.
-        </T>
+        <View style={styles.chips}>
+          {emoji ? <T v="body" style={{ fontSize: 15 }}>{emoji}</T> : null}
+          <MiniStat text={`${stats.minutes} мин`} />
+          {stats.tonnage ? <MiniStat text={fmtTonnage(stats.tonnage)} /> : null}
+          <MiniStat text={`${stats.sets} подх.`} />
+          {stats.prs ? <MiniStat text={`🏆 ${stats.prs}`} accent /> : null}
+          {s.energy && s.energy.kcal >= 5 ? <MiniStat text={`${s.energy.source === 'health' ? '' : '≈'}${s.energy.kcal} ккал`} /> : null}
+        </View>
+        {s.notes ? (
+          <T v="small" style={{ fontSize: 12, fontStyle: 'italic' }} numberOfLines={2}>
+            «{s.notes}»
+          </T>
+        ) : null}
       </View>
-      <Icon name="chevron-forward" size={18} color={colors.muted} />
+      <Icon name="chevron-forward" size={18} color={colors.muted} style={{ alignSelf: 'center' }} />
     </Card>
   );
 });
+
+function MiniStat({ text, accent }: { text: string; accent?: boolean }) {
+  return (
+    <View style={[styles.mini, accent && { backgroundColor: colors.accentDim }]}>
+      <T v="small" style={{ fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] }} color={accent ? colors.accent : colors.text}>
+        {text}
+      </T>
+    </View>
+  );
+}
 
 const styles = themed({
   bestBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.accent },
@@ -548,8 +668,15 @@ const styles = themed({
   dropItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 12 },
   tplCard: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: space.md },
   volBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 12, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, height: 28, borderRadius: 14, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   exRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.surface2, minHeight: 40 },
   day: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   dayDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  mini: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, backgroundColor: colors.surface2 },
+  streak: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.warningDim },
+  weekHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 2 },
+  kindDot: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
 });

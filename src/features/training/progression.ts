@@ -1,5 +1,5 @@
 import type { Exercise, ExerciseSet, ReadinessBand, Recommendation, WorkoutSession , GymSetup } from '@/types';
-import { fmtWeight } from '@/utils/format';
+import { fmtSec, fmtWeight } from '@/utils/format';
 import { DEFAULT_GYM, equipmentStep, loadKind, roundToEquipment } from './equipment';
 
 /**
@@ -31,6 +31,9 @@ export interface ExerciseHistoryEntry {
 export function workingSets(sets: ExerciseSet[]): ExerciseSet[] {
   return sets.filter((s) => s.done && !s.warmup && s.reps > 0);
 }
+
+/** Рекорд — относительно ВСЕЙ истории упражнения, а не последних тренировок */
+export const PR_HISTORY = Number.POSITIVE_INFINITY;
 
 export function historyFor(exerciseId: string, sessions: WorkoutSession[], limit = 6): ExerciseHistoryEntry[] {
   const out: ExerciseHistoryEntry[] = [];
@@ -111,6 +114,7 @@ export function recommend(args: {
   const lowReadiness = band === 'reduce' || band === 'light' || band === 'recover';
 
   const last = history[0];
+  if (args.exercise.metric === 'time') return recommendTimed({ ex, last, repMin, repMax, sets, targetRir, ok: last ? effortOk(last.sets, args.targetRir) : true, lowReadiness, noIncrease: args.noIncrease, fit });
   if (!last) {
     return {
       weight: 0,
@@ -189,6 +193,35 @@ export function recommend(args: {
   };
 }
 
+/** Шаг прогрессии упражнений на время: +5 секунд */
+export const TIME_STEP_SEC = 5;
+
+/**
+ * Упражнения на время (планка, прогулка фермера): «повторы» — это секунды.
+ * Без веса — добавляем время; с весом — сначала время до верха диапазона, затем вес.
+ */
+function recommendTimed(a: { ex: Exercise; last?: ExerciseHistoryEntry; repMin: number; repMax: number; sets: number; targetRir: number; ok: boolean; lowReadiness: boolean; noIncrease?: string; fit: (w: number, dir: 'up' | 'down') => number }): Recommendation {
+  const { ex, last, repMin, repMax, sets, targetRir } = a;
+  const range = `${fmtSec(repMin)}–${fmtSec(repMax)}`;
+  if (!last) {
+    return { weight: 0, repMin, repMax, sets, targetRir, action: 'new', delta: ex.bodyweight ? `${range}` : 'Подобрать вес', rationale: ex.bodyweight ? `Первый раз: держи ${range} с запасом — без дрожи и потери положения.` : `Первый раз: подбери вес, с которым ${fmtSec(repMax)} даются с запасом.` };
+  }
+  const top = Math.max(...last.sets.map((s) => s.weight));
+  const atTop = last.sets.filter((s) => s.weight === top);
+  const times = atTop.map((s) => fmtSec(s.reps)).join(' / ');
+  const allTop = atTop.length >= Math.min(2, sets) && atTop.every((s) => s.reps >= repMax);
+  const canGrow = allTop && a.ok && !a.lowReadiness && !a.noIncrease;
+  if (top === 0 || ex.bodyweight) {
+    if (canGrow) return { weight: top, repMin: repMin + TIME_STEP_SEC, repMax: repMax + TIME_STEP_SEC, sets, targetRir, action: 'reps', delta: `+${TIME_STEP_SEC} с`, rationale: `Прошлый раз ${times} — верх диапазона. Добавь ${TIME_STEP_SEC} секунд в каждом подходе.` };
+    return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `до ${fmtSec(repMax)}`, rationale: `Прошлый раз ${times}. Цель — ${fmtSec(repMax)} во всех подходах${a.noIncrease ? `; ${a.noIncrease}` : ''}.` };
+  }
+  if (canGrow) {
+    const next = a.fit(Math.round((top + ex.increment) * 2) / 2, 'up');
+    return { weight: next, repMin, repMax, sets, targetRir, action: 'increase', delta: `+${fmtWeight(next - top)} кг`, rationale: `Прошлый раз ${fmtWeight(top)} кг × ${times} с запасом — пробуем ${fmtWeight(next)} кг.` };
+  }
+  return { weight: top, repMin, repMax, sets, targetRir, action: 'hold', delta: `Оставить ${fmtWeight(top)} кг`, rationale: `Прошлый раз ${fmtWeight(top)} кг × ${times}. Тот же вес, цель — ${fmtSec(repMax)} во всех подходах.` };
+}
+
 /** Лучший подход сессии по e1RM */
 export function bestSet(sets: ExerciseSet[]): { weight: number; reps: number; e1rm: number } | undefined {
   let best: { weight: number; reps: number; e1rm: number } | undefined;
@@ -202,6 +235,15 @@ export function bestSet(sets: ExerciseSet[]): { weight: number; reps: number; e1
 /** Проверка личного рекорда: превышен ли лучший e1RM (или повторы для собственного веса) из истории */
 export function isPersonalRecord(ex: Exercise, set: ExerciseSet, history: ExerciseHistoryEntry[]): boolean {
   if (!set.done || set.reps <= 0 || history.length === 0) return false;
+  // На время: рекорд — больший вес, а при том же весе — дольше
+  if (ex.metric === 'time') {
+    const prev = history.flatMap((h) => h.sets);
+    if (!prev.length) return false;
+    const maxW = Math.max(...prev.map((s) => s.weight));
+    if (set.weight > maxW) return maxW > 0;
+    if (set.weight < maxW) return false;
+    return set.reps > Math.max(...prev.filter((s) => s.weight === maxW).map((s) => s.reps));
+  }
   const bw = ex.bodyweight && set.weight === 0;
   const val = bw ? set.reps : e1rm(set.weight, set.reps);
   let prev = 0;

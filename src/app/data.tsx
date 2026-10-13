@@ -9,7 +9,7 @@ import { useProfile } from '@/stores/profile';
 import { resetAllStores } from '@/stores/hydration';
 import { clearAllData } from '@/storage/persist';
 import { seedDemoData } from '@/features/profile/demo';
-import { autoBackupInfo, backupStats, exportBackup, maybeAutoBackup, pickBackup, readAutoBackup, restoreBackup, type BackupFile } from '@/services/backup';
+import { exportWorkoutsCsv, autoBackupInfo, backupStats, exportBackup, maybeAutoBackup, pickBackup, readAutoBackup, restoreBackup, type BackupFile } from '@/services/backup';
 import { relativeDay, toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
 
@@ -83,6 +83,24 @@ export default function DataPrivacy() {
           {last ? `Последний экспорт: ${last}` : 'Экспорта ещё не было.'}
         </T>
         <Button title="Экспортировать мои данные" icon="share-outline" loading={busy} onPress={doExport} />
+      </Card>
+
+      <SectionTitle title="Таблица тренировок" />
+      <Card style={{ gap: 10 }}>
+        <T v="small">Все тренировки в CSV: одна строка — один подход (дата, упражнение, вес, повторы или время, запас, суперсет, заметка). Открывается в Excel, Numbers и Google Таблицах.</T>
+        <Button
+          title="Экспорт в CSV"
+          icon="document-text-outline"
+          variant="secondary"
+          onPress={async () => {
+            try {
+              const r = await exportWorkoutsCsv();
+              toast(r === 'downloaded' ? 'Файл CSV скачан' : 'Таблица готова — сохрани или отправь');
+            } catch (e: any) {
+              toast(e?.message ?? 'Не удалось создать файл', 'alert-circle');
+            }
+          }}
+        />
       </Card>
 
       <Pressable accessibilityRole="button" onPress={() => setAdvanced((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.lg, paddingVertical: 8 }}>

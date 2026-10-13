@@ -45,3 +45,9 @@ export function pct(part: number, whole: number): number {
   if (!whole) return 0;
   return part / whole;
 }
+
+/** Секунды подхода на время: 30 → «0:30», 75 → «1:15» */
+export function fmtSec(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}

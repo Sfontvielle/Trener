@@ -1,10 +1,11 @@
 import type { BloodPressureEntry, BodyMetric, DailyCheckIn, Exercise, FoodEntry, ISODate, LabReport, MealSlot, WorkoutPlan, WeightEntry, WorkoutSession } from '@/types';
 import type { HealthDay } from '@/features/health/model';
 import { getExercise } from '@/data/exercises';
-import { historyFor, isPersonalRecord, workingSets } from '@/features/training/progression';
+import { historyFor, isPersonalRecord, PR_HISTORY, workingSets } from '@/features/training/progression';
 import { sumFiber, sumMacros } from '@/features/nutrition/status';
 import { sleepMinutesOf } from '@/features/science/recovery';
 import { weekdayIndex } from '@/utils/date';
+import { sessionKind, type WorkoutKind } from '@/features/training/journal';
 
 /**
  * Сводка одного дня — общая модель для Главной, календаря тренировок, истории и прогресса.
@@ -87,7 +88,7 @@ export function buildDaySummary(date: ISODate, src: DaySources): DaySummary {
       const exercises = s.exercises
         .map((we) => {
           const ex = getExercise(we.exerciseId, src.customs ?? []);
-          const hist = ex ? historyFor(ex.id, before, 6) : [];
+          const hist = ex ? historyFor(ex.id, before, PR_HISTORY) : [];
           const rows = workingSets(we.sets).map((x) => {
             const pr = !!ex && isPersonalRecord(ex, x, hist);
             if (pr) prs++;
@@ -155,7 +156,7 @@ export function buildDaySummary(date: ISODate, src: DaySources): DaySummary {
   };
 }
 
-export type DayMarker = { trained: boolean; record: boolean; rest: boolean; data: boolean };
+export type DayMarker = { trained: boolean; record: boolean; rest: boolean; data: boolean; kind?: WorkoutKind };
 
 /** Лёгкие маркеры для календаря (без полного разбора подходов, кроме дней с тренировкой) */
 export function dayMarkers(dates: ISODate[], src: DaySources): Record<ISODate, DayMarker> {
@@ -164,11 +165,14 @@ export function dayMarkers(dates: ISODate[], src: DaySources): Record<ISODate, D
   const dataDays = new Set<string>([...src.entries.map((e) => e.date), ...Object.keys(src.checkins), ...src.weights.map((w) => w.date), ...src.metrics.map((m) => m.date), ...(src.labs ?? []).map((r) => r.date), ...(src.bp ?? []).map((x) => x.date)]);
   for (const d of dates) {
     const trained = trainedDays.has(d);
+    // Цвет дня — тип последней тренировки (жимовая, тяговая, ноги…), как цвета тренировок в дневнике
+    const last = trained ? src.sessions.filter((s) => s.status === 'completed' && s.date === d).sort((a, b) => b.startedAt - a.startedAt)[0] : undefined;
     out[d] = {
       trained,
       record: trained ? buildDaySummary(d, src).hasRecord : false,
       rest: !trained && !!src.plan && !src.plan.schedule[weekdayIndex(d)],
       data: trained || dataDays.has(d),
+      ...(last ? { kind: sessionKind(last, src.customs) } : {}),
     };
   }
   return out;

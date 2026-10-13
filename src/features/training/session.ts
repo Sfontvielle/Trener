@@ -2,7 +2,9 @@ import type { Exercise, GymSetup, PlannedExercise, ReadinessBand, WorkoutExercis
 import { getExercise } from '@/data/exercises';
 import { uid } from '@/utils/id';
 import { today } from '@/utils/date';
-import { historyFor, recommend } from './progression';
+import { historyFor, recommend, TIME_STEP_SEC } from './progression';
+import { normalizeSupersets } from './workoutNav';
+import { scaleSets } from './scale';
 
 /**
  * Подходов у нового упражнения по умолчанию (ручное добавление, конструктор, «Тренировать сейчас»,
@@ -43,9 +45,11 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
   const rec = pe.targetWeight !== undefined ? { ...base, weight: pe.targetWeight, rationale: `Вес ${pe.targetWeight} кг согласован с тренером. ${base.rationale}` } : base;
   // Предзаполняем подходы рекомендацией; повторы — нижняя цель (пользователь правит только если отличается)
   const last = history[0];
+  // Шаг «добрать»: +1 повтор, у упражнений на время — +5 секунд
+  const step = ex.metric === 'time' ? TIME_STEP_SEC : 1;
   const sets = Array.from({ length: rec.sets }, (_, i) => {
     const prevReps = last?.sets[i]?.reps;
-    const reps = rec.action === 'increase' || rec.action === 'decrease' || rec.action === 'new' ? rec.repMin : Math.min(rec.repMax, Math.max(rec.repMin, (prevReps ?? rec.repMin) + (rec.action === 'reps' ? 1 : 0)));
+    const reps = rec.action === 'increase' || rec.action === 'decrease' || rec.action === 'new' ? rec.repMin : Math.min(rec.repMax, Math.max(rec.repMin, (prevReps ?? rec.repMin) + (rec.action === 'reps' ? step : 0)));
     return { id: uid('s_'), weight: rec.weight, reps, done: false };
   });
   return {
@@ -60,6 +64,7 @@ export function makeWorkoutExercise(pe: PlannedExercise, ctx: SessionContext): W
     recommendation: rec,
     note: pe.note,
     why: pe.why,
+    ...(pe.superset ? { superset: pe.superset } : {}),
   };
 }
 
@@ -72,7 +77,9 @@ export function buildSession(args: {
   ctx: SessionContext;
   readinessScore?: number;
 }): WorkoutSession {
-  const exercises = args.planned.map((pe) => makeWorkoutExercise(pe, args.ctx)).filter((x): x is WorkoutExercise => !!x);
+  // Множитель объёма распределяется по тренировке целиком (см. scaleSets), рекомендации — уже на итоговое число подходов
+  const counts = scaleSets(args.planned.map((pe) => pe.sets), args.ctx.volumeFactor);
+  const exercises = normalizeSupersets(args.planned.map((pe, i) => makeWorkoutExercise({ ...pe, sets: counts[i] }, { ...args.ctx, volumeFactor: 1 })).filter((x): x is WorkoutExercise => !!x));
   return {
     id: uid('ws_'),
     date: today(),

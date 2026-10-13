@@ -1,6 +1,7 @@
 import type { DayOverride, ISODate, ReadinessResult, WorkoutPlan, WorkoutSession, WorkoutTemplate } from '@/types';
 import { addDays, weekdayIndex } from '@/utils/date';
 import { estimateMinutes } from './planGenerator';
+import { scaleSets } from './scale';
 
 export interface TodayWorkout {
   kind: 'workout' | 'rest' | 'done' | 'no_plan';
@@ -76,7 +77,8 @@ export function resolveToday(args: {
     reason = override.reason;
   }
 
-  const scaled = template.exercises.map((e) => ({ ...e, sets: Math.max(1, Math.round(e.sets * volumeFactor)) }));
+  const counts = scaleSets(template.exercises.map((e) => e.sets), volumeFactor);
+  const scaled = template.exercises.map((e, i) => ({ ...e, sets: counts[i] }));
   const totalSets = scaled.reduce((a, e) => a + e.sets, 0);
   return {
     kind: 'workout',

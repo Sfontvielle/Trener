@@ -1,6 +1,6 @@
 import type { DailyCheckIn, Exercise, FoodEntry, ISODate, MealSlot, PlanAdjustment, ReadinessResult, WeightEntry, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
-import { isPersonalRecord, workingSets, historyFor } from '@/features/training/progression';
+import { isPersonalRecord, workingSets, historyFor, PR_HISTORY } from '@/features/training/progression';
 import { formatSleep, toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
 import { readinessLabel } from '@/features/science/insights';
@@ -70,7 +70,7 @@ export function buildJournal(args: {
     for (const we of s.exercises) {
       const ex = getExercise(we.exerciseId, args.customs ?? []);
       if (!ex) continue;
-      const hist = historyFor(ex.id, before, 6);
+      const hist = historyFor(ex.id, before, PR_HISTORY);
       const best = workingSets(we.sets).filter((x) => isPersonalRecord(ex, x, hist)).sort((a, b) => b.weight - a.weight || b.reps - a.reps)[0];
       if (best) out.push({ id: `pr-${s.id}-${we.id}`, at: (s.finishedAt ?? s.startedAt) + 1, kind: 'pr', title: 'Новый рекорд', sub: `${ex.name} ${best.weight ? `${fmt(best.weight)} × ${best.reps}` : `${best.reps} повт.`}` });
     }

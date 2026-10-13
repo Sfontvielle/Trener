@@ -85,5 +85,9 @@ const PROFILE = {
   await page.waitForTimeout(1800);
   await dismiss();
   await shot('7-progress');
+  await page.goto(`${URL}/training?seg=history`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1800);
+  await dismiss();
+  await shot('8-diary');
   await browser.close();
 })();
