@@ -312,7 +312,7 @@ test('Coach Today: фокус «увеличить жим с 80 до 82,5», с 
   assert.equal(c.kind, 'workout');
   assert.equal(c.title, 'Верх A');
   assert.ok(c.focus, 'есть главный фокус');
-  assert.ok(/увеличить жим штанги лёжа с 80 до 82,5 кг/.test(c.focus!.what), c.focus!.what);
+  assert.ok(/Жим штанги лёжа: увеличить вес 80 → 82,5 кг/.test(c.focus!.what), c.focus!.what);
   assert.equal(c.focus!.data.length, 3, 'провенанс: три последние тренировки');
   assert.ok(c.focus!.data[0].includes('80 кг × 10/10/10, RIR 2'));
   assert.equal(c.focus!.confidence, 'high');
@@ -447,7 +447,7 @@ test('Контекст для ИИ: решения переданы готовы
   const labs = [rep('a', '2026-03-01', [['hct', 47, '%', 40, 50]]), rep('b', '2026-09-01', [['hct', 49.1, '%', 40, 50]])];
   const ctx = decisionsContext({ coach, alerts: [], signals: [], labs, enhanced: true });
   assert.ok(ctx.includes('РЕШЕНИЯ ТРЕНЕРА'));
-  assert.ok(ctx.includes('с 80 до 82,5 кг'), 'фокус передан как готовое решение');
+  assert.ok(ctx.includes('80 → 82,5 кг'), 'фокус передан как готовое решение');
   assert.ok(/уверенность: высокая/.test(ctx));
   assert.ok(ctx.includes('Гематокрит ↑ 2,1 п.п.'), 'изменения анализов посчитаны приложением');
   assert.ok(/данных недостаточно/.test(ctx));

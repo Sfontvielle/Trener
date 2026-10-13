@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, space, type, TOUCH, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
+import { CtaGlow, Sheen, Tap, prefersReducedMotion } from './motion';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -29,7 +30,7 @@ type Variant = keyof typeof type;
  * Динамический шрифт iOS: текст растёт вместе с системной настройкой размера. Предел роста зависит от роли:
  * основной текст — до ×1,6 (читаемость важнее), заголовки уже крупные — до ×1,2–1,35, чтобы не ломать вёрстку.
  */
-export const MAX_SCALE: Record<Variant, number> = { display: 1.2, h1: 1.2, h2: 1.35, h3: 1.35, body: 1.6, bodyDim: 1.6, small: 1.6, caption: 1.5, num: 1.3 } as Record<Variant, number>;
+export const MAX_SCALE: Record<Variant, number> = { hero: 1.12, display: 1.2, h1: 1.2, h2: 1.35, h3: 1.35, body: 1.6, bodyDim: 1.6, small: 1.6, caption: 1.5, num: 1.3 } as Record<Variant, number>;
 
 // Веб-проверка вёрстки при крупном шрифте: localStorage 'rynji.fontScale' = 1.5 (имитация настройки iPhone)
 const SIM_SCALE = (() => {
@@ -75,15 +76,9 @@ export const Card = memo(function Card({
   const toneStyle = tone === 'danger' ? { borderWidth: 1, borderColor: colors.dangerLine } : tone === 'flat' ? { backgroundColor: colors.surface2 } : null;
   if (onPress) {
     return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        onPress={onPress}
-        testID={testID}
-        style={({ pressed }) => [styles.card, toneStyle, style, pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]}
-      >
+      <Tap accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} testID={testID} scaleTo={0.985} style={[styles.card, toneStyle, style]}>
         {children}
-      </Pressable>
+      </Tap>
     );
   }
   return (
@@ -104,6 +99,7 @@ export function Button({
   style,
   full,
   accessibilityLabel,
+  live,
 }: {
   title: string;
   onPress?: () => void;
@@ -115,32 +111,37 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   full?: boolean;
   accessibilityLabel?: string;
+  /** Главное действие экрана: мягкое свечение под кнопкой и редкий блик */
+  live?: boolean;
 }) {
   // Одна главная кнопка — лаймовая; остальные — спокойная заливка без рамок («outline» выглядит как «secondary»)
   const bg = variant === 'primary' ? colors.accent : variant === 'secondary' || variant === 'outline' ? colors.surface3 : variant === 'danger' ? colors.dangerDim : 'transparent';
   const fg = variant === 'primary' ? colors.onAccent : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.textDim : colors.text;
   const h = size === 'lg' ? 56 : size === 'sm' ? 38 : 50;
-  return (
-    <Pressable
+  const glowing = !!live && variant === 'primary' && !disabled && !loading;
+  const btn = (
+    <Tap
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       disabled={disabled || loading}
       onPress={() => {
-        haptic.tap();
+        if (glowing) haptic.light();
+        else haptic.tap();
         onPress?.();
       }}
       hitSlop={size === 'sm' ? 6 : 0}
-      style={({ pressed }) => [
+      scaleTo={size === 'lg' ? 0.97 : 0.95}
+      style={[
         styles.btn,
         // minHeight: длинный текст (например «Далее: Тяга горизонтального блока…») переносится, а не обрезается
         { backgroundColor: bg, minHeight: h, paddingVertical: 6, paddingHorizontal: size === 'sm' ? 14 : 20 },
         full && { alignSelf: 'stretch' },
         (disabled || loading) && { opacity: 0.45 },
-        pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
-        style,
+        glowing ? styles.btnLive : style,
       ]}
     >
+      {glowing ? <Sheen /> : null}
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
@@ -151,7 +152,15 @@ export function Button({
           </Text>
         </>
       )}
-    </Pressable>
+    </Tap>
+  );
+  if (!glowing) return btn;
+  // Свечение живёт под кнопкой: внешние отступы и размеры — у обёртки
+  return (
+    <View style={[{ alignSelf: 'stretch' }, style]}>
+      <CtaGlow />
+      {btn}
+    </View>
   );
 }
 
@@ -175,7 +184,7 @@ export function IconButton({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
+    <Tap
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={() => {
@@ -184,10 +193,11 @@ export function IconButton({
       }}
       disabled={disabled}
       hitSlop={6}
-      style={({ pressed }) => [styles.iconBtn, { backgroundColor: bg }, disabled && { opacity: 0.35 }, pressed && { opacity: 0.7 }, style]}
+      scaleTo={0.9}
+      style={[styles.iconBtn, { backgroundColor: bg }, disabled && { opacity: 0.35 }, style]}
     >
       <Icon name={name} size={size} color={color} />
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -205,30 +215,51 @@ export function Chip({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <Pressable
+    <Tap
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       onPress={() => {
         haptic.tap();
         onPress?.();
       }}
-      style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.8 }, style]}
+      scaleTo={0.94}
+      style={[styles.chip, active && styles.chipActive, style]}
     >
       {icon ? <Icon name={icon} size={15} color={active ? colors.bg : colors.textDim} /> : null}
       <Text numberOfLines={1} style={[styles.chipText, active && { color: colors.bg }]}>
         {label}
       </Text>
-    </Pressable>
+    </Tap>
   );
 }
 
 export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0 }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number }) {
   // Длинные подписи — «пилюли» по ширине текста с прокруткой (как в iOS), короткие — поровну на всю ширину
   const scroll = items.reduce((a, it) => a + it.label.length, 0) > 26;
+  // Подложка выбранной «пилюли» плавно переезжает к новой (пружина), а не перескакивает
+  const [ind] = useState(() => ({ x: new Animated.Value(0), w: new Animated.Value(0), o: new Animated.Value(0) }));
   // Прокручиваемый ряд держит выбранную «пилюлю» в поле зрения (переход по ссылке, смена вкладки)
   const ref = useRef<ScrollView>(null);
-  const geo = useRef({ view: 0, content: 0, shown: '', items: {} as Record<string, { x: number; w: number }> });
+  const geo = useRef({ view: 0, content: 0, shown: '', placed: '', items: {} as Record<string, { x: number; w: number }> });
+  const place = () => {
+    const g = geo.current;
+    const it = g.items[value];
+    if (!it || g.placed === `${value}:${it.x}:${it.w}`) return;
+    const first = !g.placed;
+    g.placed = `${value}:${it.x}:${it.w}`;
+    if (first || prefersReducedMotion()) {
+      ind.x.setValue(it.x);
+      ind.w.setValue(it.w);
+      ind.o.setValue(1);
+      return;
+    }
+    Animated.parallel([
+      Animated.spring(ind.x, { toValue: it.x, useNativeDriver: false, speed: 18, bounciness: 5 }),
+      Animated.spring(ind.w, { toValue: it.w, useNativeDriver: false, speed: 18, bounciness: 5 }),
+    ]).start();
+  };
   const reveal = () => {
+    place();
     const g = geo.current;
     const it = g.items[value];
     if (!scroll || !it || !g.view || !g.content || g.shown === value) return;
@@ -237,26 +268,23 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
     ref.current?.scrollTo({ x, animated: true });
   };
   useEffect(reveal);
+  const indicator = <Animated.View pointerEvents="none" style={[styles.segIndicator, { left: ind.x, width: ind.w, opacity: ind.o }]} />;
   const pills = items.map((it) => {
     const active = it.key === value;
     return (
       <Pressable
         key={it.key}
-        onLayout={
-          scroll
-            ? (e) => {
-                geo.current.items[it.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width };
-                reveal();
-              }
-            : undefined
-        }
+        onLayout={(e) => {
+          geo.current.items[it.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width };
+          reveal();
+        }}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         onPress={() => {
           if (!active) haptic.tap();
           onChange(it.key);
         }}
-        style={[styles.segItem, scroll ? { paddingHorizontal: 16 } : { flex: 1 }, active && styles.segItemActive]}
+        style={({ pressed }) => [styles.segItem, scroll ? { paddingHorizontal: 16 } : { flex: 1 }, pressed && !active && { opacity: 0.6 }]}
       >
         <Text numberOfLines={1} style={[styles.segText, active && { color: colors.text }]}>
           {it.label}
@@ -283,12 +311,14 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
         contentContainerStyle={[styles.seg, bleed ? { paddingHorizontal: bleed } : null]}
         accessibilityRole="tablist"
       >
+        {indicator}
         {pills}
       </ScrollView>
     );
   }
   return (
     <View style={[styles.seg, style]} accessibilityRole="tablist">
+      {indicator}
       {pills}
     </View>
   );
@@ -398,6 +428,7 @@ const styles = themed({
     gap: 8,
   },
   btnText: { fontWeight: '700', letterSpacing: -0.2 },
+  btnLive: { overflow: 'hidden', alignSelf: 'stretch' },
   iconBtn: {
     width: TOUCH,
     height: TOUCH,
@@ -420,7 +451,7 @@ const styles = themed({
   // Переключатель — отдельные «пилюли» без общей подложки и рамки; выбранная — светлее
   seg: { flexDirection: 'row', gap: 6 },
   segItem: { height: 38, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  segItemActive: { backgroundColor: colors.surface3 },
+  segIndicator: { position: 'absolute', top: 0, height: 38, borderRadius: radius.pill, backgroundColor: colors.surface3 },
   segText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
   section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xl, marginBottom: space.md },
   empty: { alignItems: 'center', gap: 10, paddingVertical: space.xxl, paddingHorizontal: space.lg },

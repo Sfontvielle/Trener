@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Card, EmptyState, Icon, IconButton, SectionTitle, T } from '@/components/ui';
-import { Bar, Ring } from '@/components/charts';
+import { Ring } from '@/components/charts';
+import { Ambient, Appear, Progress, Tap, useCountUp } from '@/components/motion';
 import { Sheet } from '@/components/Sheet';
 import { Field, NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
@@ -15,8 +16,8 @@ import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
 import { useBody } from '@/stores/body';
 import { useWorkouts } from '@/stores/workouts';
-import { GOAL_SHORT, fiberTarget } from '@/features/nutrition/targets';
-import { dayProgress, fiberLabel, macroState, macrosFor, sumFiber, sumMacros, type MacroState } from '@/features/nutrition/status';
+import { fiberTarget } from '@/features/nutrition/targets';
+import { dayProgress, macroState, macrosFor, sumFiber, sumMacros, type MacroState } from '@/features/nutrition/status';
 import { stateColor } from '@/components/macroColor';
 import { suggestMeals, type MealSuggestion } from '@/features/nutrition/suggest';
 import { reviewCalories } from '@/features/nutrition/adaptive';
@@ -31,7 +32,7 @@ import { explainNutrition } from '@/features/coach/decisions/macros';
 import { ConfidenceLine } from '@/features/coach/DecisionView';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { useDayKey } from '@/hooks/useDayKey';
-import { frequentProducts, sameMealYesterday, usualMeal, type UsualMeal } from '@/features/nutrition/quick';
+import { usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { MealIcon } from '@/features/nutrition/MealIcon';
 import { BRAND } from '@/config/brand';
 import { afterModalClose } from '@/components/modalGate';
@@ -42,7 +43,6 @@ export default function Nutrition() {
   const [offset, setOffset] = useState(0);
   const date = addDays(dayKey, offset);
   const setDate = (d: string) => setOffset(Math.min(0, daysBetween(dayKey, d)));
-  const lastGrams = useNutrition((s) => s.lastGrams);
   const nut = useDayNutrition(date);
   const profile = useProfile((s) => s.profile);
   const products = useNutrition((s) => s.products);
@@ -59,8 +59,6 @@ export default function Nutrition() {
   const saveAsMeal = (slot: MealSlot, list: FoodEntry[]) => setSaveMeal({ slot, entries: list });
   const nowMealFor = (today_: boolean): MealSlot => (today_ ? mealForHour(new Date().getHours()) : 'snack');
   const isToday = offset === 0;
-  const nowMeal = mealForHour(new Date().getHours());
-  const repeat = useMemo(() => (isToday ? sameMealYesterday(allEntries, date, nowMeal) : []), [isToday, allEntries, date, nowMeal]);
   const usual = useMemo(() => Object.fromEntries((['breakfast', 'lunch', 'dinner', 'snack'] as MealSlot[]).map((m) => [m, usualMeal(allEntries, products, date, m)])) as Record<MealSlot, UsualMeal | null>, [allEntries, products, date]);
   const addUsual = (u: UsualMeal) => {
     const st = useNutrition.getState();
@@ -68,7 +66,6 @@ export default function Nutrition() {
     haptic.success();
     toast(`${MEAL_LABEL[u.slot]}: обычный добавлен`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
   };
-  const frequent = useMemo(() => frequentProducts(allEntries, products, lastGrams, date), [allEntries, products, lastGrams, date]);
   const target = nut.target;
   const dayFiber = useMemo(() => sumFiber(nut.entries), [nut.entries]);
   const dp = isToday ? dayProgress() : 1;
@@ -103,200 +100,113 @@ export default function Nutrition() {
     toast(`Добавлено: ~${Math.round(o.total.kcal)} ккал`);
   };
 
+  const pct = nut.eaten.kcal / target.kcal;
   return (
     <Screen tabBar>
+      <Ambient tone={left < 0 ? 'warn' : 'accent'} height={420} />
       <View style={styles.head}>
         <T v="h1" style={{ flex: 1 }}>
           Питание
         </T>
-        <IconButton name="chevron-back" label="Предыдущий день" onPress={() => setDate(addDays(date, -1))} />
-        <T v="body" style={{ fontWeight: '700', minWidth: 76, textAlign: 'center' }}>
+        <IconButton name="chevron-back" label="Предыдущий день" bg="transparent" onPress={() => setDate(addDays(date, -1))} />
+        <T v="body" style={{ fontWeight: '700', minWidth: 72, textAlign: 'center' }}>
           {relativeDay(date)}
         </T>
-        <IconButton name="chevron-forward" label="Следующий день" onPress={() => setDate(addDays(date, 1))} disabled={isToday} />
+        {isToday ? <View style={{ width: 44 }} /> : <IconButton name="chevron-forward" label="Следующий день" bg="transparent" onPress={() => setDate(addDays(date, 1))} />}
       </View>
 
-      {/* Главная цифра экрана — сколько осталось; макросы — колонками, без плиток */}
-      <View style={{ gap: space.lg, marginTop: space.sm }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <View style={{ flex: 1 }}>
-            <T v="caption">{isToday ? 'Осталось сегодня' : `Осталось · ${relativeDay(date).toLowerCase()}`}</T>
-            <T v="display" style={{ fontSize: 44 }} color={left < 0 ? stateColor(kState) : colors.text}>
-              {left >= 0 ? fmtNum(left) : `+${fmtNum(-left)}`}
-              <T v="h3" color={colors.textDim}> ккал{left < 0 ? ' сверх' : ''}</T>
-            </T>
-            <T v="small">
-              Съедено {fmtNum(nut.eaten.kcal)} из {fmtNum(target.kcal)} · {GOAL_SHORT[profile.goal]}
-            </T>
-          </View>
-          <Ring size={76} stroke={7} progress={nut.eaten.kcal / target.kcal} color={stateColor(kState)}>
-            <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
-              {Math.round((nut.eaten.kcal / target.kcal) * 100)}%
-            </T>
+      {/* Главная цифра экрана — сколько осталось, в кольце; тап — почему такие КБЖУ */}
+      <Appear i={0} style={{ alignItems: 'center', marginTop: space.md }}>
+        <Tap accessibilityRole="button" accessibilityLabel="Почему такие КБЖУ?" onPress={() => { haptic.tap(); setWhyOpen(true); }} scaleTo={0.97}>
+          <Ring size={212} stroke={10} progress={pct} color={stateColor(kState)} track={colors.surface2}>
+            <View style={{ alignItems: 'center' }}>
+              <KcalLeft value={left} color={left < 0 ? stateColor(kState) : colors.text} />
+              <T v="small" style={{ marginTop: 2 }}>
+                {left >= 0 ? (isToday ? 'осталось ккал' : `осталось · ${relativeDay(date).toLowerCase()}`) : 'ккал сверх нормы'}
+              </T>
+            </View>
           </Ring>
-        </View>
-        <View style={{ flexDirection: 'row', gap: space.md }} testID="macro-summary">
+        </Tap>
+      </Appear>
+      <Appear i={1}>
+        <View style={styles.macros} testID="macro-summary">
           <MacroLeft label="Белки" eaten={nut.eaten.protein} target={target.protein} state={macroState('protein', nut.eaten.protein, target.protein, dp)} base={colors.protein} />
           <MacroLeft label="Углеводы" eaten={nut.eaten.carbs} target={target.carbs} state={macroState('carbs', nut.eaten.carbs, target.carbs, dp)} base={colors.carbs} />
           <MacroLeft label="Жиры" eaten={nut.eaten.fat} target={target.fat} state={macroState('fat', nut.eaten.fat, target.fat, dp)} base={colors.fat} />
-          <MacroLeft label="Клетчатка" eaten={dayFiber.g} complete={dayFiber.complete} target={target.fiber ?? fiberTarget(target.kcal)} state="progress" base={colors.accent} />
+          <MacroLeft label="Клетчатка" eaten={dayFiber.g} complete={dayFiber.complete} target={target.fiber ?? fiberTarget(target.kcal)} state="progress" base={colors.stabilizerMuscle} />
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Почему такие КБЖУ?" hitSlop={8} onPress={() => setWhyOpen(true)} style={{ alignSelf: 'flex-start' }}>
-          <T v="small" style={{ fontWeight: '600' }}>
-            Почему такие КБЖУ ›
-          </T>
-        </Pressable>
-      </View>
+      </Appear>
 
-      <Button title="Добавить еду" icon="add" size="lg" style={{ marginTop: space.lg, marginBottom: space.md }} onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
-      {!nut.entries.length && prevDay.length ? (
-        <Pressable accessibilityRole="button" onPress={() => copyFrom(addDays(date, -1))} style={({ pressed }) => [styles.copyDay, pressed && { opacity: 0.6 }]}>
-          <Icon name="copy-outline" size={18} color={colors.textDim} />
-          <View style={{ flex: 1 }}>
-            <T v="body" style={{ fontWeight: '600' }}>
-              Скопировать весь вчерашний день
+      <Appear i={2} style={{ marginTop: space.xl }}>
+        <Button title="Добавить еду" icon="add" size="lg" live onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
+        {!nut.entries.length && prevDay.length ? (
+          <Pressable accessibilityRole="button" onPress={() => copyFrom(addDays(date, -1))} hitSlop={6} style={({ pressed }) => [styles.copyDay, pressed && { opacity: 0.6 }]}>
+            <T v="small" style={{ fontWeight: '600' }}>
+              Скопировать весь вчерашний день · {fmtNum(prevDay.reduce((a, e) => a + e.macros.kcal, 0))} ккал
             </T>
-            <T v="small">
-              {prevDay.length} продуктов · {fmtNum(prevDay.reduce((a, e) => a + e.macros.kcal, 0))} ккал
-            </T>
-          </View>
-        </Pressable>
-      ) : null}
-      <WaterRow date={date} />
-      {isToday && (repeat.length || frequent.length) ? (
-        <>
-          
-          {repeat.length && nut.entries.length ? (
-            <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingVertical: 12 }}>
-              <Icon name="repeat" size={20} color={colors.textDim} />
-              <View style={{ flex: 1 }}>
-                <T v="body" style={{ fontWeight: '700', fontSize: 15 }}>
-                  {MEAL_LABEL[nowMeal]} как вчера
-                </T>
-                <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
-                  {repeat.map((e) => e.name).join(', ')} · {fmtNum(repeat.reduce((a, e) => a + e.macros.kcal, 0))} ккал
-                </T>
-              </View>
-              <Button
-                title="Повторить"
-                size="sm"
-                variant="secondary"
-                onPress={() => {
-                  const st = useNutrition.getState();
-                  repeat.forEach((e) => {
-                    const p = st.products[e.productId] ?? LOCAL_FOODS.find((f) => f.id === e.productId);
-                    if (p) st.addEntry(p, e.grams, nowMeal, date);
-                  });
-                  haptic.success();
-                  toast(`${MEAL_LABEL[nowMeal]} добавлен`);
-                }}
-              />
-            </Card>
-          ) : null}
-          {frequent.length ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {frequent.map((f) => (
-                <Pressable
-                  key={f.product.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Добавить ${f.product.name} ${f.grams} грамм`}
-                  onPress={() => {
-                    useNutrition.getState().addEntry(f.product, f.grams, nowMeal, date);
-                    haptic.light();
-                    toast(`${f.product.name} — ${f.grams} г (изменить — тап по записи)`);
-                  }}
-                  style={styles.quick}
-                >
-                  <T v="small" color={colors.text} numberOfLines={2} style={{ fontWeight: '700', maxWidth: 150 }}>
-                    {f.product.name}
-                  </T>
-                  <T v="small" style={{ fontSize: 11 }}>
-                    + {f.grams} г · {Math.round((f.product.per100.kcal * f.grams) / 100)} ккал
-                  </T>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </>
-      ) : null}
+          </Pressable>
+        ) : null}
+      </Appear>
 
-      <SectionTitle title="Приёмы пищи" />
-      <View style={{ gap: 10 }}>
-        {meals.map((m) => {
+      {/* Приёмы пищи — один список без карточек: тап по строке — «Добавить в …», по записи — изменить */}
+      <Appear i={3} style={styles.mealList}>
+        {meals.map((m, mi) => {
           const list = nut.entries.filter((e) => e.meal === m);
           const mm = sumMacros(list);
-          const mf = sumFiber(list);
           return (
-            <Card key={m} style={{ paddingVertical: 10 }}>
-              {/* Вся карточка приёма (кроме записей — они открывают редактирование) открывает «Добавить в …» */}
-              <Pressable accessibilityRole="button" accessibilityLabel={`Добавить в ${MEAL_LABEL[m]}`} onPress={() => { haptic.tap(); setAddFor(m); }} style={({ pressed }) => [{ gap: 4 }, pressed && { opacity: 0.7 }]} testID={`meal-${m}`}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <MealIcon meal={m} />
-                  <T v="h3" style={{ flex: 1, fontSize: 16 }}>
-                    {MEAL_LABEL[m]}
-                  </T>
-                  {list.length ? <T v="small" color={colors.text} style={{ fontWeight: '700' }}>{fmtNum(mm.kcal)} ккал</T> : null}
-                  <View style={styles.mealAdd}>
-                    <Icon name="add" size={18} color={colors.text} />
-                  </View>
-                </View>
-                {list.length ? (
-                  <T v="small" style={{ fontSize: 13, marginLeft: 42 }}>
-                    Б {fmtG(mm.protein)} · Ж {fmtG(mm.fat)} · У {fmtG(mm.carbs)} · Кл {fiberLabel(mf).replace(' г', '')}
-                  </T>
-                ) : null}
+            <View key={m} style={[styles.meal, mi < meals.length - 1 && styles.mealLine]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Добавить в ${MEAL_LABEL[m]}`} onPress={() => { haptic.tap(); setAddFor(m); }} style={({ pressed }) => [styles.mealHead, pressed && { opacity: 0.6 }]} testID={`meal-${m}`}>
+                <MealIcon meal={m} />
+                <T v="body" style={{ flex: 1, fontWeight: '700' }}>
+                  {MEAL_LABEL[m]}
+                </T>
+                {list.length ? <T v="body" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }}>{fmtNum(mm.kcal)}</T> : null}
+                <Icon name="add" size={20} color={colors.textDim} />
               </Pressable>
               {list.length === 0 && usual[m] ? (
-                <Pressable accessibilityRole="button" accessibilityLabel={`Добавить обычный ${MEAL_LABEL[m].toLowerCase()}`} onPress={() => addUsual(usual[m]!)} style={styles.usual} testID={`usual-${m}`}>
-                  <View style={{ flex: 1 }}>
-                    <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
-                      Обычный {MEAL_LABEL[m].toLowerCase()} · {fmtNum(usual[m]!.kcal)} ккал
+                <Pressable accessibilityRole="button" accessibilityLabel={`Добавить обычный ${MEAL_LABEL[m].toLowerCase()}`} onPress={() => addUsual(usual[m]!)} style={({ pressed }) => [styles.hint, pressed && { opacity: 0.6 }]} testID={`usual-${m}`}>
+                  <T v="small" numberOfLines={1} style={{ fontSize: 13 }}>
+                    <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
+                      + Обычный · {fmtNum(usual[m]!.kcal)} ккал
                     </T>
-                    <T v="small" numberOfLines={1} style={{ fontSize: 13 }}>
-                      {usual[m]!.items.map((it) => `${it.product.name} ${it.grams} г`).join(', ')}
-                    </T>
-                  </View>
-                  <Icon name="add-circle" size={24} color={colors.text} />
+                    {`  ${usual[m]!.items.map((it) => it.product.name).join(', ')}`}
+                  </T>
                 </Pressable>
               ) : list.length === 0 && prevDay.some((e) => e.meal === m) ? (
-                <Pressable accessibilityRole="button" accessibilityLabel={`Скопировать ${MEAL_LABEL[m].toLowerCase()} со вчера`} hitSlop={8} onPress={() => copyFrom(addDays(date, -1), m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, marginLeft: 42 }}>
-                  <Icon name="copy-outline" size={14} color={colors.textDim} />
+                <Pressable accessibilityRole="button" accessibilityLabel={`Скопировать ${MEAL_LABEL[m].toLowerCase()} со вчера`} hitSlop={8} onPress={() => copyFrom(addDays(date, -1), m)} style={({ pressed }) => [styles.hint, pressed && { opacity: 0.6 }]}>
                   <T v="small" style={{ fontWeight: '600', fontSize: 13 }}>
-                    Как вчера · {fmtNum(prevDay.filter((e) => e.meal === m).reduce((a, e) => a + e.macros.kcal, 0))} ккал
+                    + Как вчера · {fmtNum(prevDay.filter((e) => e.meal === m).reduce((a, e) => a + e.macros.kcal, 0))} ккал
                   </T>
                 </Pressable>
               ) : null}
               {list.map((e) => (
-                <Pressable key={e.id} onPress={() => setEdit(e)} style={styles.entry} accessibilityRole="button" accessibilityLabel={`${e.name}, изменить`}>
-                  <View style={{ flex: 1 }}>
-                    <T v="body" numberOfLines={2} style={{ fontSize: 15 }}>
-                      {e.name}
-                    </T>
-                    <T v="small" style={{ fontSize: 12 }}>
-                      {e.grams} г · Б {Math.round(e.macros.protein)} Ж {Math.round(e.macros.fat)} У {Math.round(e.macros.carbs)} Кл {e.macros.fiber === undefined ? '—' : Math.round(e.macros.fiber)}
-                    </T>
-                  </View>
-                  <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
+                <Pressable key={e.id} onPress={() => setEdit(e)} style={({ pressed }) => [styles.entry, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${e.name}, изменить`}>
+                  <T v="body" numberOfLines={1} style={{ flex: 1, fontSize: 15 }}>
+                    {e.name}
+                    <T v="small" style={{ fontSize: 13 }}>{`  ${e.grams} г`}</T>
+                  </T>
+                  <T v="small" color={colors.text} style={{ fontVariant: ['tabular-nums'] }}>
                     {fmtNum(e.macros.kcal)}
                   </T>
                 </Pressable>
               ))}
               {list.length >= 2 ? (
-                <Pressable accessibilityRole="button" hitSlop={6} onPress={() => saveAsMeal(m, list)} style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Icon name="bookmark-outline" size={14} color={colors.textDim} />
+                <Pressable accessibilityRole="button" hitSlop={6} onPress={() => saveAsMeal(m, list)} style={styles.hint}>
                   <T v="small" style={{ fontWeight: '600', fontSize: 13 }}>
                     Сохранить как блюдо
                   </T>
                 </Pressable>
               ) : null}
-            </Card>
+            </View>
           );
         })}
-      </View>
+      </Appear>
+
+      <WaterRow date={date} />
 
       {review && isToday && review.status !== 'insufficient_data' ? (
         // Итог алгоритма одной фразой; действие — только если правило предлагает изменение
-        <Card tone={review.status === 'adjust' ? 'warning' : undefined} style={{ marginTop: space.md, gap: 8 }} testID="calorie-review">
+        <Card tone={review.status === 'adjust' ? 'warning' : undefined} style={{ marginTop: space.lg, gap: 8 }} testID="calorie-review">
           <T v="body" color={colors.text} style={{ fontSize: 15 }}>
             {review.summary}
           </T>
@@ -313,36 +223,23 @@ export default function Nutrition() {
         </Card>
       ) : null}
 
-      {isToday && suggestions ? (
+      {isToday && suggestions && suggestions.options.length ? (
         <>
           <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
           <View style={{ gap: 10 }}>
-            {suggestions.notes.map((n) => (
+            {suggestions.notes.slice(0, 1).map((n) => (
               <T key={n} v="small" color={n.includes('превыш') ? colors.warning : colors.textDim}>
                 {n}
               </T>
             ))}
             {suggestions.options.slice(0, moreMeals ? 3 : 1).map((o) => (
               <Card key={o.id} style={{ gap: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <T v="caption">{o.title}</T>
-                  <T v="small" style={{ fontSize: 12 }}>
-                    {o.why}
-                  </T>
-                </View>
-                {o.items.map((it) => (
-                  <View key={it.product.id} style={{ flexDirection: 'row' }}>
-                    <T v="body" style={{ flex: 1, fontSize: 15 }} numberOfLines={2}>
-                      {it.product.name}
-                    </T>
-                    <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
-                      {it.grams} г
-                    </T>
-                  </View>
-                ))}
+                <T v="body" style={{ fontWeight: '700' }}>
+                  {o.items.map((it) => `${it.product.name} ${it.grams} г`).join(' + ')}
+                </T>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <T v="small" style={{ flex: 1 }}>
-                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · Ж {Math.round(o.total.fat)} · У {Math.round(o.total.carbs)}
+                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · {o.why}
                   </T>
                   <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
                 </View>
@@ -390,7 +287,7 @@ export default function Nutrition() {
   );
 }
 
-/** Вода за день: +250 / +500 одним тапом, ориентир — от веса и тренировки */
+/** Вода за день: ±250 одним тапом, ориентир — от веса и тренировки */
 function WaterRow({ date }: { date: string }) {
   const [open, setOpen] = useState(false);
   const ml = useNutrition((s) => s.water[date] ?? 0);
@@ -403,20 +300,31 @@ function WaterRow({ date }: { date: string }) {
   return (
     <View style={styles.water}>
       <WaterSheet visible={open} onClose={() => setOpen(false)} date={date} />
-      <Icon name="water-outline" size={20} color={colors.protein} />
-      <Pressable accessibilityRole="button" accessibilityLabel="Вода: изменить объём" onPress={() => setOpen(true)} style={{ flex: 1, gap: 4 }}>
-        <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Вода: изменить объём" onPress={() => setOpen(true)} style={{ flex: 1, gap: 6 }}>
+        <T v="body" style={{ fontWeight: '600' }}>
           Вода {ml >= 1000 ? `${String(Math.round(ml / 50) / 20).replace('.', ',')} л` : `${ml} мл`} <T v="small">из ~{String(goal / 1000).replace('.', ',')} л</T>
         </T>
-        <Bar progress={ml / goal} color={colors.protein} height={4} />
+        <Progress value={ml / goal} color={colors.protein} height={4} />
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Минус 250 мл воды" disabled={!ml} onPress={() => add(-250)} style={[styles.waterBtn, !ml && { opacity: 0.4 }]} hitSlop={4}>
+      <Tap accessibilityRole="button" accessibilityLabel="Минус 250 мл воды" disabled={!ml} onPress={() => add(-250)} style={[styles.waterBtn, !ml && { opacity: 0.4 }]} hitSlop={4} scaleTo={0.9}>
         <Icon name="remove" size={18} />
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Плюс 250 мл воды" onPress={() => add(250)} style={styles.waterBtn} hitSlop={4}>
-        <T v="small" style={{ fontWeight: '800' }}>+250</T>
-      </Pressable>
+      </Tap>
+      <Tap accessibilityRole="button" accessibilityLabel="Плюс 250 мл воды" onPress={() => add(250)} style={styles.waterBtn} hitSlop={4} scaleTo={0.9}>
+        <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
+          +250
+        </T>
+      </Tap>
     </View>
+  );
+}
+
+/** Главная цифра «осталось»: живой счётчик */
+function KcalLeft({ value, color }: { value: number; color: string }) {
+  const v = useCountUp(Math.abs(value));
+  return (
+    <T v="hero" style={{ fontSize: 46, lineHeight: 50 }} color={color} accessibilityLabel={`${value >= 0 ? '' : '+'}${fmtNum(Math.abs(value))} ккал`}>
+      {value >= 0 ? fmtNum(Math.round(v)) : `+${fmtNum(Math.round(v))}`}
+    </T>
   );
 }
 
@@ -427,14 +335,14 @@ function MacroLeft({ label, eaten, target, state, base, complete = true }: { lab
   const known = eaten !== null;
   return (
     <View style={styles.macroLeft} accessibilityLabel={`${label}: ${known ? Math.round(eaten) : 'нет данных'} из ${Math.round(target)} г`}>
-      <T v="small" numberOfLines={1} adjustsFontSizeToFit>
-        {label}
-      </T>
-      <T v="num" style={{ fontSize: 20 }} color={known && eaten > target * 1.1 && state !== 'progress' ? c : colors.text} numberOfLines={1} adjustsFontSizeToFit>
+      <T v="num" style={{ fontSize: 17 }} color={known && eaten > target * 1.1 && state !== 'progress' ? c : colors.text} numberOfLines={1} adjustsFontSizeToFit>
         {known ? `${complete ? '' : '≥'}${Math.round(eaten)}` : '—'}
         <T v="small" style={{ fontSize: 12 }}> / {Math.round(target)}</T>
       </T>
-      <Bar progress={known && target ? eaten / target : 0} color={c} height={3} />
+      <Progress value={known && target ? eaten / target : 0} color={c} height={3} />
+      <T v="small" style={{ fontSize: 12 }} numberOfLines={1} adjustsFontSizeToFit>
+        {label}
+      </T>
     </View>
   );
 }
@@ -515,19 +423,17 @@ function EditEntrySheet({ entry, onClose }: { entry: FoodEntry | null; onClose: 
 }
 
 const styles = themed({
-  usual: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginLeft: 42, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.md },
-  legend: { flexDirection: 'row', gap: 14, marginTop: space.md },
-  quick: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
-  macroLeft: { flex: 1, gap: 4 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: space.sm },
+  macros: { flexDirection: 'row', gap: space.md, marginTop: space.xl },
+  macroLeft: { flex: 1, gap: 6 },
   gramChip: { paddingHorizontal: 12, height: 34, borderRadius: 17, backgroundColor: colors.surface2, justifyContent: 'center' },
-  copyDay: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 10, borderRadius: radius.lg, backgroundColor: colors.surface },
-  water: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, borderRadius: radius.md, backgroundColor: colors.surface },
-  waterBtn: { minWidth: 44, height: 36, paddingHorizontal: 8, borderRadius: 18, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  mealAdd: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, minHeight: 48, borderRadius: radius.sm },
+  copyDay: { alignSelf: 'center', paddingVertical: 12 },
+  mealList: { marginTop: space.xl, borderRadius: radius.lg, backgroundColor: colors.surface, paddingHorizontal: space.md },
+  meal: { paddingVertical: 6 },
+  mealLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 },
+  hint: { marginLeft: 44, paddingBottom: 10 },
+  entry: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 44, minHeight: 40 },
+  water: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: space.lg, paddingVertical: 14, paddingHorizontal: space.md, borderRadius: radius.lg, backgroundColor: colors.surface },
+  waterBtn: { minWidth: 48, height: 38, paddingHorizontal: 10, borderRadius: 19, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
 });
-
-function fmtG(n: number): string {
-  return String(Math.round(n));
-}

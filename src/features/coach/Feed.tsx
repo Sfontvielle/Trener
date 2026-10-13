@@ -8,16 +8,31 @@ import type { FeedAction, FeedItem } from './feed';
 /** Сколько карточек видно сразу: остальное — по «Ещё», чтобы лента не превращалась в шум */
 const VISIBLE = 3;
 
-/** Лента тренера: одна колонка карточек по приоритету — заголовок, одна фраза, действие */
-export function CoachFeed({ items, onAction, onDismiss }: { items: FeedItem[]; onAction: (item: FeedItem, a: FeedAction) => void; onDismiss: (item: FeedItem) => void }) {
+/**
+ * Лента тренера: карточки по приоритету — заголовок, одна фраза, действие. limit — сколько видно сразу;
+ * onMore — остальные открываются отдельно (лист), иначе — разворачиваются на месте. bare — без заголовка (в листе).
+ */
+export function CoachFeed({ items, onAction, onDismiss, limit = VISIBLE, onMore, bare }: { items: FeedItem[]; onAction: (item: FeedItem, a: FeedAction) => void; onDismiss: (item: FeedItem) => void; limit?: number; onMore?: () => void; bare?: boolean }) {
   const [all, setAll] = useState(false);
   if (!items.length) return null;
-  const shown = all ? items : items.slice(0, VISIBLE);
+  const shown = all ? items : items.slice(0, limit);
+  const rest = items.length - shown.length;
   return (
     <View style={{ gap: 10 }} testID="coach-feed">
-      <T v="h3" accessibilityRole="header" style={{ marginBottom: 2 }}>
-        От тренера
-      </T>
+      {bare ? null : (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
+          <T v="h3" accessibilityRole="header" style={{ flex: 1 }}>
+            От тренера
+          </T>
+          {rest > 0 && onMore ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={`Ещё ${rest} от тренера`} onPress={onMore} hitSlop={10}>
+              <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+                Ещё {rest} ›
+              </T>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
       {shown.map((it, i) => {
         const urgent = it.tone === 'urgent';
         const warn = it.tone === 'warning';
@@ -55,10 +70,10 @@ export function CoachFeed({ items, onAction, onDismiss }: { items: FeedItem[]; o
           </FadeIn>
         );
       })}
-      {items.length > VISIBLE ? (
+      {!onMore && items.length > limit ? (
         <Pressable accessibilityRole="button" onPress={() => setAll(!all)} hitSlop={8} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
           <T v="small" style={{ fontWeight: '600' }}>
-            {all ? 'Свернуть' : `Ещё ${items.length - VISIBLE}`}
+            {all ? 'Свернуть' : `Ещё ${items.length - limit}`}
           </T>
         </Pressable>
       ) : null}

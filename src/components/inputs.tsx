@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Pressable, StyleProp, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Animated, Pressable, StyleProp, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from './ui';
 import { haptic } from '@/services/haptics';
 import { parseDecimal } from '@/utils/format';
 import { useEnsureVisible } from './keyboard';
+import { prefersReducedMotion } from './motion';
 
 /** accessory — кнопка ВНУТРИ поля справа (например «+» выбора из списка) */
 export function Field({ label, hint, error, style, accessory, ...rest }: TextInputProps & { label?: string; hint?: string; error?: string; style?: StyleProp<ViewStyle>; accessory?: React.ReactNode }) {
@@ -168,6 +169,12 @@ export function Scale5({ value, onChange, low, high, invert }: { value: number; 
 }
 
 export function Toggle({ value, onChange, label, sub }: { value: boolean; onChange: (v: boolean) => void; label: string; sub?: string }) {
+  // Переключатель как в iOS: бегунок едет пружиной, дорожка мягко наливается цветом
+  const [a] = useState(() => new Animated.Value(value ? 1 : 0));
+  useEffect(() => {
+    if (prefersReducedMotion()) a.setValue(value ? 1 : 0);
+    else Animated.spring(a, { toValue: value ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 7 }).start();
+  }, [value, a]);
   return (
     <Pressable
       accessibilityRole="switch"
@@ -182,9 +189,9 @@ export function Toggle({ value, onChange, label, sub }: { value: boolean; onChan
         <T v="body">{label}</T>
         {sub ? <T v="small">{sub}</T> : null}
       </View>
-      <View style={[styles.track, value && { backgroundColor: colors.accent }]}>
-        <View style={[styles.thumb, value && { transform: [{ translateX: 20 }] }]} />
-      </View>
+      <Animated.View style={[styles.track, { backgroundColor: a.interpolate({ inputRange: [0, 1], outputRange: [colors.surface3, colors.accent] }) }]}>
+        <Animated.View style={[styles.thumb, { transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }] }]} />
+      </Animated.View>
     </Pressable>
   );
 }

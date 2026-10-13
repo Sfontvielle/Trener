@@ -3,7 +3,8 @@ import { Image, Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, Card, EmptyState, Icon, Segmented, SectionTitle, Stat, T } from '@/components/ui';
+import { Button, Card, Icon, IconButton, Segmented, SectionTitle, Stat, T } from '@/components/ui';
+import { Ambient, Appear } from '@/components/motion';
 import { MiniBars, TrendChart } from '@/components/charts';
 import { useBody } from '@/stores/body';
 import { useWorkouts } from '@/stores/workouts';
@@ -14,12 +15,11 @@ import { useCheckins } from '@/stores/checkins';
 import { useHealth } from '@/stores/health';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
 import { adherence, progressRows, workoutsInRange } from '@/features/training/analytics';
-import { reviewCalories } from '@/features/nutrition/adaptive';
 import { targetWeeklyChangeKg } from '@/features/nutrition/targets';
 import { readinessFor } from '@/features/recovery/derive';
 import { addDays, daysBetween, formatDayShort, formatHours, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
-import { lastWeekSummary, weeklyProposals, type WeeklyProposal } from '@/features/progress/weekly';
+import { weeklyProposals, type WeeklyProposal } from '@/features/progress/weekly';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { doneFineVolume, weeklyTargets } from '@/features/training/engine/volume';
@@ -53,7 +53,6 @@ export default function Progress() {
   const sessions = useWorkouts((s) => s.sessions);
   const plan = usePlan((s) => s.plan);
   const target = usePlan((s) => s.target);
-  const adjustments = usePlan((s) => s.adjustments);
   const profile = useProfile((s) => s.profile);
   const entries = useNutrition((s) => s.entries);
   const checkins = useCheckins((s) => s.byDate);
@@ -70,7 +69,6 @@ export default function Progress() {
   const rate = useMemo(() => weeklyRate(trend, 21), [trend]);
   const change = shown.length >= 2 ? shown[shown.length - 1].trend - shown[0].trend : 0;
   const goalRate = profile ? targetWeeklyChangeKg(profile, trend.length ? trend[trend.length - 1].trend : profile.weightKg) : 0;
-  const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, entries, adjustments, metrics, sessions]);
 
   const month = workoutsInRange(sessions, addDays(d, -29), d);
   const adh = useMemo(() => adherence(sessions, plan, 28), [sessions, plan]);
@@ -105,7 +103,6 @@ export default function Progress() {
   const sleep = Object.values(checkins).filter((c) => c.date > addDays(d, -7));
   const avgSleep = sleep.length ? sleep.reduce((a, c) => a + c.sleepHours, 0) / sleep.length : null;
 
-  const week = useMemo(() => lastWeekSummary({ sessions, plan, entries, target, weights, checkins }), [sessions, plan, entries, target, weights, checkins]);
   const cmp = useMemo(() => comparePeriods({ days: Number(cmpDays), weights, metrics, sessions, entries }), [cmpDays, weights, metrics, sessions, entries]);
   const story = progressNarrative(cmp);
   const series = useMemo(() => weeklySeries(sessions, entries, 8), [sessions, entries]);
@@ -122,41 +119,77 @@ export default function Progress() {
     return m;
   }, [metrics]);
 
+  const last = trend.length ? trend[trend.length - 1].trend : null;
+  // Один период на весь экран: и график веса, и «что изменилось»
+  const pick = (r: Range) => {
+    setRange(r);
+    setCmpDays(r === 'all' ? '90' : r);
+  };
   return (
     <Screen tabBar>
-      <T v="h1" style={{ marginBottom: space.md }}>
-        Прогресс
-      </T>
-
-      {/* Переходы — одним списком, без цветных иконок */}
-      <View style={styles.list}>
-        <NavRow title="Отчёт недели" sub={week ? `${formatDayShort(week.from)} – ${formatDayShort(week.to)}: ${week.headline}` : 'Вес, тренировки, питание и вывод тренера'} onPress={() => router.push('/weekly-review')} />
-        <NavRow title="Анализы и здоровье" a11y="Анализы и здоровье" sub={lastLab ? `Последние ${formatDayShort(lastLab.date)}${labFlags ? ` · обсудить с врачом: ${labFlags}` : ''}` : 'PDF, фото или текст бланка'} warn={!!labFlags} onPress={() => router.push('/labs')} last />
+      <Ambient height={420} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.sm }}>
+        <T v="h1" style={{ flex: 1 }}>
+          Прогресс
+        </T>
+        <IconButton name="add" label="Записать вес" onPress={() => router.push('/weight')} />
       </View>
 
-      <Card style={{ marginTop: space.xl, gap: 12 }}>
-        <T v="h3">Что изменилось</T>
-        <Segmented items={[{ key: '7', label: '7 дн' }, { key: '30', label: '30 дн' }, { key: '90', label: '90 дн' }]} value={cmpDays} onChange={setCmpDays} />
-        {story ? (
-          <T v="body" style={{ fontSize: 15 }} color={colors.text}>
-            {story}
-          </T>
-        ) : (
-          <T v="small">Пока мало данных за этот период — записывай вес, замеры и тренировки.</T>
-        )}
-        <View style={{ gap: 6 }}>
-          <CmpRow label="Тренировки" cur={cmp.workouts.cur} prev={cmp.workouts.prev} />
-          <CmpRow label="Рабочие подходы" cur={cmp.sets.cur} prev={cmp.sets.prev} />
-          {cmp.kcal.cur !== null ? <CmpRow label="Ккал в день, ср." cur={cmp.kcal.cur} prev={cmp.kcal.prev} /> : null}
-          {cmp.protein.cur !== null ? <CmpRow label="Белок в день, ср." cur={cmp.protein.cur} prev={cmp.protein.prev} unit="г" /> : null}
-        </View>
-        <T v="small" style={{ fontSize: 12 }}>
-          К предыдущим {cmpDays} дням
+      {/* Главное: как меняется тело — тренд веса крупно, одна строка темпа, график и период */}
+      {last !== null ? (
+        <>
+          <Appear i={0} style={{ marginTop: space.md }}>
+            <T v="caption">Вес · тренд</T>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+              <T v="hero">{fmtWeight(Math.round(last * 10) / 10)}</T>
+              <T v="h3" color={colors.textDim}>
+                кг
+              </T>
+            </View>
+            <T v="bodyDim" style={{ marginTop: 4 }}>
+              {rate ? `темп ${rate.kgPerWeek >= 0 ? '+' : '−'}${Math.abs(rate.kgPerWeek).toFixed(2).replace('.', ',')} кг/нед` : `${change >= 0 ? '+' : '−'}${Math.abs(change).toFixed(1).replace('.', ',')} кг за период`}
+              {profile && profile.goal !== 'maintain' && profile.goal !== 'recomp' ? ` · цель ${goalRate >= 0 ? '+' : '−'}${Math.abs(goalRate).toFixed(2).replace('.', ',')}` : ''}
+            </T>
+          </Appear>
+          <Appear i={1} style={{ marginTop: space.lg }}>
+            <TrendChart points={points} labels={shown.length ? [formatDayShort(shown[0].date), formatDayShort(shown[shown.length - 1].date)] : undefined} />
+          </Appear>
+          <Appear i={2} style={{ marginTop: space.md }}>
+            <Segmented
+              items={[
+                { key: '7', label: '7 дн' },
+                { key: '30', label: '30 дн' },
+                { key: '90', label: '90 дн' },
+                { key: 'all', label: 'Всё' },
+              ]}
+              value={range}
+              onChange={pick}
+            />
+          </Appear>
+        </>
+      ) : (
+        <Appear i={0} style={{ marginTop: space.xl, gap: space.md }}>
+          <T v="hero">Вес</T>
+          <T v="bodyDim">Взвешивайся 3–4 раза в неделю утром — появится тренд, и калории начнут подстраиваться под тебя.</T>
+          <Button title="Записать вес" icon="add" size="lg" live onPress={() => router.push('/weight')} />
+        </Appear>
+      )}
+
+      {/* Что изменилось — одной фразой; подробная таблица — в «Подробной статистике» */}
+      <Appear i={3}>
+        <T v="body" color={colors.text} style={{ marginTop: space.xl, lineHeight: 23 }} testID="progress-story">
+          {story ?? 'Пока мало данных за этот период — записывай вес, замеры и тренировки.'}
         </T>
-      </Card>
+      </Appear>
+
+      {/* Переходы — одним списком */}
+      <Appear i={4} style={[styles.list, { marginTop: space.xl }]}>
+        <NavRow title="Отчёт недели" onPress={() => router.push('/weekly-review')} />
+        <NavRow title="Анализы и здоровье" a11y="Анализы и здоровье" sub={labFlags && lastLab ? `${formatDayShort(lastLab.date)} · обсудить с врачом: ${labFlags}` : undefined} warn={!!labFlags} onPress={() => router.push('/labs')} last />
+      </Appear>
 
       {proposals.filter((p) => !doneProposals.includes(p.id)).length ? (
-        <Card style={{ marginBottom: space.md, gap: 10 }}>
+        <Card style={{ marginTop: space.xl, gap: 10 }}>
           <T v="h3">Предложение {BRAND} на неделю</T>
           {proposals
             .filter((p) => !doneProposals.includes(p.id))
@@ -174,71 +207,6 @@ export default function Progress() {
             ))}
         </Card>
       ) : null}
-
-      <Card style={{ marginTop: space.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T v="h3">Вес</T>
-          <Pressable onPress={() => router.push('/weight')} hitSlop={10} accessibilityRole="button" style={styles.addBtn}>
-            <Icon name="add" size={18} color={colors.text} />
-            <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
-              Записать
-            </T>
-          </Pressable>
-        </View>
-        {trend.length ? (
-          <>
-            <View style={{ flexDirection: 'row', gap: space.lg, marginTop: 8 }}>
-              <Stat label="Сейчас" value={fmtWeight(Math.round(trend[trend.length - 1].trend * 10) / 10)} unit="кг" />
-              <Stat label="За период" value={`${change >= 0 ? '+' : ''}${change.toFixed(1)}`} unit="кг" color={colors.text} />
-              <Stat label="Темп/нед" value={rate ? `${rate.kgPerWeek >= 0 ? '+' : ''}${rate.kgPerWeek.toFixed(2)}` : '—'} sub={profile && profile.goal !== 'maintain' && profile.goal !== 'recomp' ? `цель ${goalRate >= 0 ? '+' : ''}${goalRate.toFixed(2)}` : 'цель ≈ 0'} />
-            </View>
-            <Segmented
-              style={{ marginTop: space.md }}
-              items={[
-                { key: '7', label: '7 дн' },
-                { key: '30', label: '30 дн' },
-                { key: '90', label: '90 дн' },
-                { key: 'all', label: 'Всё' },
-              ]}
-              value={range}
-              onChange={setRange}
-            />
-            <View style={{ marginTop: space.md }}>
-              <TrendChart points={points} labels={shown.length ? [formatDayShort(shown[0].date), formatDayShort(shown[shown.length - 1].date)] : undefined} />
-            </View>
-          </>
-        ) : (
-          <EmptyState icon="scale-outline" title="Нет истории веса" text="Взвешивайся 3–4 раза в неделю утром — появится тренд и адаптация калорий." action="Записать вес" onAction={() => router.push('/weight')} />
-        )}
-        {review ? (
-          <View style={{ marginTop: space.md, gap: 2 }}>
-            <T v="body" style={{ fontWeight: '600' }} color={review.status === 'adjust' ? colors.warning : colors.text}>
-              {review.headline}
-            </T>
-            <T v="small" numberOfLines={2}>
-              {review.detail}
-            </T>
-          </View>
-        ) : null}
-      </Card>
-
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: space.md }}>
-        <Card style={{ flex: 1 }}>
-          <Stat label="Тренировки" value={String(month)} unit="/ 30 дн" />
-          <View style={{ marginTop: 10 }}>
-            <MiniBars values={weekly} height={32} max={Math.max(plan?.daysPerWeek ?? 4, ...weekly)} />
-          </View>
-        </Card>
-        <Card style={{ flex: 1 }}>
-          <Stat label="Выполнение плана" value={adh.pct === null ? '—' : `${adh.pct}%`} color={adh.pct === null ? colors.text : adh.pct >= 85 ? colors.accent : adh.pct >= 65 ? colors.warning : colors.danger} sub={`${adh.workoutsDone}/${adh.workoutsPlanned} трен · 28 дн`} />
-          {strength !== null ? (
-            <T v="small" style={{ marginTop: 6 }}>
-              Сила {strength >= 0 ? '+' : ''}
-              {strength}% за 60 дн
-            </T>
-          ) : null}
-        </Card>
-      </View>
 
       <SectionTitle title="Тело: замеры и фото" action="Записать" onAction={() => router.push('/measurements')} />
       <Card style={{ gap: 10 }}>
@@ -318,15 +286,69 @@ export default function Progress() {
         )}
       </Card>
 
+
+      <SectionTitle title="Рабочие веса и рекорды" />
+      {prs.length ? (
+        <View style={{ gap: 8 }}>
+          {prs.slice(0, allPrs ? prs.length : 4).map((r) => (
+            <Card key={r.exerciseId} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: r.exerciseId } })} style={{ paddingVertical: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
+                    {r.name}
+                  </T>
+                  <T v="small">
+                    {r.from} → <T v="small" color={colors.text} style={{ fontWeight: '800' }}>{r.to}</T>
+                    {r.e1rmTo ? ` · 1ПМ ~${r.e1rmTo} кг` : ''}
+                  </T>
+                </View>
+                <T v="h3" color={r.gainPct > 0 ? colors.accent : colors.textDim}>
+                  {r.gainPct > 0 ? `+${r.gainPct}%` : r.sessions === 1 ? 'старт' : '='}
+                </T>
+              </View>
+            </Card>
+          ))}
+          {prs.length > 4 ? <Button title={allPrs ? 'Свернуть' : `Показать все (${prs.length})`} size="sm" variant="ghost" onPress={() => setAllPrs(!allPrs)} /> : null}
+        </View>
+      ) : (
+        <Card>
+          <T v="small">Появится после нескольких тренировок.</T>
+        </Card>
+      )}
+
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.6 }]}>
         <T v="body" style={{ flex: 1 }}>
           Подробная статистика
         </T>
-        <T v="small">8 недель · объём · восстановление</T>
+        <T v="small">изменения · 8 недель · объём · сон</T>
         <Icon name={more ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
       </Pressable>
       {more ? (
       <>
+      <SectionTitle title={`Что изменилось · к предыдущим ${cmpDays} дням`} />
+      <Card style={{ gap: 6 }}>
+        <CmpRow label="Тренировки" cur={cmp.workouts.cur} prev={cmp.workouts.prev} />
+        <CmpRow label="Рабочие подходы" cur={cmp.sets.cur} prev={cmp.sets.prev} />
+        {cmp.kcal.cur !== null ? <CmpRow label="Ккал в день, ср." cur={cmp.kcal.cur} prev={cmp.kcal.prev} /> : null}
+        {cmp.protein.cur !== null ? <CmpRow label="Белок в день, ср." cur={cmp.protein.cur} prev={cmp.protein.prev} unit="г" /> : null}
+      </Card>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: space.md }}>
+        <Card style={{ flex: 1 }}>
+          <Stat label="Тренировки" value={String(month)} unit="/ 30 дн" />
+          <View style={{ marginTop: 10 }}>
+            <MiniBars values={weekly} height={32} max={Math.max(plan?.daysPerWeek ?? 4, ...weekly)} />
+          </View>
+        </Card>
+        <Card style={{ flex: 1 }}>
+          <Stat label="Выполнение плана" value={adh.pct === null ? '—' : `${adh.pct}%`} color={adh.pct === null ? colors.text : adh.pct >= 85 ? colors.accent : adh.pct >= 65 ? colors.warning : colors.danger} sub={`${adh.workoutsDone}/${adh.workoutsPlanned} трен · 28 дн`} />
+          {strength !== null ? (
+            <T v="small" style={{ marginTop: 6 }}>
+              Сила {strength >= 0 ? '+' : ''}
+              {strength}% за 60 дн
+            </T>
+          ) : null}
+        </Card>
+      </View>
       <SectionTitle title="Тренировки и питание · 8 недель" />
       <Card style={{ gap: 12 }}>
         <WeekBars title="Тренировок в неделю" values={series.map((w) => w.workouts)} max={Math.max(plan?.daysPerWeek ?? 4, ...series.map((w) => w.workouts))} last={`${series[series.length - 1].workouts}`} />
@@ -370,40 +392,6 @@ export default function Progress() {
         </Card>
       )}
 
-      </>
-      ) : null}
-
-      <SectionTitle title="Рабочие веса и рекорды" />
-      {prs.length ? (
-        <View style={{ gap: 8 }}>
-          {prs.slice(0, allPrs ? prs.length : 4).map((r) => (
-            <Card key={r.exerciseId} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: r.exerciseId } })} style={{ paddingVertical: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
-                    {r.name}
-                  </T>
-                  <T v="small">
-                    {r.from} → <T v="small" color={colors.text} style={{ fontWeight: '800' }}>{r.to}</T>
-                    {r.e1rmTo ? ` · 1ПМ ~${r.e1rmTo} кг` : ''}
-                  </T>
-                </View>
-                <T v="h3" color={r.gainPct > 0 ? colors.accent : colors.textDim}>
-                  {r.gainPct > 0 ? `+${r.gainPct}%` : r.sessions === 1 ? 'старт' : '='}
-                </T>
-              </View>
-            </Card>
-          ))}
-          {prs.length > 4 ? <Button title={allPrs ? 'Свернуть' : `Показать все (${prs.length})`} size="sm" variant="ghost" onPress={() => setAllPrs(!allPrs)} /> : null}
-        </View>
-      ) : (
-        <Card>
-          <T v="small">Появится после нескольких тренировок.</T>
-        </Card>
-      )}
-
-      {more ? (
-      <>
       <SectionTitle title="Восстановление · 7 дней" />
       <Card>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, columnGap: 12, justifyContent: 'space-between', marginBottom: 10 }}>
@@ -420,16 +408,18 @@ export default function Progress() {
   );
 }
 
-function NavRow({ title, sub, onPress, a11y, warn, last }: { title: string; sub: string; onPress: () => void; a11y?: string; warn?: boolean; last?: boolean }) {
+function NavRow({ title, sub, onPress, a11y, warn, last }: { title: string; sub?: string; onPress: () => void; a11y?: string; warn?: boolean; last?: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={a11y ?? title} onPress={onPress} style={({ pressed }) => [styles.navRow, !last && styles.navLine, pressed && { opacity: 0.6 }]}>
       <View style={{ flex: 1, gap: 2 }}>
         <T v="body" style={{ fontWeight: '600' }}>
           {title}
         </T>
-        <T v="small" numberOfLines={1} color={warn ? colors.warning : colors.textDim}>
-          {sub}
-        </T>
+        {sub ? (
+          <T v="small" numberOfLines={1} color={warn ? colors.warning : colors.textDim}>
+            {sub}
+          </T>
+        ) : null}
       </View>
       <Icon name="chevron-forward" size={16} color={colors.muted} />
     </Pressable>
@@ -494,7 +484,7 @@ function applyProposal(p: WeeklyProposal) {
 
 const styles = themed({
   list: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingLeft: space.md },
-  navRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingRight: space.md },
+  navRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingRight: space.md, minHeight: 54 },
   navLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 34, borderRadius: 17, backgroundColor: colors.surface2 },
   moreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: space.xl, paddingHorizontal: space.md, minHeight: 54, borderRadius: radius.lg, backgroundColor: colors.surface },
