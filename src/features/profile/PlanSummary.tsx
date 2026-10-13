@@ -78,11 +78,11 @@ export function WeekStrip({ plan }: { plan: WorkoutPlan }) {
       {plan.schedule.map((tid, i) => {
         const t = plan.templates.find((x) => x.id === tid);
         return (
-          <View key={i} style={[styles.day, t && { backgroundColor: colors.accentDim, borderColor: colors.accentLine }]}>
+          <View key={i} style={[styles.day, !t && { backgroundColor: 'transparent' }]}>
             <T v="small" style={{ fontSize: 11 }}>
               {WEEKDAYS_SHORT[i]}
             </T>
-            <T v="small" color={t ? colors.text : colors.muted} style={{ fontSize: 10, fontWeight: '800' }} numberOfLines={1} adjustsFontSizeToFit>
+            <T v="small" color={t ? colors.text : colors.muted} style={{ fontSize: 11, fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit>
               {t ? t.name.replace('Всё тело', 'Тело').replace('Конечности', 'Конеч.').replace('Жимовая', 'Жим').replace('Тяговая', 'Тяга') : '—'}
             </T>
           </View>
@@ -130,7 +130,7 @@ const styles = themed({
   track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.surface3, overflow: 'hidden' },
   fillBar: { height: 8, borderRadius: 4 },
   mark: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: colors.text, opacity: 0.6 },
-  day: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  day: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 3 },
 });
 
 /** «Почему такой план?»: сплит, недельный объём по группам и что было учтено (ограничения, стиль подходов) */

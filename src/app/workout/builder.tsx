@@ -285,11 +285,11 @@ export default function Builder() {
 }
 
 const styles = themed({
-  item: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 12 },
+  item: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: 12 },
   itemHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
   suggest: { gap: 8, padding: space.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, marginBottom: space.md },
-  issue: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: 8 },
+  issue: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 8 },
   idx: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', paddingHorizontal: 10, height: 26, marginVertical: -4, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', paddingHorizontal: 10, height: 26, marginVertical: -4, borderRadius: 13, backgroundColor: colors.bg },
   linkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
 });

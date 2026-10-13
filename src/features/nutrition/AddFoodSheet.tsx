@@ -216,7 +216,7 @@ function ProductRow({ p, grams, onAdd, onOpen }: { p: FoodProduct; grams: number
 
 const styles = themed({
   back: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 64, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 64, borderRadius: radius.lg, backgroundColor: colors.surface2 },
   rowIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
   badge: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 6, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   prow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 },

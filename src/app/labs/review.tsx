@@ -128,5 +128,5 @@ export default function LabReviewScreen() {
 }
 
 const styles = themed({
-  row: { gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  row: { gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface },
 });

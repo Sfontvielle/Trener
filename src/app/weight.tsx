@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, space } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Card, Divider, Icon, T } from '@/components/ui';
+import { Button, Card, Divider, Icon, T } from '@/components/ui';
 import { NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
 import { useBody } from '@/stores/body';
@@ -12,7 +12,6 @@ import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { relativeDay, today } from '@/utils/date';
 import { fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
-import { BRAND } from '@/config/brand';
 
 export default function WeightScreen() {
   const weights = useBody((s) => s.weights);
@@ -43,7 +42,9 @@ export default function WeightScreen() {
         />
       </Card>
       {trend ? (
-        <Banner tone="accent" icon="trending-up" text={`Тренд: ${fmtWeight(trend)} кг. ${BRAND} ориентируется на тренд, а не на разовое значение — колебания ±1 кг от воды это норма.`} />
+        <T v="small" style={{ textAlign: 'center' }}>
+          Тренд {fmtWeight(trend)} кг · колебания ±1 кг от воды — норма
+        </T>
       ) : null}
       <T v="caption" style={{ marginTop: space.xl, marginBottom: space.sm }}>
         История

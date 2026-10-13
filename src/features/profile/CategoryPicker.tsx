@@ -129,7 +129,7 @@ export function CategoryPicker({ visible, category, value, onClose, onSave }: { 
 const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space.md },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface2, borderRadius: radius.md, paddingHorizontal: space.md },
   searchInput: { flex: 1, minWidth: 0, height: 46, color: colors.text, fontSize: 16 },
   custom: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
   footer: { flexDirection: 'row', gap: space.sm },

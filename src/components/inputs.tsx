@@ -146,9 +146,9 @@ export function Scale5({ value, onChange, low, high, invert }: { value: number; 
                 haptic.tap();
                 onChange(n as 1 | 2 | 3 | 4 | 5);
               }}
-              style={[styles.scaleItem, active && { backgroundColor: c, borderColor: c }]}
+              style={[styles.scaleItem, active && { backgroundColor: c === colors.textDim ? colors.text : c }]}
             >
-              <T v="h3" color={active ? colors.onAccent : colors.textDim}>
+              <T v="h3" color={active ? colors.bg : colors.textDim}>
                 {n}
               </T>
             </Pressable>
@@ -195,17 +195,15 @@ const styles = themed({
     height: 50,
     borderRadius: radius.md,
     backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.border,
     paddingHorizontal: space.md,
     color: colors.text,
     fontSize: 16,
     fontWeight: '500',
   },
-  stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   stepInput: { flexShrink: 1, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
-  scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },
   track: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.surface3, padding: 3 },
   thumb: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.text },

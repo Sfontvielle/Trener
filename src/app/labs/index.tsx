@@ -109,7 +109,7 @@ export default function LabsScreen() {
         <EmptyState
           icon="flask-outline"
           title="Анализов пока нет"
-          text="Загрузите PDF, фото или скриншот бланка (Инвитро, Хеликс и любые другие), вставьте текст или введите значения вручную. Перед сохранением вы проверите каждое значение."
+          text="PDF, фото бланка, текст или вручную — перед сохранением вы проверите каждое значение."
           action="Добавить анализы"
           onAction={() => setAddOpen(true)}
         />
@@ -258,7 +258,7 @@ export default function LabsScreen() {
 }
 
 const styles = themed({
-  list: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space.md },
+  list: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   changeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 },

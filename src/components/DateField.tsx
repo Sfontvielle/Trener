@@ -95,7 +95,7 @@ export function DateField({ label, value, onChange, placeholder = 'Выбрат�
 }
 
 const styles = themed({
-  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: 12 },
   row: { flexDirection: 'row' },
   wd: { width: `${100 / 7}%`, textAlign: 'center', fontSize: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },

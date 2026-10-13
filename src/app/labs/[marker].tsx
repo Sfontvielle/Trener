@@ -93,6 +93,6 @@ export default function MarkerScreen() {
 }
 
 const styles = themed({
-  list: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: space.md },
+  list: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
 });

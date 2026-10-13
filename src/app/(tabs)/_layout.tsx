@@ -63,7 +63,7 @@ function TabBar({ state, navigation }: any) {
           }}
           style={({ pressed }) => [styles.plus, pressed && { transform: [{ scale: 0.94 }] }]}
         >
-          <Icon name="add" size={32} color={colors.onAccent} />
+          <Icon name="add" size={30} color={colors.text} />
           {hasActive ? <View style={styles.dot} /> : null}
         </Pressable>
       </View>
@@ -98,17 +98,15 @@ const styles = themed({
   },
   item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 6 },
   centerWrap: { width: 76, alignItems: 'center' },
+  // «+» — спокойная кнопка: лайм на экране принадлежит главному действию, а не меню
   plus: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.accent,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.surface3,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -14,
-    boxShadow: '0px 4px 16px rgba(200,245,60,0.35)',
-    borderWidth: 4,
-    borderColor: colors.bg,
+    marginTop: 2,
   },
-  dot: { position: 'absolute', top: 6, right: 6, width: 12, height: 12, borderRadius: 6, backgroundColor: colors.warning, borderWidth: 2, borderColor: colors.accent },
+  dot: { position: 'absolute', top: 4, right: 4, width: 11, height: 11, borderRadius: 6, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.surface3 },
 });

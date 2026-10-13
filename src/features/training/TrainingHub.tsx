@@ -146,9 +146,9 @@ export function TrainingHub() {
 }
 
 const styles = themed({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, minHeight: 64 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2, minHeight: 64 },
   rowIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
   today: { padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
-  gen: { padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, gap: 6 },
+  gen: { padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface2, gap: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

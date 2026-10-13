@@ -73,12 +73,27 @@ const check = async (name, fn) => {
       assert.match(t, /без отказа/);
       // A1. Каждый «+» открывает селектор своей категории (поиск, популярное, Отмена/Сохранить)
       const health = { 'Выбрать: Травмы': 'Травмы', 'Выбрать: Хронические ограничения': 'Хронические ограничения', 'Выбрать: Движения, вызывающие боль': 'Движения, вызывающие боль', 'Выбрать: Ограничения от врача или физиотерапевта': 'Ограничения от врача', 'Добавить: Аллергии': 'Аллергии', 'Добавить: Непереносимости': 'Непереносимости', 'Добавить: Запрещённые продукты': 'Запрещённые продукты' };
+      // Пока предыдущий лист закрывается, в DOM два листа — ждём, пока виден элемент нового (до 2 с)
+      const anyVisible = async (loc) => {
+        for (let t = 0; t < 20; t++) {
+          const n = await loc.count();
+          for (let i = 0; i < n; i++) if (await loc.nth(i).isVisible()) return true;
+          await op.waitForTimeout(100);
+        }
+        return false;
+      };
+      // Нажимаем «+» справа в поле: тап по выбранному чипу в центре поля удаляет его (так задумано)
+      const tapAdd = async (btn) => {
+        const el = op.getByLabel(btn, { exact: true });
+        const box = await el.boundingBox();
+        await el.click({ position: { x: box.width - 22, y: Math.min(box.height / 2, 26) } });
+      };
       const openPicker = async (btn, title) => {
-        await op.getByLabel(btn, { exact: true }).click();
+        await tapAdd(btn);
         await op.waitForTimeout(600);
-        assert.ok(await op.getByText(title, { exact: true }).last().isVisible(), `${btn} → «${title}»`);
-        assert.ok(await op.getByLabel('Поиск', { exact: true }).last().isVisible(), `${btn}: поиск`);
-        assert.ok(await op.getByText('Популярное', { exact: true }).last().isVisible(), `${btn}: популярное`);
+        assert.ok(await anyVisible(op.getByText(title, { exact: true })), `${btn} → «${title}»`);
+        assert.ok(await anyVisible(op.getByLabel('Поиск', { exact: true })), `${btn}: поиск`);
+        assert.ok(await anyVisible(op.getByText('Популярное', { exact: true })), `${btn}: популярное`);
       };
       for (const [btn, title] of Object.entries(health)) {
         await openPicker(btn, title);
@@ -807,8 +822,9 @@ const check = async (name, fn) => {
     const block = page.getByTestId('coach-today');
     if (await block.count()) {
       const t = await block.innerText();
-      assert.match(t, /RYNJI COACH — СЕГОДНЯ/);
-      assert.match(t, /ккал · Б \d+ · Ж \d+ · У \d+/, 'КБЖУ дня');
+      assert.match(t, /Тренировка дня|Сегодня|Тренировка выполнена/, 'главное на сегодня — крупно, без служебных подписей');
+      // КБЖУ дня — одной строкой в списке «День» (без дублирования в блоке тренировки)
+      assert.match(await page.getByLabel('Калории, открыть питание').innerText(), /ккал[\s\S]*Б \d+ · Ж \d+ · У \d+/, 'КБЖУ дня');
       await page.getByLabel('Почему? Объяснение решений тренера').click();
       await page.waitForTimeout(700);
       const why = await page.getByTestId('coach-why').innerText();
@@ -966,9 +982,9 @@ const check = async (name, fn) => {
     await dismiss();
     const w = await page.getByTestId('journal-week').innerText();
     assert.match(w, /На этой неделе/);
-    assert.match(w, /\d+ трениров/);
-    assert.match(w, /\d+ рекорд/);
-    assert.match(w, /\d+ мин/);
+    assert.match(w, /\d+\s+трениров/);
+    assert.match(w, /\d+\s+рекорд/);
+    assert.match(w, /\d+\s+мин/);
     const t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /Эта неделя|Прошлая неделя/i);
     assert.match(t, /«Отличная тренировка!»/);

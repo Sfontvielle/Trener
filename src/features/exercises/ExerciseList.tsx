@@ -172,8 +172,8 @@ function PreviewSheet({ ex, onClose, onSelect }: { ex: Exercise | null; onClose:
 }
 
 const styles = themed({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: 12 },
   searchInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, minHeight: 60 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: radius.md, backgroundColor: colors.surface, minHeight: 60 },
   zoom: { position: 'absolute', right: 3, bottom: 3, width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
 });

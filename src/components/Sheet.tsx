@@ -222,8 +222,6 @@ const styles = themed({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingHorizontal: space.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderBottomWidth: 0,
     width: '100%',
     maxWidth: 560,

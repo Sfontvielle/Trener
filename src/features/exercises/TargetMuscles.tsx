@@ -53,7 +53,7 @@ export const TargetMuscles = memo(function TargetMuscles({ items, customs = [], 
 });
 
 const styles = themed({
-  card: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  card: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface },
   track: { height: 5, borderRadius: 3, backgroundColor: colors.surface3, overflow: 'hidden' },
   fill: { height: 5, borderRadius: 3 },
 });

@@ -139,7 +139,7 @@ function ToastView() {
 
 const styles = themed({
   backdrop: { flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: space.xl },
-  box: { width: '100%', maxWidth: 340, backgroundColor: colors.surface2, borderRadius: radius.lg, padding: space.xl, borderWidth: 1, borderColor: colors.border },
+  box: { width: '100%', maxWidth: 340, backgroundColor: colors.surface2, borderRadius: radius.lg, padding: space.xl },
   toast: {
     position: 'absolute',
     alignSelf: 'center',

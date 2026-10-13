@@ -622,7 +622,7 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
           const full = it.total > 0 && it.done === it.total;
           const kcal = perExercise?.[it.we.exerciseId];
           return (
-            <Pressable key={it.we.id} accessibilityRole="button" accessibilityLabel={`${ex?.name}${labels[it.index] ? `, суперсет ${labels[it.index]}` : ''}, ${full ? 'выполнено' : it.state === 'current' ? 'текущее' : it.done ? 'начато' : 'впереди'}`} onPress={() => onGo(it.index)} style={[styles.navItem, it.state === 'current' && { borderColor: colors.accent, backgroundColor: colors.accentDim }, labels[it.index] && styles.navItemSs]}>
+            <Pressable key={it.we.id} accessibilityRole="button" accessibilityLabel={`${ex?.name}${labels[it.index] ? `, суперсет ${labels[it.index]}` : ''}, ${full ? 'выполнено' : it.state === 'current' ? 'текущее' : it.done ? 'начато' : 'впереди'}`} onPress={() => onGo(it.index)} style={[styles.navItem, it.state === 'current' && { backgroundColor: colors.surface3 }, labels[it.index] && styles.navItemSs]}>
               <View style={[styles.navDot, full && { backgroundColor: colors.accent, borderColor: colors.accent }, it.state === 'current' && !full && { borderColor: colors.accent }]}>
                 {full ? <Icon name="checkmark" size={14} color={colors.onAccent} /> : it.state === 'current' ? <View style={styles.navDotInner} /> : it.done ? <View style={[styles.navDotInner, { backgroundColor: colors.textDim }]} /> : null}
               </View>
@@ -749,8 +749,8 @@ function ExerciseFocus({
         <View style={{ flex: 1 }}>
           {ssLabel ? (
             <View style={styles.ssChip} testID="superset-chip">
-              <Icon name="link" size={12} color={colors.onAccent} />
-              <T v="small" color={colors.onAccent} style={{ fontSize: 11, fontWeight: '800' }} numberOfLines={1}>
+              <Icon name="link" size={12} color={colors.accent} />
+              <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                 Суперсет {ssLabel}
                 {ssNext ? ` → ${ssNext}` : ''}
               </T>
@@ -765,8 +765,8 @@ function ExerciseFocus({
         </View>
         {/* Техника — отдельно, в листе: на основном экране только то, что нужно для подхода */}
         <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => setTechOpen(true)} style={({ pressed }) => [styles.techBtn, pressed && { opacity: 0.7 }]} hitSlop={6}>
-          <Icon name="play-circle-outline" size={16} color={colors.accent} />
-          <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
+          <Icon name="play-circle-outline" size={16} color={colors.text} />
+          <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
             Техника
           </T>
         </Pressable>
@@ -778,7 +778,7 @@ function ExerciseFocus({
         <View style={styles.recCard} testID="rec">
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
             <Pressable accessibilityRole="button" accessibilityLabel={layout ? 'Раскладка блинов' : 'Рекомендация'} disabled={!layout} onPress={() => setPlatesOpen(true)} hitSlop={4}>
-              <T v="num" style={{ fontSize: 22, textDecorationLine: layout ? 'underline' : 'none', textDecorationStyle: 'dotted' }}>
+              <T v="num" style={{ fontSize: 26, textDecorationLine: layout ? 'underline' : 'none', textDecorationStyle: 'dotted' }}>
                 {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : isBw ? 'Свой вес' : 'Подбери вес'} × {timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}
               </T>
             </Pressable>
@@ -788,7 +788,7 @@ function ExerciseFocus({
               </T>
             ) : null}
             <Pressable accessibilityRole="button" accessibilityLabel="Рекомендация, почему" onPress={() => setWhyOpen(!whyOpen)} hitSlop={8} style={{ marginLeft: 'auto' }}>
-              <T v="small" style={{ fontSize: 12, fontWeight: '700' }} color={colors.accent}>
+              <T v="small" style={{ fontWeight: '600' }}>
                 {whyOpen ? 'Скрыть' : 'Почему?'}
               </T>
             </Pressable>
@@ -810,7 +810,7 @@ function ExerciseFocus({
             Разминка: <T v="small" color={colors.text} style={{ fontSize: 12 }}>{warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}</T>
           </T>
           <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={8}>
-            <T v="small" color={colors.accent} style={{ fontWeight: '800', fontSize: 12 }}>
+            <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
               + Добавить
             </T>
           </Pressable>
@@ -832,10 +832,10 @@ function ExerciseFocus({
         {we.sets.map((x, i) => (
           <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={completeSet} current={x === nextSet} timed={timed} />
         ))}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-          <Button title="Добавить подход" icon="add" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ flex: 1 }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 4 }}>
+          <Button title="Добавить подход" icon="add" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} style={{ paddingHorizontal: 8 }} />
           {we.sets.length > 1 && !we.sets[we.sets.length - 1].done ? (
-            <Button title="Убрать подход" icon="remove" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id); }} style={{ flex: 1 }} />
+            <Button title="Убрать подход" icon="remove" size="sm" variant="ghost" onPress={() => { haptic.tap(); useWorkouts.getState().removeSet(we.id, we.sets[we.sets.length - 1].id); }} style={{ paddingHorizontal: 8 }} />
           ) : null}
         </View>
       </View>
@@ -1069,19 +1069,19 @@ function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
 const styles = themed({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, paddingBottom: 8, backgroundColor: colors.bg },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
-  block: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 8 },
-  rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  block: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: 10, paddingVertical: 8 },
+  rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
-  setRowCurrent: { borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, paddingVertical: 6 },
+  setRowCurrent: { backgroundColor: colors.surface2, paddingVertical: 6 },
   inputCurrent: { height: 54, fontSize: 26 },
-  ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: colors.accent, marginBottom: 4, maxWidth: '100%' },
+  ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.surface3, marginBottom: 4, maxWidth: '100%' },
   navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
-  doneCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
+  doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },
   doneIcon: { width: 32, height: 32, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   cta: { position: 'absolute', left: space.lg, right: space.lg },
   navBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, paddingHorizontal: space.lg, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
   navBtn: { flex: 1, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: 'transparent' },
+  navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md },
   navDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   navDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   barTrack: { height: 4, backgroundColor: colors.surface3 },
@@ -1090,23 +1090,23 @@ const styles = themed({
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4, borderRadius: radius.sm },
-  input: { flex: 1, minWidth: 0, width: 0, height: 42, borderRadius: radius.sm, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 18, fontWeight: '800', borderWidth: 1, borderColor: colors.border, fontVariant: ['tabular-nums'] },
+  input: { flex: 1, minWidth: 0, width: 0, height: 42, borderRadius: radius.sm, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
   check: { width: 48, height: 42, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
-  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
-  tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  warm: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4 },
+  tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface },
   quick: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: radius.lg, backgroundColor: colors.surface },
   qBtn: { width: 50, height: 48, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   qSep: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 2 },
-  recCard: { gap: 4, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accentLine },
+  recCard: { gap: 4, paddingVertical: 4 },
   plate: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center' },
-  techBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim },
-  setCard: { gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.accentLine },
-  feelCard: { gap: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  techBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 36, borderRadius: 18, backgroundColor: colors.surface2 },
+  setCard: { gap: 8, padding: 12, borderRadius: radius.lg, backgroundColor: colors.surface },
+  feelCard: { gap: 8, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
-  alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim },
+  alt: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
   rpe: { width: 48, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
 });
 

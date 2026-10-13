@@ -36,6 +36,7 @@ export default function HealthMonitorScreen() {
   const sex = useProfile((s) => s.profile?.sex);
   const [bpOpen, setBpOpen] = useState(false);
   const [aasOpen, setAasOpen] = useState(false);
+  const [boundaryOpen, setBoundaryOpen] = useState(false);
   const [sys, setSys] = useState('');
   const [dia, setDia] = useState('');
   const [pulse, setPulse] = useState('');
@@ -108,7 +109,7 @@ export default function HealthMonitorScreen() {
         </View>
       ) : (
         <Card style={{ marginBottom: space.md }}>
-          <T v="small">Значимых сигналов нет. Это не медицинское заключение — только сравнение ваших данных с порогами и вашей нормой.</T>
+          <T v="small">Значимых сигналов нет · это не медицинское заключение.</T>
         </Card>
       )}
 
@@ -131,7 +132,7 @@ export default function HealthMonitorScreen() {
             {bpPoints.length >= 2 ? <TrendChart points={bpPoints} unit="мм" height={130} band={[90, 129]} /> : null}
           </>
         ) : (
-          <T v="small">Измеряйте утром и вечером в покое, сидя, 2 раза с перерывом в минуту. Решения — по среднему, а не по одному значению.</T>
+          <T v="small">Утром и вечером, сидя в покое, 2 раза подряд. Решения — по среднему.</T>
         )}
       </Card>
 
@@ -164,6 +165,15 @@ export default function HealthMonitorScreen() {
           label="Режим Enhanced (AAS)"
           sub="Более внимательный мониторинг здоровья: гематокрит, липиды, печень, давление, пульс, талия"
         />
+        {/* Граница безопасности: при включённом режиме — всегда на виду; иначе — по нажатию */}
+        {!en.enabled ? (
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: boundaryOpen }} hitSlop={8} onPress={() => setBoundaryOpen(!boundaryOpen)}>
+            <T v="small" style={{ fontWeight: '600' }}>
+              {boundaryOpen ? 'Скрыть' : 'Что делает и чего не делает RYNJI ›'}
+            </T>
+          </Pressable>
+        ) : null}
+        {en.enabled || boundaryOpen ? (
         <View style={styles.boundary}>
           <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
             Что делает и чего не делает RYNJI
@@ -173,6 +183,7 @@ export default function HealthMonitorScreen() {
           <T v="small">• Нормальные анализы не означают, что AAS безопасны. Хороший прогресс в зале — не доказательство, что со здоровьем всё в порядке.</T>
           <T v="small">• Статус Enhanced не добавляет объём тренировок сам по себе: нагрузка определяется вашими фактическими данными.</T>
         </View>
+        ) : null}
         {en.enabled ? (
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

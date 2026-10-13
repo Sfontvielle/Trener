@@ -11,7 +11,6 @@ import { clearAllData } from '@/storage/persist';
 import { seedDemoData } from '@/features/profile/demo';
 import { exportWorkoutsCsv, autoBackupInfo, backupStats, exportBackup, maybeAutoBackup, pickBackup, readAutoBackup, restoreBackup, type BackupFile } from '@/services/backup';
 import { relativeDay, toISODate } from '@/utils/date';
-import { BRAND } from '@/config/brand';
 
 /**
  * Данные и конфиденциальность. Обычному пользователю делать здесь ничего не нужно: всё хранится на
@@ -67,7 +66,7 @@ export default function DataPrivacy() {
           </T>
         </View>
         <T v="small">
-          Профиль, здоровье, тренировки, питание, замеры и память тренера сохраняются локально и сразу — ничего нажимать не нужно. В интернет уходят только поисковые запросы: названия продуктов и штрихкоды (Open Food Facts) и темы вопросов тренеру для поиска научных источников (PubMed) — без твоих личных данных.
+          Данные сохраняются на телефоне сразу. В интернет уходят только поисковые запросы — продукты и темы вопросов, без личных данных.
         </T>
         {native ? (
           <T v="small" color={colors.text}>
@@ -78,7 +77,7 @@ export default function DataPrivacy() {
 
       <SectionTitle title="Перенос на новый телефон" />
       <Card style={{ gap: 10 }}>
-        <T v="small">Сохрани файл со всеми данными (в «Файлы», iCloud Drive или отправь себе). На новом телефоне установи {BRAND} и открой «Дополнительно → Восстановить из файла». Фото прогресса в файл не входят — они остаются в резервной копии телефона.</T>
+        <T v="small">Файл со всеми данными — в «Файлы» или iCloud. На новом телефоне: «Дополнительно → Восстановить из файла». Фото остаются в копии телефона.</T>
         <T v="small" color={settings.lastBackupAt ? colors.textDim : colors.warning}>
           {last ? `Последний экспорт: ${last}` : 'Экспорта ещё не было.'}
         </T>
@@ -87,7 +86,7 @@ export default function DataPrivacy() {
 
       <SectionTitle title="Таблица тренировок" />
       <Card style={{ gap: 10 }}>
-        <T v="small">Все тренировки в CSV: одна строка — один подход (дата, упражнение, вес, повторы или время, запас, суперсет, заметка). Открывается в Excel, Numbers и Google Таблицах.</T>
+        <T v="small">Одна строка — один подход. Открывается в Excel, Numbers и Google Таблицах.</T>
         <Button
           title="Экспорт в CSV"
           icon="document-text-outline"

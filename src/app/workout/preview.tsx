@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, radius, space } from '@/theme';
+import { colors, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, EmptyState, Icon, T } from '@/components/ui';
+import { Banner, Button, EmptyState, T } from '@/components/ui';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout, useReadiness } from '@/hooks/useToday';
@@ -14,6 +14,7 @@ import { MODE_LABEL } from '@/features/training/today';
 import { fmtWeight } from '@/utils/format';
 import { useProfile } from '@/stores/profile';
 import { scaleSets } from '@/features/training/scale';
+import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
 import { TargetMuscles } from '@/features/exercises/TargetMuscles';
 
 /** Состав тренировки перед стартом: упражнения, рекомендации по весам, режим дня */
@@ -56,26 +57,30 @@ export default function Preview() {
       <View style={{ marginTop: space.md }}>
         <TargetMuscles items={rows.map(({ pe, rec }) => ({ exerciseId: pe.exerciseId, sets: rec.sets }))} sex={sex} />
       </View>
-      <View style={{ gap: 10, marginTop: space.md }}>
-        {rows.map(({ pe, ex, rec }, i) => (
-          <Pressable key={i} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
+      {/* Одна главная кнопка — сразу под картой мышц; ниже — состав простым списком */}
+      <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" style={{ marginTop: space.lg }} onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
+      <View style={{ marginTop: space.xl }}>
+        {rows.map(({ ex, rec }, i) => (
+          <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={({ pressed }) => [styles.row, i < rows.length - 1 && styles.line, pressed && { opacity: 0.6 }]}>
+            <ExerciseThumb ex={ex} size={44} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="body" style={{ fontWeight: '600' }} numberOfLines={2}>
                 {ex.name}
               </T>
-              <T v="small">
+              <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
                 {rec.sets} × {rec.repMin}–{rec.repMax}
-                {rec.weight > 0 ? ` · ${fmtWeight(rec.weight, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : ''} · RIR {rec.targetRir}
-              </T>
-              <T v="small" style={{ fontSize: 12 }} numberOfLines={2}>
-                {rec.rationale}
+                {rec.weight > 0 ? ` · ${fmtWeight(rec.weight, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : ''}
+                {rec.delta && rec.action !== 'new' && rec.action !== 'hold' ? ` · ${rec.delta}` : ''}
               </T>
             </View>
-            <Icon name={rec.action === 'increase' ? 'trending-up' : 'chevron-forward'} size={18} color={rec.action === 'increase' ? colors.accent : colors.muted} />
           </Pressable>
         ))}
       </View>
-      <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" style={{ marginTop: space.lg }} onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
     </Screen>
   );
 }
+
+const styles = themed({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  line: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+});

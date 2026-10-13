@@ -22,8 +22,9 @@ export function mealTint(m: MealSlot): string {
 export function MealIcon({ meal, size = 32 }: { meal: MealSlot; size?: number }) {
   const tint = mealTint(meal);
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface3, borderWidth: 1, borderColor: tint }}>
-      <Icon name={MEAL_ICON[meal]} size={Math.round(size * 0.55)} color={tint} />
+    // Спокойная иконка: без цветной рамки, цвет приёма — только у самой пиктограммы
+    <View style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 }}>
+      <Icon name={MEAL_ICON[meal]} size={Math.round(size * 0.52)} color={tint} />
     </View>
   );
 }

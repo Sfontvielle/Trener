@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { Button, Card, Divider, EmptyState, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts } from '@/stores/workouts';
@@ -21,7 +21,7 @@ import { formatDayLong } from '@/utils/date';
 import { fmtNum, fmtSec, fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
-import { feelIndex, isTimed, KIND_COLOR, KIND_LABEL, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
+import { feelIndex, isTimed, KIND_LABEL, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
 import { supersetLabels } from '@/features/training/workoutNav';
 import { repeatSession } from '@/features/training/actions';
 import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
@@ -72,7 +72,6 @@ export default function SessionDetail() {
   }
   const v = sessionVolume(s);
   const planned = s.exercises.reduce((a, e) => a + e.plannedSets, 0);
-  const doneEx = s.exercises.filter((we) => workingSets(we.sets).length > 0).length;
   const lifted = unit === 'lb' ? v.tonnage * 2.20462 : v.tonnage;
   const feelIdx = feelIndex(s.sessionRpe);
   const kind = sessionKind(s, customs);
@@ -93,108 +92,83 @@ export default function SessionDetail() {
         }
       />
 
-      <View style={styles.hero}>
-        <Icon name="trophy" size={34} color={colors.accent} />
-        <T v="h1" style={{ textAlign: 'center' }}>
+      {/* Главное — название и одна кнопка «Повторить»; цифры — крупно в ряд, без плиток */}
+      <View style={{ gap: 6, marginTop: space.sm }}>
+        <T v="caption">{KIND_LABEL[kind]}</T>
+        <T v="display" numberOfLines={2}>
           {s.name}
         </T>
-        <T v="small" style={{ textAlign: 'center' }}>
+        <T v="bodyDim">
           {debrief.prs.length ? `Новых рекордов: ${debrief.prs.length}` : debrief.volumeDeltaPct !== null ? `Объём ${debrief.volumeDeltaPct >= 0 ? '+' : ''}${debrief.volumeDeltaPct}% к прошлой такой же` : 'Тренировка записана'}
         </T>
-        <View style={[styles.kind, { borderColor: colors[KIND_COLOR[kind]] }]}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors[KIND_COLOR[kind]] }} />
-          <T v="small" style={{ fontSize: 11, fontWeight: '800' }} color={colors.text}>
-            {KIND_LABEL[kind]}
-          </T>
-        </View>
         {!fresh ? (
           <Button
             title="Повторить"
             icon="repeat"
-            size="sm"
+            size="lg"
             onPress={() => {
               haptic.tap();
               repeatSession(s);
             }}
-            style={{ marginTop: 8, minWidth: 170 }}
+            style={{ marginTop: space.md }}
           />
-        ) : null}
-        {!fresh ? (
-          <T v="small" style={{ fontSize: 11, textAlign: 'center' }}>
-            Те же упражнения и подходы — веса подберёт тренер
-          </T>
         ) : null}
       </View>
 
-      <View style={styles.grid}>
-        <Stat label="Время" value={`${v.durationMin}`} unit="мин" />
-        <Stat label="Упражнений" value={`${doneEx}`} unit={`из ${s.exercises.length}`} />
-        <Stat label="Подходов" value={`${v.sets}`} unit={planned ? `из ${planned}` : ''} />
-        <Stat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
-        <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={[styles.stat, { flexGrow: 2 }]}>
-          <T v="caption" style={{ fontSize: 10 }}>
-            Активные калории
-          </T>
-          <T v="num" style={{ fontSize: 22 }}>
-            {energy.kcal < 5 ? '—' : `${energy.source === 'health' ? '' : '≈ '}${energy.kcal}`}
+      <View style={styles.stats}>
+        <BigStat label="Время" value={`${v.durationMin}`} unit="мин" />
+        <BigStat label="Подходов" value={`${v.sets}`} unit={planned ? `из ${planned}` : ''} />
+        <BigStat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
+        <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={styles.stat}>
+          <T v="small">Активные калории</T>
+          <T v="num" style={{ fontSize: 28 }}>
+            {energy.kcal < 5 ? '—' : `${energy.source === 'health' ? '' : '≈'}${energy.kcal}`}
             {energy.kcal < 5 ? null : <T v="small"> ккал</T>}
           </T>
-          <T v="small" color={colors.accent} style={{ fontSize: 11, fontWeight: '800' }}>
-            {energy.source === 'health' ? 'Apple Health · как рассчитано?' : 'оценка · как рассчитано?'}
+          <T v="small" style={{ fontSize: 12 }}>
+            {energy.source === 'health' ? 'Apple Health ›' : 'оценка ›'}
           </T>
         </Pressable>
       </View>
 
       {debrief.prs.length ? (
-        <Card tone="accent" style={{ marginTop: space.md, gap: 6 }}>
-          <T v="caption" color={colors.accent}>
-            Новые личные рекорды
-          </T>
+        <Section title="Новые личные рекорды">
           {debrief.prs.map((p) => (
-            <View key={p} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <Icon name="trophy-outline" size={16} color={colors.accent} />
-              <T v="body">{p}</T>
-            </View>
+            <T key={p} v="body" style={{ paddingVertical: 4 }}>
+              🏆 {p}
+            </T>
           ))}
-        </Card>
+        </Section>
       ) : null}
 
       {progress.length ? (
-        <Card style={{ marginTop: space.md, gap: 6 }}>
-          <T v="caption">Относительно прошлого раза</T>
+        <Section title="К прошлому разу">
           {progress.map((p) => (
-            <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <T v="body" style={{ flex: 1, fontSize: 14 }} numberOfLines={2}>
+            <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
+              <T v="body" style={{ flex: 1 }} numberOfLines={2} color={colors.textDim}>
                 {p.name}
               </T>
-              <T v="body" style={{ fontWeight: '800', fontSize: 14 }} color={p.up ? colors.accent : p.text === '=' ? colors.textDim : colors.warning}>
+              <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }} color={p.up ? colors.text : p.text === '=' ? colors.textDim : colors.warning}>
                 {p.text}
               </T>
             </View>
           ))}
-        </Card>
+        </Section>
       ) : null}
 
       {debrief.lines.length ? (
-        <Card style={{ marginTop: space.md, gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="sparkles" size={16} color={colors.accent} />
-            <T v="caption" color={colors.accent}>
-              Тренер {BRAND}
-            </T>
-          </View>
+        <Section title={`Тренер ${BRAND}`}>
           {debrief.lines.map((l) => (
-            <T key={l} v="body" color={colors.text}>
+            <T key={l} v="body" style={{ lineHeight: 22 }}>
               {l}
             </T>
           ))}
-          <Button title="Разобрать с тренером" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} />
-        </Card>
+          <Button title="Разобрать с тренером" size="sm" variant="ghost" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} style={{ alignSelf: 'flex-start', paddingHorizontal: 0 }} />
+        </Section>
       ) : null}
 
-      <Card style={{ marginTop: space.md, gap: 10 }}>
-        <T v="caption">Как ощущалась тренировка?</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      <Section title="Как ощущалась тренировка?">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {SESSION_FEEL.map((f, i) => (
             <Pressable
               key={f.label}
@@ -205,21 +179,21 @@ export default function SessionDetail() {
                 haptic.tap();
                 useWorkouts.getState().updateSession(s.id, { sessionRpe: f.rpe });
               }}
-              style={[styles.feel, feelIdx === i && { backgroundColor: i === 3 ? colors.warning : colors.accent, borderColor: 'transparent' }]}
+              style={[styles.feel, feelIdx === i && { backgroundColor: colors.text }]}
             >
-              <T v="small" style={{ fontWeight: '800', fontSize: 12, textAlign: 'center' }} color={feelIdx === i ? colors.onAccent : colors.text} numberOfLines={1} adjustsFontSizeToFit>
+              <T v="body" style={{ fontWeight: '600', fontSize: 15, textAlign: 'center' }} color={feelIdx === i ? colors.bg : colors.text} numberOfLines={1} adjustsFontSizeToFit>
                 {f.emoji} {f.label}
               </T>
             </Pressable>
           ))}
         </View>
-        <T v="small" style={{ fontSize: 11 }}>
-          Необязательно — {BRAND} учтёт это в восстановлении и нагрузке на следующих тренировках.
-        </T>
-        <Field placeholder="Заметка: самочувствие, техника, что заметил" value={note} onChangeText={setNote} multiline maxLength={400} onBlur={() => note.trim() !== (s.notes ?? '') && useWorkouts.getState().updateSession(s.id, { notes: note.trim() || undefined })} />
-      </Card>
+        <Field placeholder="Заметка" value={note} onChangeText={setNote} multiline maxLength={400} onBlur={() => note.trim() !== (s.notes ?? '') && useWorkouts.getState().updateSession(s.id, { notes: note.trim() || undefined })} style={{ marginTop: 6 }} />
+      </Section>
 
-      <Card style={{ marginTop: space.md, paddingVertical: 6 }}>
+      <T v="h3" style={{ marginTop: space.xl, marginBottom: space.sm }}>
+        Упражнения
+      </T>
+      <Card style={{ paddingVertical: 6 }}>
         {/* Как в дневнике: номер, упражнение, все подходы одной строкой; суперсет — общей линией слева */}
         {s.exercises.map((we, i) => {
           const ex = getExercise(we.exerciseId, customs);
@@ -272,13 +246,11 @@ export default function SessionDetail() {
   );
 }
 
-function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
+function BigStat({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
     <View style={styles.stat}>
-      <T v="caption" style={{ fontSize: 10 }}>
-        {label}
-      </T>
-      <T v="num" style={{ fontSize: 22 }}>
+      <T v="small">{label}</T>
+      <T v="num" style={{ fontSize: 28 }}>
         {value}
         {unit ? <T v="small"> {unit}</T> : null}
       </T>
@@ -286,12 +258,21 @@ function Stat({ label, value, unit }: { label: string; value: string; unit: stri
   );
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={{ marginTop: space.xl, gap: 6 }}>
+      <T v="h3" style={{ marginBottom: 4 }}>
+        {title}
+      </T>
+      {children}
+    </View>
+  );
+}
+
 const styles = themed({
-  hero: { alignItems: 'center', gap: 4, paddingVertical: space.lg, paddingHorizontal: space.md, borderRadius: radius.xl, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: space.md },
-  stat: { flexGrow: 1, minWidth: '30%', padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
-  kind: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  exRowSs: { borderLeftWidth: 3, borderLeftColor: colors.accent, paddingLeft: 8, marginLeft: -8 },
-  feel: { width: '48%', flexGrow: 1, height: 44, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.lg, marginTop: space.xl },
+  stat: { width: '50%', gap: 2, paddingRight: 8 },
+  feel: { width: '47%', flexGrow: 1, height: 46, borderRadius: radius.pill, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  exRowSs: { borderLeftWidth: 2, borderLeftColor: colors.accent, paddingLeft: 8, marginLeft: -8 },
 });

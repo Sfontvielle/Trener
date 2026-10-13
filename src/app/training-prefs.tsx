@@ -358,7 +358,7 @@ function LimitationSheet({ value, onClose, onSave, onDelete, exists }: { value: 
 const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   why: { backgroundColor: colors.surface2, borderRadius: radius.md, padding: space.md, gap: 2 },
-  lim: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2 },
+  lim: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: space.md, borderRadius: radius.md, backgroundColor: colors.surface2 },
   radioRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
