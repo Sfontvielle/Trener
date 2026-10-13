@@ -96,8 +96,8 @@ function Mini({ p }: { p: ReturnType<typeof paletteFor> }) {
 }
 
 const styles = themed({
-  theme: { flex: 1, padding: 10, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
-  preview: { height: 78, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  theme: { flex: 1, padding: 10, borderRadius: radius.lg, backgroundColor: colors.surface },
+  preview: { height: 78, borderRadius: radius.sm, overflow: 'hidden' },
   radio: { position: 'absolute', right: 10, top: 10, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.accent },
   accentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 },

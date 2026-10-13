@@ -114,7 +114,7 @@ export default function Profile() {
       <Header title="Профиль" />
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={styles.avatar}>
-          <T v="h1" color={colors.onAccent}>
+          <T v="h1" color={colors.text}>
             {profile.name.charAt(0).toUpperCase()}
           </T>
         </View>
@@ -287,7 +287,7 @@ function Row({ label, value, onPress }: { label: string; value: string; onPress:
 }
 
 const styles = themed({
-  avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 8, borderRadius: radius.sm },
 });

@@ -112,16 +112,12 @@ function Intro() {
   const todayInsight = insight && insight.date === toISODate(new Date()) ? insight.text : null;
   return (
     <View style={{ gap: 12, paddingVertical: space.xl }}>
-      <View style={styles.introIcon}>
-        <Icon name="sparkles" size={28} color={colors.onAccent} />
-      </View>
-      <T v="h2">Я знаю твой план, питание, тренировки и восстановление</T>
-      <T v="bodyDim">Тренировка на сегодня с весами, программа на любую мышцу (соберу и запущу), техника и замены, подготовка к соревнованиям, питание и диетология, разбор анализов (напиши «ТТГ 5,2, ферритин 18»), гормоны, травмы и риски препаратов. Помню, что ты рассказываешь о себе, и сам слежу за прогрессом, питанием и восстановлением. Работаю на устройстве; при интернете дополняю ответы свежими научными обзорами и показываю источники.</T>
+      <Icon name="sparkles" size={26} color={colors.accent} />
+      <T v="h1">Чем помочь?</T>
+      <T v="bodyDim">Спроси про тренировку, питание, технику, анализы или восстановление — отвечу по твоим данным.</T>
       {todayInsight ? (
         <View style={styles.insightCard}>
-          <T v="caption" color={colors.accent}>
-            Совет дня
-          </T>
+          <T v="caption">Совет дня</T>
           <T v="body" color={colors.text}>
             {todayInsight}
           </T>
@@ -271,13 +267,12 @@ function Typing() {
 const styles = themed({
   composer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 8, gap: 8, backgroundColor: colors.bg },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: space.lg },
-  input: { flex: 1, minWidth: 0, minHeight: 46, maxHeight: 120, borderRadius: 23, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: 16, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
+  input: { flex: 1, minWidth: 0, minHeight: 46, maxHeight: 120, borderRadius: 23, backgroundColor: colors.surface2, color: colors.text, fontSize: 16, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   send: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '88%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, borderWidth: 1 },
   mine: { backgroundColor: colors.accent, borderColor: colors.accent, borderBottomRightRadius: 6 },
   theirs: { backgroundColor: colors.surface, borderColor: colors.border, borderBottomLeftRadius: 6 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
-  insightCard: { padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine, gap: 4 },
-  sources: { maxWidth: '88%', marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
-  introIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  insightCard: { padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface, gap: 4, marginTop: 6 },
+  sources: { maxWidth: '88%', marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
 });

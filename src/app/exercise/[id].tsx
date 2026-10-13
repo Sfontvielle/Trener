@@ -109,7 +109,7 @@ export default function ExerciseScreen() {
           <SectionTitle title="Альтернативы" />
           <View style={{ gap: 8 }}>
             {alts.map((a) => (
-              <Pressable key={a.id} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: a.id } })} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+              <Pressable key={a.id} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: a.id } })} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: radius.md, backgroundColor: colors.surface }}>
                 <T v="body" style={{ flex: 1 }} numberOfLines={2}>
                   {a.name}
                 </T>

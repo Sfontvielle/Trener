@@ -93,12 +93,7 @@ export default function WeeklyReviewScreen() {
 
           {coach && coach.decisions.length ? (
             <Card style={{ marginTop: space.md, gap: 10 }} testID="weekly-decisions">
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Icon name="sparkles" size={16} color={colors.accent} />
-                <T v="caption" color={colors.accent}>
-                  Решения тренера на неделю
-                </T>
-              </View>
+              <T v="h3">Решения тренера на неделю</T>
               {coach.decisions.map((d) => (
                 <View key={d.id} style={{ gap: 6 }}>
                   <DecisionCard d={d} />
@@ -196,20 +191,18 @@ export default function WeeklyReviewScreen() {
   );
 }
 
-function Tile({ icon, label, value, sub }: { icon: IconName; label: string; value: string; sub?: string }) {
+function Tile({ label, value, sub }: { icon: IconName; label: string; value: string; sub?: string }) {
+  // Без иконок и плиток: подпись, крупное значение, при необходимости — одна строка пояснения
   return (
     <View style={styles.tile}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Icon name={icon} size={13} color={colors.textDim} />
-        <T v="caption" style={{ fontSize: 10 }} numberOfLines={1}>
-          {label}
-        </T>
-      </View>
-      <T v="num" style={{ fontSize: 20 }} numberOfLines={1} adjustsFontSizeToFit>
+      <T v="small" numberOfLines={1}>
+        {label}
+      </T>
+      <T v="num" style={{ fontSize: 24 }} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </T>
       {sub ? (
-        <T v="small" style={{ fontSize: 11 }}>
+        <T v="small" style={{ fontSize: 12 }}>
           {sub}
         </T>
       ) : null}
@@ -229,7 +222,7 @@ function Line({ icon, text, color = colors.textDim }: { icon: IconName; text: st
 }
 
 const styles = themed({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tile: { width: '48%', flexGrow: 1, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: radius.lg, paddingVertical: 8, paddingHorizontal: space.md },
+  tile: { width: '50%', paddingVertical: 10, paddingRight: 10, gap: 2 },
   proposal: { gap: 6, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accentLine },
 });

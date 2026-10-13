@@ -1,22 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, themed } from '@/theme';
-import { Icon, T, type IconName } from '@/components/ui';
+import { T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { BASIS_LABEL } from '@/features/science/sources';
-import { CONFIDENCE_LABEL, type Confidence, type Decision, type DecisionArea } from './decisions/types';
+import { CONFIDENCE_LABEL, type Confidence, type Decision } from './decisions/types';
 import { afterModalClose } from '@/components/modalGate';
 
-const AREA_ICON: Record<DecisionArea, IconName> = {
-  training: 'barbell-outline',
-  nutrition: 'restaurant-outline',
-  recovery: 'battery-half',
-  body: 'body-outline',
-  health: 'medkit-outline',
-  schedule: 'calendar-outline',
-  activity: 'footsteps-outline',
-};
 
 const CONF_COLOR: Record<Confidence, string> = { high: colors.accent, medium: colors.textDim, low: colors.warning };
 
@@ -36,39 +27,40 @@ export function ConfidenceLine({ level, note }: { level: Confidence; note: strin
   );
 }
 
-/** Решение: что → почему → данные → уверенность */
+/** Решение: что → почему → уверенность; данные и источник правила — по «Данные ›» (не шумят, но всегда доступны) */
 export function DecisionCard({ d, compact }: { d: Decision; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const hasMore = !compact && (d.data.length > 0 || !!d.basis);
   return (
     <View style={styles.card} testID={`decision-${d.id}`}>
-      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-        <Icon name={AREA_ICON[d.area]} size={16} color={d.area === 'health' ? colors.warning : colors.accent} style={{ marginTop: 2 }} />
-        <T v="body" style={{ flex: 1, fontWeight: '800', fontSize: 15 }}>
-          {d.what}
-        </T>
-      </View>
+      <T v="body" style={{ fontWeight: '700' }} color={d.area === 'health' ? colors.warning : colors.text}>
+        {d.what}
+      </T>
       {d.why ? (
-        <T v="body" style={{ fontSize: 14 }} color={colors.textDim}>
+        <T v="small" style={{ lineHeight: 20 }}>
           {d.why}
         </T>
       ) : null}
-      {!compact && d.data.length ? (
-        <View style={{ gap: 2 }}>
-          <T v="caption" style={{ fontSize: 10 }}>
-            На основе
+      <ConfidenceLine level={d.confidence} note={d.confidenceNote} />
+      {hasMore ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} hitSlop={8} onPress={() => setOpen(!open)} style={{ alignSelf: 'flex-start' }}>
+          <T v="small" style={{ fontWeight: '600', fontSize: 13 }}>
+            {open ? 'Скрыть данные' : 'Данные ›'}
           </T>
+        </Pressable>
+      ) : null}
+      {open ? (
+        <View style={{ gap: 2 }}>
           {d.data.map((x) => (
-            <T key={x} v="small" style={{ fontSize: 12 }}>
+            <T key={x} v="small" style={{ fontSize: 13 }}>
               • {x}
             </T>
           ))}
+          <T v="small" style={{ fontSize: 12 }} color={colors.muted}>
+            {BASIS_LABEL[d.basis.kind]}
+            {d.basis.note ? ` · ${d.basis.note}` : ''}
+          </T>
         </View>
-      ) : null}
-      <ConfidenceLine level={d.confidence} note={d.confidenceNote} />
-      {!compact ? (
-        <T v="small" style={{ fontSize: 11 }} color={colors.muted}>
-          {BASIS_LABEL[d.basis.kind]}
-          {d.basis.note ? ` · ${d.basis.note}` : ''}
-        </T>
       ) : null}
     </View>
   );
@@ -85,7 +77,7 @@ export function CoachWhySheet({ visible, onClose, title, decisions, onReadiness 
         <View style={{ flexDirection: 'row', gap: 18, marginTop: 4 }}>
           {onReadiness ? (
             <Pressable accessibilityRole="button" hitSlop={8} onPress={onReadiness}>
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+              <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
                 Подробнее о готовности
               </T>
             </Pressable>
@@ -98,13 +90,13 @@ export function CoachWhySheet({ visible, onClose, title, decisions, onReadiness 
               afterModalClose(() => router.push('/coach'));
             }}
           >
-            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+            <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
               Спросить тренера
             </T>
           </Pressable>
         </View>
-        <T v="small" style={{ fontSize: 11 }}>
-          Все числа считает алгоритм RYNJI по вашим данным; ИИ (если подключён) только объясняет их словами.
+        <T v="small" style={{ fontSize: 12 }} color={colors.muted}>
+          Числа считает алгоритм RYNJI по вашим данным.
         </T>
       </View>
     </Sheet>
@@ -112,7 +104,7 @@ export function CoachWhySheet({ visible, onClose, title, decisions, onReadiness 
 }
 
 const styles = themed({
-  card: { gap: 6, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  card: { gap: 8, padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface2 },
   dots: { flexDirection: 'row', gap: 2, marginTop: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, View } from 'react-native';
 import type { ISODate } from '@/types';
 import { Icon, T } from '@/components/ui';
-import { colors, radius, themed } from '@/theme';
+import { colors, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
 import { addDays, parseISODate, startOfWeek, toISODate, WEEKDAYS_SHORT } from '@/utils/date';
 import { dayMarkers, type DayMarker, type DaySources } from './summary';
@@ -108,7 +108,7 @@ export function TrainingCalendar({ today: d, src, onSelect, initiallyOpen = fals
         )}
         <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={open ? 'Свернуть календарь' : 'Открыть календарь месяца'} hitSlop={8} style={styles.nav}>
           <Animated.View style={{ transform: [{ rotate: anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}>
-            <Icon name="chevron-down" size={20} color={colors.accent} />
+            <Icon name="chevron-down" size={18} color={colors.textDim} />
           </Animated.View>
         </Pressable>
       </View>
@@ -168,20 +168,22 @@ function DayCell({ date, today: t, m, label, dim, compact, onPress }: { date: IS
         onPress();
       }}
       testID={`day-${date}`}
-      style={({ pressed }) => [compact ? styles.cellCompact : styles.cell, isToday && styles.today, pressed && { opacity: 0.6 }, dim && { opacity: 0.35 }]}
+      style={({ pressed }) => [compact ? styles.cellCompact : styles.cell, pressed && { opacity: 0.6 }, dim && { opacity: 0.35 }]}
     >
       {label ? (
-        <T v="small" style={{ fontSize: 11 }} color={isToday ? colors.accent : colors.textDim}>
+        <T v="small" style={{ fontSize: 12 }} color={isToday ? colors.text : colors.muted}>
           {label}
         </T>
       ) : null}
-      <View style={[styles.num, trained ? { backgroundColor: fill } : m?.rest ? { backgroundColor: colors.surface2 } : null]}>
-        <T v="body" style={{ fontSize: 14, fontWeight: isToday || trained ? '800' : '600', fontVariant: ['tabular-nums'] }} color={trained ? colors.onAccent : isToday ? colors.accent : colors.text}>
+      {/* Сегодня — мягкая заливка; тренировка — точка цвета её типа под числом; отдых — приглушённое число */}
+      <View style={[styles.num, isToday && { backgroundColor: colors.surface3 }]}>
+        <T v="body" style={{ fontSize: 16, fontWeight: isToday ? '800' : '600', fontVariant: ['tabular-nums'] }} color={m?.rest && !trained && !isToday ? colors.muted : colors.text}>
           {num}
         </T>
       </View>
-      <View style={{ height: 6, flexDirection: 'row', gap: 2 }}>
-        {m?.record ? <Icon name="star" size={7} color={colors.warning} /> : m?.data && !trained ? <View style={styles.dot} /> : null}
+      <View style={{ height: 6, flexDirection: 'row', gap: 3, alignItems: 'center' }}>
+        {trained ? <View style={[styles.dot, { backgroundColor: fill }]} /> : m?.data ? <View style={styles.dot} /> : null}
+        {m?.record ? <Icon name="star" size={7} color={colors.warning} /> : null}
       </View>
     </Pressable>
   );
@@ -199,11 +201,10 @@ function Legend({ color, label, star }: { color: string; label: string; star?: b
 }
 
 const styles = themed({
-  cell: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface },
-  cellCompact: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 3, borderRadius: radius.sm, borderWidth: 1.5, borderColor: 'transparent' },
-  today: { borderColor: colors.accent },
-  num: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted },
+  cell: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 4 },
+  cellCompact: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 3 },
+  num: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.muted },
   nav: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 14, rowGap: 4, marginTop: 4 },
 });

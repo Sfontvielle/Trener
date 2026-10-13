@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
-import { colors, radius, space } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Card, EmptyState, Icon, Segmented, SectionTitle, Stat, T } from '@/components/ui';
 import { MiniBars, TrendChart } from '@/components/charts';
@@ -42,6 +42,7 @@ export default function Progress() {
   const [allPrs, setAllPrs] = useState(false);
   const [cmpDays, setCmpDays] = useState<'7' | '30' | '90'>('30');
   const [lift, setLift] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
   const weights = useBody((s) => s.weights);
   const metrics = useBody((s) => s.metrics);
   const photos = useBody((s) => s.photos);
@@ -127,34 +128,14 @@ export default function Progress() {
         Прогресс
       </T>
 
-      <Card tone="accent" onPress={() => router.push('/weekly-review')} style={{ marginBottom: space.md, gap: 6 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Icon name="newspaper-outline" size={18} color={colors.accent} />
-          <T v="h3" style={{ flex: 1 }}>
-            Отчёт недели
-          </T>
-          <Icon name="chevron-forward" size={18} color={colors.muted} />
-        </View>
-        <T v="small">{week ? `${formatDayShort(week.from)} – ${formatDayShort(week.to)}: ${week.headline}` : 'Вес, замеры, тренировки, питание, сон и вывод тренера — раз в неделю'}</T>
-      </Card>
+      {/* Переходы — одним списком, без цветных иконок */}
+      <View style={styles.list}>
+        <NavRow title="Отчёт недели" sub={week ? `${formatDayShort(week.from)} – ${formatDayShort(week.to)}: ${week.headline}` : 'Вес, тренировки, питание и вывод тренера'} onPress={() => router.push('/weekly-review')} />
+        <NavRow title="Анализы и здоровье" a11y="Анализы и здоровье" sub={lastLab ? `Последние ${formatDayShort(lastLab.date)}${labFlags ? ` · обсудить с врачом: ${labFlags}` : ''}` : 'PDF, фото или текст бланка'} warn={!!labFlags} onPress={() => router.push('/labs')} last />
+      </View>
 
-      <Card onPress={() => router.push('/labs')} style={{ marginBottom: space.md, gap: 4 }} accessibilityLabel="Анализы и здоровье">
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Icon name="flask-outline" size={18} color={labFlags ? colors.warning : colors.accent} />
-          <T v="h3" style={{ flex: 1 }}>
-            Анализы и здоровье
-          </T>
-          <Icon name="chevron-forward" size={18} color={colors.muted} />
-        </View>
-        <T v="small">{lastLab ? `Последние ${formatDayShort(lastLab.date)}${lastLab.lab ? ` · ${lastLab.lab}` : ''}${labFlags ? ` · обсудить с врачом: ${labFlags}` : ''}` : 'PDF, фото или текст бланка — история показателей и изменения'}</T>
-      </Card>
-
-      <Card style={{ marginBottom: space.md, gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <T v="caption" style={{ flex: 1 }}>
-            Что изменилось
-          </T>
-        </View>
+      <Card style={{ marginTop: space.xl, gap: 12 }}>
+        <T v="h3">Что изменилось</T>
         <Segmented items={[{ key: '7', label: '7 дн' }, { key: '30', label: '30 дн' }, { key: '90', label: '90 дн' }]} value={cmpDays} onChange={setCmpDays} />
         {story ? (
           <T v="body" style={{ fontSize: 15 }} color={colors.text}>
@@ -169,14 +150,14 @@ export default function Progress() {
           {cmp.kcal.cur !== null ? <CmpRow label="Ккал в день, ср." cur={cmp.kcal.cur} prev={cmp.kcal.prev} /> : null}
           {cmp.protein.cur !== null ? <CmpRow label="Белок в день, ср." cur={cmp.protein.cur} prev={cmp.protein.prev} unit="г" /> : null}
         </View>
-        <T v="small" style={{ fontSize: 11 }}>
-          Сравнение с предыдущими {cmpDays} днями. Это сопоставление данных, а не вывод о причинах.
+        <T v="small" style={{ fontSize: 12 }}>
+          К предыдущим {cmpDays} дням
         </T>
       </Card>
 
       {proposals.filter((p) => !doneProposals.includes(p.id)).length ? (
         <Card style={{ marginBottom: space.md, gap: 10 }}>
-          <T v="caption">Предложение {BRAND} на неделю</T>
+          <T v="h3">Предложение {BRAND} на неделю</T>
           {proposals
             .filter((p) => !doneProposals.includes(p.id))
             .map((p) => (
@@ -194,12 +175,12 @@ export default function Progress() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card style={{ marginTop: space.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T v="caption">Вес · тренд</T>
-          <Pressable onPress={() => router.push('/weight')} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} accessibilityRole="button">
-            <Icon name="add" size={16} color={colors.accent} />
-            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+          <T v="h3">Вес</T>
+          <Pressable onPress={() => router.push('/weight')} hitSlop={10} accessibilityRole="button" style={styles.addBtn}>
+            <Icon name="add" size={18} color={colors.text} />
+            <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
               Записать
             </T>
           </Pressable>
@@ -225,19 +206,16 @@ export default function Progress() {
             <View style={{ marginTop: space.md }}>
               <TrendChart points={points} labels={shown.length ? [formatDayShort(shown[0].date), formatDayShort(shown[shown.length - 1].date)] : undefined} />
             </View>
-            <T v="small" style={{ fontSize: 12 }}>
-              Линия — сглаженный тренд, точки — взвешивания. Решения по калориям {BRAND} принимает по тренду.
-            </T>
           </>
         ) : (
           <EmptyState icon="scale-outline" title="Нет истории веса" text="Взвешивайся 3–4 раза в неделю утром — появится тренд и адаптация калорий." action="Записать вес" onAction={() => router.push('/weight')} />
         )}
         {review ? (
-          <View style={{ marginTop: space.md, padding: 12, borderRadius: radius.md, backgroundColor: review.status === 'adjust' ? colors.warningDim : colors.surface2 }}>
-            <T v="body" style={{ fontWeight: '700', fontSize: 14 }}>
+          <View style={{ marginTop: space.md, gap: 2 }}>
+            <T v="body" style={{ fontWeight: '600' }} color={review.status === 'adjust' ? colors.warning : colors.text}>
               {review.headline}
             </T>
-            <T v="small" style={{ fontSize: 12 }}>
+            <T v="small" numberOfLines={2}>
               {review.detail}
             </T>
           </View>
@@ -253,9 +231,12 @@ export default function Progress() {
         </Card>
         <Card style={{ flex: 1 }}>
           <Stat label="Выполнение плана" value={adh.pct === null ? '—' : `${adh.pct}%`} color={adh.pct === null ? colors.text : adh.pct >= 85 ? colors.accent : adh.pct >= 65 ? colors.warning : colors.danger} sub={`${adh.workoutsDone}/${adh.workoutsPlanned} трен · 28 дн`} />
-          <T v="small" style={{ fontSize: 11, marginTop: 6 }}>
-            {strength !== null ? `Сила: ${strength >= 0 ? '+' : ''}${strength}% расчётного максимума за 60 дн` : 'Учитывает пропуски и недоделанные подходы'}
-          </T>
+          {strength !== null ? (
+            <T v="small" style={{ marginTop: 6 }}>
+              Сила {strength >= 0 ? '+' : ''}
+              {strength}% за 60 дн
+            </T>
+          ) : null}
         </Card>
       </View>
 
@@ -263,7 +244,7 @@ export default function Progress() {
       <Card style={{ gap: 10 }}>
         {waist.length >= 2 ? (
           <>
-            <T v="caption">Талия, см</T>
+            <T v="small">Талия, см</T>
             <TrendChart points={waist.map((p) => ({ x: daysBetween(waist[0].date, p.date), y: p.value, raw: p.value, date: p.date }))} unit="см" labels={[formatDayShort(waist[0].date), formatDayShort(waist[waist.length - 1].date)]} height={140} />
           </>
         ) : null}
@@ -274,7 +255,7 @@ export default function Progress() {
               const d = v ? Math.round((v.value - v.first) * 10) / 10 : 0;
               return (
                 <View key={k} style={{ minWidth: '30%', flexGrow: 1, padding: 10, borderRadius: radius.md, backgroundColor: colors.surface2 }}>
-                  <T v="caption" style={{ fontSize: 10 }}>
+                  <T v="small" style={{ fontSize: 12 }}>
                     {meta.label}
                   </T>
                   <T v="num" style={{ fontSize: 18 }}>
@@ -292,7 +273,7 @@ export default function Progress() {
             })}
           </View>
         ) : (
-          <T v="small">Талия и другие замеры показывают изменения тела точнее весов. Записывай раз в 1–2 недели.</T>
+          <T v="small">Замеров пока нет.</T>
         )}
         <PhotoCompare photos={photos} />
         {photos.length ? (
@@ -319,8 +300,8 @@ export default function Progress() {
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
               {lifts.map((id) => (
-                <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: id === liftId }} onPress={() => setLift(id)} style={{ paddingHorizontal: 12, height: 32, borderRadius: radius.pill, justifyContent: 'center', backgroundColor: id === liftId ? colors.accent : colors.surface2 }}>
-                  <T v="small" color={id === liftId ? colors.onAccent : colors.text} style={{ fontWeight: '700' }} numberOfLines={2}>
+                <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: id === liftId }} onPress={() => setLift(id)} style={{ paddingHorizontal: 14, height: 36, borderRadius: radius.pill, justifyContent: 'center', backgroundColor: id === liftId ? colors.text : colors.surface2 }}>
+                  <T v="small" color={id === liftId ? colors.bg : colors.text} style={{ fontWeight: '600' }} numberOfLines={2}>
                     {getExercise(id, customs)?.name ?? id}
                   </T>
                 </Pressable>
@@ -331,15 +312,21 @@ export default function Progress() {
             ) : (
               <T v="small">Нужно минимум 2 тренировки с весом в этом упражнении.</T>
             )}
-            <T v="small" style={{ fontSize: 11 }}>
-              Расчётный 1ПМ по лучшему подходу (формула Эпли) — показывает рост силы даже при разных повторах.
-            </T>
           </>
         ) : (
-          <T v="small">После 2+ тренировок с одним упражнением появится график силы.</T>
+          <T v="small">Нужно 2+ тренировки с одним упражнением.</T>
         )}
       </Card>
 
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.6 }]}>
+        <T v="body" style={{ flex: 1 }}>
+          Подробная статистика
+        </T>
+        <T v="small">8 недель · объём · восстановление</T>
+        <Icon name={more ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+      </Pressable>
+      {more ? (
+      <>
       <SectionTitle title="Тренировки и питание · 8 недель" />
       <Card style={{ gap: 12 }}>
         <WeekBars title="Тренировок в неделю" values={series.map((w) => w.workouts)} max={Math.max(plan?.daysPerWeek ?? 4, ...series.map((w) => w.workouts))} last={`${series[series.length - 1].workouts}`} />
@@ -373,15 +360,18 @@ export default function Progress() {
               </View>
             );
           })}
-          <T v="small" style={{ fontSize: 11 }}>
-            Прямые рабочие подходы. Метка — недельная цель; косвенная работа (например, трицепс в жимах) не считается.
+          <T v="small" style={{ fontSize: 12 }}>
+            Прямые рабочие подходы · метка — цель
           </T>
         </Card>
       ) : (
         <Card>
-          <T v="small">После первых тренировок здесь появится объём по каждой мышечной группе против недельной цели.</T>
+          <T v="small">Появится после первых тренировок.</T>
         </Card>
       )}
+
+      </>
+      ) : null}
 
       <SectionTitle title="Рабочие веса и рекорды" />
       {prs.length ? (
@@ -408,10 +398,12 @@ export default function Progress() {
         </View>
       ) : (
         <Card>
-          <T v="small">Заверши несколько тренировок — {BRAND} покажет рост рабочих весов и расчётный 1ПМ.</T>
+          <T v="small">Появится после нескольких тренировок.</T>
         </Card>
       )}
 
+      {more ? (
+      <>
       <SectionTitle title="Восстановление · 7 дней" />
       <Card>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, columnGap: 12, justifyContent: 'space-between', marginBottom: 10 }}>
@@ -422,7 +414,25 @@ export default function Progress() {
         <MiniBars values={readiness7} max={100} height={36} />
         {!sleep.length ? <Button title="Пройти чек-ин" size="sm" variant="secondary" style={{ marginTop: 10 }} onPress={() => router.push('/checkin')} /> : null}
       </Card>
+      </>
+      ) : null}
     </Screen>
+  );
+}
+
+function NavRow({ title, sub, onPress, a11y, warn, last }: { title: string; sub: string; onPress: () => void; a11y?: string; warn?: boolean; last?: boolean }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={a11y ?? title} onPress={onPress} style={({ pressed }) => [styles.navRow, !last && styles.navLine, pressed && { opacity: 0.6 }]}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <T v="body" style={{ fontWeight: '600' }}>
+          {title}
+        </T>
+        <T v="small" numberOfLines={1} color={warn ? colors.warning : colors.textDim}>
+          {sub}
+        </T>
+      </View>
+      <Icon name="chevron-forward" size={16} color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -481,3 +491,11 @@ function applyProposal(p: WeeklyProposal) {
     toast('Упражнение заменено в плане');
   }
 }
+
+const styles = themed({
+  list: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingLeft: space.md },
+  navRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingRight: space.md },
+  navLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 34, borderRadius: 17, backgroundColor: colors.surface2 },
+  moreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: space.xl, paddingHorizontal: space.md, minHeight: 54, borderRadius: radius.lg, backgroundColor: colors.surface },
+});

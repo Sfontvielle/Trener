@@ -374,9 +374,9 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
 }
 
 const styles = themed({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: 12 },
   input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 6, borderWidth: 1, borderColor: colors.border, minHeight: 56 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 6, minHeight: 56 },
   macroBox: { flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: radius.md, paddingVertical: 12 },
 });
 

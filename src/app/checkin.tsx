@@ -132,7 +132,7 @@ export default function CheckIn() {
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <T v="h3">Сон</T>
-              <T v="h3" color={colors.accent} testID="sleep-value">
+              <T v="h3" testID="sleep-value">
                 {formatSleep(sleepMinutesOf(c))}
               </T>
             </View>
@@ -206,7 +206,7 @@ function Choice3({ title, options, values, value, onChange }: { title: string; o
               }}
               style={[styles.choice, active && styles.choiceOn]}
             >
-              <T v="body" style={{ fontWeight: '700', fontSize: 15 }} color={active ? colors.onAccent : colors.text}>
+              <T v="body" style={{ fontWeight: '600', fontSize: 15 }} color={active ? colors.bg : colors.text}>
                 {o}
               </T>
             </Pressable>
@@ -218,7 +218,8 @@ function Choice3({ title, options, values, value, onChange }: { title: string; o
 }
 
 const styles = themed({
-  choice: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  choiceOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  choice: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 },
+  // Выбор — светлая «пилюля»; лайм на экране остаётся у кнопки «Сохранить»
+  choiceOn: { backgroundColor: colors.text },
   fromHealth: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
 });

@@ -77,6 +77,6 @@ function Item({ c, chosen }: { c: NonNullable<WorkoutPlan['splitChoice']>['candi
 }
 
 const styles = themed({
-  item: { padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
+  item: { padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.accent },
 });

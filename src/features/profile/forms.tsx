@@ -402,10 +402,10 @@ export function TagInput({ label, values, onChange, category }: { label: string;
         <View style={[styles.wrap, { flex: 1 }]}>
           {values.map((v) => (
             <Pressable key={v} accessibilityLabel={`Удалить ${v}`} onPress={() => onChange(values.filter((x) => x !== v))} style={styles.tag} hitSlop={4}>
-              <T v="small" color={colors.onAccent} style={{ fontWeight: '700' }}>
+              <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
                 {v}
               </T>
-              <Icon name="close" size={14} color={colors.onAccent} />
+              <Icon name="close" size={14} color={colors.textDim} />
             </Pressable>
           ))}
           {!values.length ? (
@@ -415,7 +415,7 @@ export function TagInput({ label, values, onChange, category }: { label: string;
           ) : null}
         </View>
         <View style={styles.inlineAdd}>
-          <Icon name="add" size={22} color={colors.accent} />
+          <Icon name="add" size={22} color={colors.text} />
         </View>
       </Pressable>
       <CategoryPicker visible={open} category={category} value={values} onClose={() => setOpen(false)} onSave={onChange} />
@@ -450,7 +450,7 @@ export function PickerField({ label, value, onChange, category, placeholder, hin
             hitSlop={6}
             style={({ pressed }) => [styles.inlineAdd, pressed && { opacity: 0.7 }]}
           >
-            <Icon name="add" size={22} color={colors.accent} />
+            <Icon name="add" size={22} color={colors.text} />
           </Pressable>
         }
       />
@@ -462,13 +462,13 @@ export function PickerField({ label, value, onChange, category, placeholder, hin
 
 const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
+  goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   recBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.accent },
   warn: { padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim, borderWidth: 1, borderColor: colors.warningLine },
-  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
-  tagField: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingLeft: space.md, paddingRight: 6, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  inlineAdd: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface3, paddingHorizontal: 12, height: 32, borderRadius: radius.pill },
+  tagField: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingLeft: space.md, paddingRight: 6, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.surface2 },
+  inlineAdd: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface3 },
   rules: { gap: 4, padding: 12, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
 });

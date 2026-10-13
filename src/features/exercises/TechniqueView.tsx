@@ -107,6 +107,6 @@ function Head({ icon, title, color = colors.accent }: { icon: IconName; title: s
 }
 
 const styles = themed({
-  block: { gap: 6, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  block: { gap: 6, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2 },
   num: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 });

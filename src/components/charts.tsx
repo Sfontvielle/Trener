@@ -177,7 +177,7 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
       )}
       {sp ? (
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: tipX, width: 130, alignItems: 'center' }} testID="chart-tip">
-          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.surface3, borderWidth: 1, borderColor: colors.border }}>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.surface3 }}>
             <T v="small" color={colors.text} style={{ fontWeight: '800', fontSize: 12, textAlign: 'center' }}>
               {fmtVal(sp.raw ?? sp.y)} {unit}
               {sp.date ? ` · ${fmtDate(sp.date)}` : ''}

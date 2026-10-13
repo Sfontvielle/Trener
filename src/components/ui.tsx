@@ -1,9 +1,10 @@
-import React, { memo, useEffect, useState} from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Platform,
   Pressable,
+  ScrollView,
   StyleProp,
   StyleSheet,
   Text,
@@ -70,16 +71,8 @@ export const Card = memo(function Card({
   testID?: string;
   tone?: 'default' | 'accent' | 'warning' | 'danger' | 'flat';
 }) {
-  const toneStyle =
-    tone === 'accent'
-      ? { borderColor: colors.accentLine, backgroundColor: colors.surface }
-      : tone === 'warning'
-        ? { borderColor: colors.warningLine, backgroundColor: colors.surface }
-        : tone === 'danger'
-          ? { borderColor: colors.dangerLine, backgroundColor: colors.surface }
-          : tone === 'flat'
-            ? { borderColor: 'transparent', backgroundColor: colors.surface2 }
-            : null;
+  // Без рамок: карточка отделяется заливкой. Цветная рамка — только у опасного (здоровье), остальное — содержимым
+  const toneStyle = tone === 'danger' ? { borderWidth: 1, borderColor: colors.dangerLine } : tone === 'flat' ? { backgroundColor: colors.surface2 } : null;
   if (onPress) {
     return (
       <Pressable
@@ -123,10 +116,10 @@ export function Button({
   full?: boolean;
   accessibilityLabel?: string;
 }) {
-  const bg =
-    variant === 'primary' ? colors.accent : variant === 'secondary' ? colors.surface3 : variant === 'danger' ? colors.dangerDim : 'transparent';
+  // Одна главная кнопка — лаймовая; остальные — спокойная заливка без рамок («outline» выглядит как «secondary»)
+  const bg = variant === 'primary' ? colors.accent : variant === 'secondary' || variant === 'outline' ? colors.surface3 : variant === 'danger' ? colors.dangerDim : 'transparent';
   const fg = variant === 'primary' ? colors.onAccent : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.textDim : colors.text;
-  const h = size === 'lg' ? 56 : size === 'sm' ? 36 : 48;
+  const h = size === 'lg' ? 56 : size === 'sm' ? 38 : 50;
   return (
     <Pressable
       accessibilityRole="button"
@@ -142,7 +135,6 @@ export function Button({
         styles.btn,
         // minHeight: длинный текст (например «Далее: Тяга горизонтального блока…») переносится, а не обрезается
         { backgroundColor: bg, minHeight: h, paddingVertical: 6, paddingHorizontal: size === 'sm' ? 14 : 20 },
-        variant === 'outline' && { borderWidth: 1, borderColor: colors.borderStrong },
         full && { alignSelf: 'stretch' },
         (disabled || loading) && { opacity: 0.45 },
         pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
@@ -154,7 +146,7 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={size === 'sm' ? 16 : 19} color={fg} /> : null}
-          <Text numberOfLines={2} style={[styles.btnText, { color: fg, fontSize: size === 'sm' ? 14 : size === 'lg' ? 17 : 16, textAlign: 'center', flexShrink: 1 }]}>
+          <Text numberOfLines={2} style={[styles.btnText, { color: fg, fontSize: size === 'sm' ? 15 : 17, textAlign: 'center', flexShrink: 1 }]}>
             {title}
           </Text>
         </>
@@ -222,36 +214,82 @@ export function Chip({
       }}
       style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.8 }, style]}
     >
-      {icon ? <Icon name={icon} size={15} color={active ? colors.onAccent : colors.textDim} /> : null}
-      <Text numberOfLines={1} style={[styles.chipText, active && { color: colors.onAccent }]}>
+      {icon ? <Icon name={icon} size={15} color={active ? colors.bg : colors.textDim} /> : null}
+      <Text numberOfLines={1} style={[styles.chipText, active && { color: colors.bg }]}>
         {label}
       </Text>
     </Pressable>
   );
 }
 
-export function Segmented<K extends string>({ items, value, onChange, style }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle> }) {
+export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0 }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number }) {
+  // Длинные подписи — «пилюли» по ширине текста с прокруткой (как в iOS), короткие — поровну на всю ширину
+  const scroll = items.reduce((a, it) => a + it.label.length, 0) > 26;
+  // Прокручиваемый ряд держит выбранную «пилюлю» в поле зрения (переход по ссылке, смена вкладки)
+  const ref = useRef<ScrollView>(null);
+  const geo = useRef({ view: 0, content: 0, shown: '', items: {} as Record<string, { x: number; w: number }> });
+  const reveal = () => {
+    const g = geo.current;
+    const it = g.items[value];
+    if (!scroll || !it || !g.view || !g.content || g.shown === value) return;
+    g.shown = value;
+    const x = Math.max(0, Math.min(it.x + it.w / 2 - g.view / 2, g.content - g.view));
+    ref.current?.scrollTo({ x, animated: true });
+  };
+  useEffect(reveal);
+  const pills = items.map((it) => {
+    const active = it.key === value;
+    return (
+      <Pressable
+        key={it.key}
+        onLayout={
+          scroll
+            ? (e) => {
+                geo.current.items[it.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width };
+                reveal();
+              }
+            : undefined
+        }
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        onPress={() => {
+          if (!active) haptic.tap();
+          onChange(it.key);
+        }}
+        style={[styles.segItem, scroll ? { paddingHorizontal: 16 } : { flex: 1 }, active && styles.segItemActive]}
+      >
+        <Text numberOfLines={1} style={[styles.segText, active && { color: colors.text }]}>
+          {it.label}
+        </Text>
+      </Pressable>
+    );
+  });
+  if (scroll) {
+    return (
+      // bleed — прокрутка до краёв экрана поверх отступа родителя (как ряды «пилюль» в iOS)
+      <ScrollView
+        ref={ref}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onLayout={(e) => {
+          geo.current.view = e.nativeEvent.layout.width;
+          reveal();
+        }}
+        onContentSizeChange={(w) => {
+          geo.current.content = w;
+          reveal();
+        }}
+        style={[style, bleed ? { marginHorizontal: -bleed } : null]}
+        contentContainerStyle={[styles.seg, bleed ? { paddingHorizontal: bleed } : null]}
+        accessibilityRole="tablist"
+      >
+        {pills}
+      </ScrollView>
+    );
+  }
   return (
     <View style={[styles.seg, style]} accessibilityRole="tablist">
-      {items.map((it) => {
-        const active = it.key === value;
-        return (
-          <Pressable
-            key={it.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            onPress={() => {
-              if (!active) haptic.tap();
-              onChange(it.key);
-            }}
-            style={[styles.segItem, active && styles.segItemActive]}
-          >
-            <Text numberOfLines={1} style={[styles.segText, active && { color: colors.text }]}>
-              {it.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {pills}
     </View>
   );
 }
@@ -262,7 +300,7 @@ export function SectionTitle({ title, action, onAction, style }: { title: string
       <T v="caption">{title}</T>
       {action ? (
         <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button">
-          <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
+          <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
             {action}
           </T>
         </Pressable>
@@ -300,8 +338,8 @@ export function Banner({ icon = 'information-circle', text, tone = 'info', actio
         {text}
       </T>
       {action ? (
-        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button">
-          <T v="small" color={c} style={{ fontWeight: '800' }}>
+        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button" style={{ flexShrink: 1, maxWidth: '45%' }}>
+          <T v="small" color={tone === 'info' ? colors.text : c} style={{ fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit>
             {action}
           </T>
         </Pressable>
@@ -350,8 +388,6 @@ const styles = themed({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: space.lg,
   },
   btn: {
@@ -361,7 +397,7 @@ const styles = themed({
     justifyContent: 'center',
     gap: 8,
   },
-  btnText: { fontWeight: '800', letterSpacing: -0.2 },
+  btnText: { fontWeight: '700', letterSpacing: -0.2 },
   iconBtn: {
     width: TOUCH,
     height: TOUCH,
@@ -373,28 +409,21 @@ const styles = themed({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 36,
-    paddingHorizontal: 14,
+    height: 38,
+    paddingHorizontal: 16,
     borderRadius: radius.pill,
     backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.textDim, fontWeight: '700', fontSize: 14 },
-  seg: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.pill,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  segItem: { flex: 1, height: 36, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  // Выбранная «пилюля» — светлая (как выбор в iOS), лайм остаётся для главного действия экрана
+  chipActive: { backgroundColor: colors.text },
+  chipText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
+  // Переключатель — отдельные «пилюли» без общей подложки и рамки; выбранная — светлее
+  seg: { flexDirection: 'row', gap: 6 },
+  segItem: { height: 38, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   segItemActive: { backgroundColor: colors.surface3 },
-  segText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
-  section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xl, marginBottom: space.sm },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: space.xxl, paddingHorizontal: space.lg },
-  emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md },
+  segText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
+  section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xl, marginBottom: space.md },
+  empty: { alignItems: 'center', gap: 10, paddingVertical: space.xxl, paddingHorizontal: space.lg },
+  emptyIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md },
 });
