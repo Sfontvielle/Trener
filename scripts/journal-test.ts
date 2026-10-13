@@ -80,7 +80,9 @@ test('рекорд на время: при том же весе — дольше
 
 test('строки подходов как в дневнике: вес × повторы, без веса — повторы, на время — минуты:секунды', () => {
   const sets = [set(70, 10), set(80, 10), set(90, 8), set(40, 5, true, { warmup: true }), set(100, 3, false)];
-  assert.equal(setsLine(sets), '70 кг × 10, 80 кг × 10, 90 кг × 8');
+  assert.equal(setsLine(sets), '70 кг × 10 · 80 кг × 10 · 90 кг × 8');
+  // Один вес подряд — одной группой, без повтора веса
+  assert.equal(setsLine([set(67.5, 6), set(67.5, 7), set(70, 6), set(70, 5)]), '67,5 кг × 6, 7 · 70 кг × 6, 5');
   assert.equal(setsLine([set(0, 12), set(0, 12)]), '12, 12');
   assert.equal(setsLine([set(0, 30), set(0, 45)], { timed: true }), '0:30, 0:45');
   assert.equal(setText(set(24, 40), { timed: true }), '24 кг × 0:40');

@@ -103,11 +103,19 @@ export function setText(x: Pick<ExerciseSet, 'weight' | 'reps'>, o: { unit?: 'kg
   return x.weight > 0 ? `${fmtWeight(x.weight, o.unit)} ${unitLabel(o.unit ?? 'kg')} × ${val}` : val;
 }
 
-/** Компактная строка выполненных рабочих подходов: «70 кг × 10, 80 кг × 10, 90 кг × 8» */
+/**
+ * Компактная строка выполненных рабочих подходов. Подряд идущие подходы с одним весом — одной группой:
+ * «67,5 кг × 6, 7, 6» вместо повтора веса; разные веса — через « · »: «70 кг × 10 · 80 кг × 10, 8».
+ */
 export function setsLine(sets: ExerciseSet[], o: { unit?: 'kg' | 'lb'; timed?: boolean } = {}): string {
-  return workingSets(sets)
-    .map((x) => setText(x, o))
-    .join(', ');
+  const groups: { weight: number; vals: string[] }[] = [];
+  for (const x of workingSets(sets)) {
+    const val = o.timed ? fmtSec(x.reps) : String(x.reps);
+    const g = groups[groups.length - 1];
+    if (g && g.weight === x.weight) g.vals.push(val);
+    else groups.push({ weight: x.weight, vals: [val] });
+  }
+  return groups.map((g) => (g.weight > 0 ? `${fmtWeight(g.weight, o.unit)} ${unitLabel(o.unit ?? 'kg')} × ${g.vals.join(', ')}` : g.vals.join(', '))).join(' · ');
 }
 
 // ─── Итоги и рекорды ────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ export function CoachFeed({ items, onAction, onDismiss, limit = VISIBLE, onMore,
   const shown = all ? items : items.slice(0, limit);
   const rest = items.length - shown.length;
   return (
-    <View style={{ gap: 10 }} testID="coach-feed">
+    <View style={{ gap: 10 }} testID={bare ? 'coach-feed-list' : 'coach-feed'}>
       {bare ? null : (
         <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
           <T v="h3" accessibilityRole="header" style={{ flex: 1 }}>

@@ -3,7 +3,8 @@ import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, EmptyState, T } from '@/components/ui';
+import { Button, EmptyState, IconButton, T } from '@/components/ui';
+import { Ambient, Appear } from '@/components/motion';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout, useReadiness } from '@/hooks/useToday';
@@ -50,31 +51,41 @@ export default function Preview() {
       </Screen>
     );
   }
+  const totalSets = rows.reduce((a, r) => a + r.rec.sets, 0);
   return (
     <Screen>
-      <Header title={tpl.name} subtitle={tpl.focus} right={<Button title="Изменить" size="sm" variant="secondary" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
-      {isToday && tw.mode !== 'normal' ? <Banner tone="warning" icon="battery-half" text={`${MODE_LABEL[tw.mode]}: ${tw.reason ?? ''}`} /> : null}
-      <View style={{ marginTop: space.md }}>
-        <TargetMuscles items={rows.map(({ pe, rec }) => ({ exerciseId: pe.exerciseId, sets: rec.sets }))} sex={sex} />
-      </View>
-      {/* Одна главная кнопка — сразу под картой мышц; ниже — состав простым списком */}
-      <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" style={{ marginTop: space.lg }} onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
-      <View style={{ marginTop: space.xl }}>
+      <Ambient height={380} />
+      <Header title="" right={<IconButton name="create-outline" label="Изменить тренировку" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
+      {/* Главное — имя тренировки и одна строка параметров; ниже — одна кнопка и состав простым списком */}
+      <Appear i={0} style={{ gap: 6 }}>
+        <T v="caption">{isToday ? 'Сегодня' : 'Тренировка плана'}{isToday && tw.mode !== 'normal' ? <T v="caption" color={colors.warning}>{` · ${MODE_LABEL[tw.mode].toLowerCase()}`}</T> : null}</T>
+        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {tpl.name}
+        </T>
+        <T v="bodyDim">
+          ~{isToday && tw.estMinutes ? tw.estMinutes : tpl.estMinutes} мин · {rows.length} упражнений · {totalSets} подходов
+        </T>
+        {isToday && tw.mode !== 'normal' && tw.reason ? <T v="small">{tw.reason}</T> : null}
+      </Appear>
+      <Appear i={1} style={{ marginTop: space.xl }}>
+        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" live onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
+      </Appear>
+      <Appear i={2} style={{ marginTop: space.xl }}>
         {rows.map(({ ex, rec }, i) => (
           <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={({ pressed }) => [styles.row, i < rows.length - 1 && styles.line, pressed && { opacity: 0.6 }]}>
             <ExerciseThumb ex={ex} size={44} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <T v="body" style={{ fontWeight: '600' }} numberOfLines={2}>
-                {ex.name}
+            <T v="body" style={{ flex: 1, fontWeight: '600' }} numberOfLines={2}>
+              {ex.name}
+              <T v="small" style={{ fontVariant: ['tabular-nums'], fontWeight: '500' }}>
+                {`\n${rec.sets} × ${rec.repMin}–${rec.repMax}${rec.weight > 0 ? ` · ${fmtWeight(rec.weight, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : ''}${rec.delta && rec.action !== 'new' && rec.action !== 'hold' ? ` · ${rec.delta}` : ''}`}
               </T>
-              <T v="small" style={{ fontVariant: ['tabular-nums'] }}>
-                {rec.sets} × {rec.repMin}–{rec.repMax}
-                {rec.weight > 0 ? ` · ${fmtWeight(rec.weight, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : ''}
-                {rec.delta && rec.action !== 'new' && rec.action !== 'hold' ? ` · ${rec.delta}` : ''}
-              </T>
-            </View>
+            </T>
           </Pressable>
         ))}
+      </Appear>
+      {/* Целевые мышцы — справка ниже состава */}
+      <View style={{ marginTop: space.xl }}>
+        <TargetMuscles items={rows.map(({ pe, rec }) => ({ exerciseId: pe.exerciseId, sets: rec.sets }))} sex={sex} />
       </View>
     </Screen>
   );

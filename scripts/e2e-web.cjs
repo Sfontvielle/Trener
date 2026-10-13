@@ -41,6 +41,17 @@ const check = async (name, fn) => {
   }
 };
 
+/** Лента тренера на главной — одна строка; все сигналы — в листе по тапу */
+const openFeed = async (pg) => {
+  await pg.getByTestId('coach-feed').click();
+  await pg.waitForTimeout(800);
+  return pg.getByTestId('coach-feed-list').innerText();
+};
+const closeSheet = async (pg) => {
+  await pg.getByLabel('Закрыть').last().click();
+  await pg.waitForTimeout(600);
+};
+
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
@@ -60,9 +71,9 @@ const check = async (name, fn) => {
       assert.match(await op.evaluate(() => document.body.innerText), /вот твой старт/);
       await op.getByText('Начать с RYNJI').click();
       await op.waitForTimeout(1500);
-      assert.ok(await op.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'после онбординга — главная');
-      // Остальное — позже: лента предлагает заполнить здоровье
-      assert.match(await op.getByTestId('coach-feed').innerText(), /Дополни профиль: здоровье/);
+      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('coach-feed').isVisible()), 'после онбординга — главная');
+      // Остальное — позже: лента предлагает заполнить здоровье (строка тренера → лист со всеми сигналами)
+      assert.match(await openFeed(op), /Дополни профиль: здоровье/);
       await op.getByLabel('Заполнить: Дополни профиль: здоровье и ограничения').click();
       await op.waitForTimeout(1500);
       assert.ok(await op.getByText('Здоровье и особенности').last().isVisible(), 'открыт раздел здоровья');
@@ -122,9 +133,10 @@ const check = async (name, fn) => {
       // Раздел заполнен — лента предлагает следующий, а не здоровье
       await op.goto(URL, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
-      const feed = await op.getByTestId('coach-feed').innerText();
+      const feed = await openFeed(op);
       assert.ok(!/Дополни профиль: здоровье/.test(feed), 'здоровье больше не предлагается');
       assert.match(feed, /Дополни профиль: оборудование/);
+      await closeSheet(op);
       // Питание: пикеры любимых и нелюбимых продуктов
       await op.goto(`${URL}/profile?edit=food`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
@@ -303,13 +315,21 @@ const check = async (name, fn) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const coach = await page.getByLabel('Тренер RYNJI — совет дня и чат').boundingBox();
-    const prof = await page.getByLabel('Профиль').first().boundingBox();
-    assert.ok(coach && prof && Math.abs(coach.y - prof.y) < 20, 'кнопка коуча рядом с профилем');
-    // «Сегодня»: главное действие и метрики дня — на первом экране
+    assert.ok(await page.getByLabel('Профиль').first().isVisible(), 'профиль в шапке');
+    // «Сегодня»: одно главное действие, три кольца дня и одна строка тренера — на первом экране
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    for (const l of ['Калории, открыть питание', 'Вода: добавить или уменьшить', 'Шаги', 'Сон, чек-ин', 'Прогресс к цели']) assert.ok(await page.getByLabel(l).count(), l);
+    for (const l of ['Калории, открыть питание', 'Вода: добавить или уменьшить', 'Сон, чек-ин']) {
+      const b = await page.getByLabel(l).first().boundingBox();
+      assert.ok(b && b.y + b.height < 956 - 80, `${l} на первом экране`);
+    }
+    const coachLine = await page.getByTestId('coach-feed').boundingBox();
+    assert.ok(coachLine && coachLine.y + coachLine.height < 956 - 80, 'строка тренера на первом экране');
+    // Шаги — в дневнике дня (тап по дате)
+    await page.getByLabel('Дневник: календарь дней').click();
+    await page.waitForTimeout(700);
+    assert.ok(await page.getByLabel('Шаги, как рассчитана цель').isVisible(), 'шаги в дневнике дня');
+    await closeSheet(page);
     await shot('home');
   });
 
@@ -328,12 +348,12 @@ const check = async (name, fn) => {
     assert.equal(errors.length, before, errors.slice(before).join(' | '));
   });
 
-  await check('19. Тренировки → План: выбор сплита', async () => {
+  await check('19. Тренировки → «План и сплит» (лист): выбор сплита', async () => {
     await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
-    await page.getByText('План', { exact: true }).first().click();
-    await page.waitForTimeout(600);
+    await page.getByLabel('План и сплит').click();
+    await page.waitForTimeout(800);
     assert.ok(await page.getByText('Твой план', { exact: true }).isVisible(), 'план сверху');
     await page.getByLabel('Сменить сплит').click();
     await page.waitForTimeout(400);
@@ -342,7 +362,10 @@ const check = async (name, fn) => {
     await page.waitForTimeout(600);
     assert.ok((await page.getByText('Перейти на этот сплит').count()) === 1);
     await shot('split');
-    await page.getByText('Библиотека', { exact: true }).first().click();
+    await page.getByText('Отмена', { exact: true }).last().click();
+    await page.waitForTimeout(300);
+    await closeSheet(page);
+    await page.getByText('Упражнения', { exact: true }).first().click();
     await page.waitForTimeout(800);
     await shot('library');
   });
@@ -450,8 +473,8 @@ const check = async (name, fn) => {
     }
     await page.getByText('Легко', { exact: true }).first().click().catch(() => {});
     // CTA появляется сразу после последнего подхода — без ожидания таймера отдыха
-    const fin = page.getByText('ЗАВЕРШИТЬ ТРЕНИРОВКУ', { exact: true });
-    assert.ok(await fin.last().isVisible(), 'главная кнопка сменилась на «ЗАВЕРШИТЬ ТРЕНИРОВКУ»');
+    const fin = page.getByText('Завершить тренировку', { exact: true });
+    assert.ok(await fin.last().isVisible(), 'главная кнопка сменилась на «Завершить тренировку»');
     await fin.last().click();
     await page.waitForTimeout(500);
     assert.ok(await page.getByText('Все упражнения выполнены').last().isVisible());
@@ -536,6 +559,9 @@ const check = async (name, fn) => {
       }, [id, idx]);
       await page.waitForTimeout(600);
     };
+    // Сон крупно; колесо — по тапу
+    await page.getByLabel('Изменить сон').click();
+    await page.waitForTimeout(600);
     await spin('sleep-wheel-h', 7);
     await spin('sleep-wheel-m', 43);
     assert.equal((await page.getByTestId('sleep-value').innerText()).trim(), '7 ч 43 мин');
@@ -566,15 +592,15 @@ const check = async (name, fn) => {
 
   await check('32. Календарь: тап по старой дате показывает именно этот день', async () => {
     const sess = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((s) => s.status === 'completed').sort((a, b) => a.startedAt - b.startedAt)[0]);
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+    await page.goto(`${URL}/training?seg=history`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
-    // Неделя с числами и подсветкой сегодня
+    // Календарь — по кнопке в дневнике: месяц с подсветкой сегодня
+    await page.getByLabel('Календарь тренировок').click();
+    await page.waitForTimeout(900);
     const d = new Date();
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    assert.match(await page.getByTestId(`day-${iso}`).getAttribute('aria-label'), /сегодня/);
-    await page.getByLabel('Открыть календарь месяца').click();
-    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId(`day-${iso}`).first().getAttribute('aria-label'), /сегодня/);
     for (let i = 0; i < 3 && !(await page.getByTestId(`day-${sess.date}`).count()); i++) {
       await page.getByLabel('Предыдущий месяц').click();
       await page.waitForTimeout(400);
@@ -588,17 +614,18 @@ const check = async (name, fn) => {
     await page.waitForTimeout(500);
   });
 
-  await check('33. Главная: быстрые действия, шаги «X / цель», замеры в один тап', async () => {
+  await check('33. Главная: кольца — быстрые входы (готовность → чек-ин, ккал → питание); вес — «+» в «Прогрессе»', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    for (const l of ['+ Еда', '+ Замеры', 'Check-in']) assert.ok(await page.getByLabel(l, { exact: true }).isVisible(), l);
-    assert.ok(await page.getByTestId('measure-card').isVisible(), 'карточка замеров');
-    await page.getByLabel('+ Замеры', { exact: true }).click();
-    await page.waitForTimeout(700);
-    assert.ok(await page.getByText('Талия · на уровне пупка, на выдохе').isVisible(), 'лист замеров: талия');
-    await page.getByText('Сохранить', { exact: true }).last().click();
-    await page.waitForTimeout(800);
+    await page.getByLabel('Калории, открыть питание').first().click();
+    await page.waitForTimeout(900);
+    assert.ok(await page.getByLabel('Добавить еду').isVisible(), 'питание открыто');
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await page.getByLabel('Записать вес').first().click();
+    await page.waitForTimeout(900);
+    assert.match(await page.evaluate(() => document.body.innerText), /Вес/);
     await shot('home-v2');
   });
 
@@ -623,12 +650,10 @@ const check = async (name, fn) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    for (const l of ['Сон, чек-ин', 'Шаги, как рассчитана цель']) {
-      const b = await page.getByLabel(l).boundingBox();
-      assert.ok(b && b.y < 956, `${l} на первом экране`);
-    }
+    const b = await page.getByLabel(/Сон, чек-ин/).first().boundingBox();
+    assert.ok(b && b.y < 956, 'готовность на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Готовность/);
+    assert.match(t, /готовность|чек-ин|сон/i);
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
@@ -651,7 +676,9 @@ const check = async (name, fn) => {
       assert.ok((await page.getByText('Р', { exact: true }).count()) >= 2, 'разминочные подходы в таблице');
       await page.getByLabel('Убрать подход').count();
     }
-    // Блины по тапу на рекомендованный вес (если рекомендация со штангой)
+    // Блины — в пояснении к рекомендации (тап по рекомендации), если вес на штанге
+    await page.getByLabel('Рекомендация, почему').first().click();
+    await page.waitForTimeout(400);
     const plates = page.getByLabel('Раскладка блинов');
     if (await plates.count()) {
       await plates.click();
@@ -677,7 +704,9 @@ const check = async (name, fn) => {
     await page.getByLabel('Запас 2', { exact: true }).click();
     await page.waitForTimeout(300);
     assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
-    // Замена: причины → альтернативы
+    // Замена: «•••» → причины → альтернативы
+    await page.getByLabel('Действия с упражнением').first().click();
+    await page.waitForTimeout(600);
     await page.getByLabel('Заменить упражнение', { exact: true }).first().click();
     await page.waitForTimeout(600);
     assert.ok(await page.getByText('Тренажёр занят').isVisible());
@@ -729,6 +758,9 @@ const check = async (name, fn) => {
     await dismiss();
     await page.getByLabel('Дневник: календарь дней').click();
     await page.waitForTimeout(700);
+    assert.ok(await page.getByTestId('day-journal').isVisible(), 'дата открывает дневник дня');
+    await page.getByLabel('Календарь дней').click();
+    await page.waitForTimeout(900);
     const pad = (n) => String(n).padStart(2, '0');
     const dd = new Date(); dd.setDate(dd.getDate() - 1);
     const y = `${dd.getFullYear()}-${pad(dd.getMonth() + 1)}-${pad(dd.getDate())}`;
@@ -745,6 +777,8 @@ const check = async (name, fn) => {
       await page.waitForTimeout(700);
       await page.getByLabel('Дневник: календарь дней').click();
       await page.waitForTimeout(700);
+      await page.getByLabel('Календарь дней').click();
+      await page.waitForTimeout(900);
       const d2 = new Date(); d2.setDate(d2.getDate() - back);
       const y2 = `${d2.getFullYear()}-${pad(d2.getMonth() + 1)}-${pad(d2.getDate())}`;
       if (!(await page.getByTestId(`day-${y2}`).count())) { await page.getByLabel('Предыдущий месяц').click(); await page.waitForTimeout(400); }
@@ -754,9 +788,9 @@ const check = async (name, fn) => {
     }
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(800);
-    await page.getByLabel('+ Еда', { exact: true }).click();
+    await page.getByLabel('Вода: добавить или уменьшить').click();
     await page.waitForTimeout(800);
-    assert.ok(await page.getByText('Поиск продукта', { exact: true }).count(), 'после календаря приложение отвечает');
+    assert.ok(await page.getByTestId('water-amount').count(), 'после календаря приложение отвечает');
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(600);
   });
@@ -823,8 +857,8 @@ const check = async (name, fn) => {
     if (await block.count()) {
       const t = await block.innerText();
       assert.match(t, /Тренировка дня|Сегодня|Тренировка выполнена/, 'главное на сегодня — крупно, без служебных подписей');
-      // КБЖУ дня — одной строкой в списке «День» (без дублирования в блоке тренировки)
-      assert.match(await page.getByLabel('Калории, открыть питание').innerText(), /ккал[\s\S]*Б \d+ · Ж \d+ · У \d+/, 'КБЖУ дня');
+      // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
+      assert.match(await page.getByLabel(/Калории, открыть питание/).first().innerText(), /ккал/, 'калории дня');
       await page.getByLabel('Почему? Объяснение решений тренера').click();
       await page.waitForTimeout(700);
       const why = await page.getByTestId('coach-why').innerText();
@@ -906,12 +940,16 @@ const check = async (name, fn) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    assert.match(await page.getByTestId('coach-feed').innerText(), /Давление/);
+    const line = await page.getByTestId('coach-feed').innerText();
+    assert.ok(/Давление/.test(line) || /Давление/.test(await openFeed(page)), 'сигнал давления на главной');
   });
 
   await check('44. Отчёт недели: метрики и решения тренера (что/почему/данные/уверенность)', async () => {
     await page.goto(`${URL}/weekly-review`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
+    // Итог крупно; полная таблица — по «Все показатели»
+    await page.getByText('Все показатели ›').click();
+    await page.waitForTimeout(600);
     const t = await page.evaluate(() => document.body.innerText);
     for (const x of ['ВЕС, Δ', 'ТАЛИЯ, Δ', 'КАЛОРИИ, СР.', 'ШАГИ/ДЕНЬ', 'ТРЕНИРОВКИ', 'СИЛА', 'СОН, СР.']) assert.ok(t.toUpperCase().includes(x), x);
     if (await page.getByTestId('weekly-decisions').count()) {
@@ -980,20 +1018,17 @@ const check = async (name, fn) => {
     await page.goto(`${URL}/training?seg=history`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1800);
     await dismiss();
-    const w = await page.getByTestId('journal-week').innerText();
-    assert.match(w, /На этой неделе/);
-    assert.match(w, /\d+\s+трениров/);
-    assert.match(w, /\d+\s+рекорд/);
-    assert.match(w, /\d+\s+мин/);
+    // Итоги недели — в заголовке недели ленты, одной строкой
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Эта неделя|Прошлая неделя/i);
+    assert.match(t, /(Эта неделя|Прошлая неделя)\s+\d+\s+трениров/i);
+    assert.match(t, /\d+\s+мин/);
     assert.match(t, /«Отличная тренировка!»/);
     assert.match(t, /🙂/);
     await shot('diary');
     await page.getByLabel(/^Грудь и спина, (Вчера|Сегодня)/).first().click();
     await page.waitForTimeout(1500);
     const d = await page.evaluate(() => document.body.innerText);
-    assert.match(d, /80 кг × 10, 85 кг × 8, 85 кг × 8/, 'подходы одной строкой, без разминки');
+    assert.match(d, /80 кг × 10 · 85 кг × 8, 8/, 'подходы одной строкой, без разминки, один вес — без повтора');
     assert.match(d, /0:45, 0:50/, 'планка — время');
     assert.match(d, /A1[\s\S]*A2/, 'суперсет помечен');
     assert.match(d, /🙂 Нормально/);
@@ -1009,15 +1044,15 @@ const check = async (name, fn) => {
   });
 
   await check('47. Суперсет: подход A → сразу B без отдыха → отдых → снова A; меню «Убрать / Суперсет со следующим»', async () => {
-    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 1 из 3/);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^1 из 3$/);
     await page.getByText(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
-    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 2 из 3/, 'после A1 — сразу B');
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^2 из 3$/, 'после A1 — сразу B');
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'без отдыха между участниками');
     await page.getByText(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
     assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'после круга — отдых');
-    assert.match(await page.getByTestId('exercise-position').innerText(), /Упражнение 1 из 3/, 'и снова A');
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^1 из 3$/, 'и снова A');
     assert.match(await page.evaluate(() => document.body.innerText), /Следующий: Жим штанги лёжа/i);
     await page.getByLabel('Пропустить отдых').click();
     await page.waitForTimeout(400);
@@ -1113,15 +1148,14 @@ const check = async (name, fn) => {
     await shot('exercise-bars');
   });
 
-  await check('52. Сегодня: плашки тренировки, прогресс недели и целевые мышцы в процентах; в деталях — карта мышц', async () => {
+  await check('52. Неделя: «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
     await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const det = page.getByText('Детали', { exact: true });
-    if (!(await det.count())) return; // день отдыха — карточки тренировки нет
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Неделя\s*\n?\s*\d+ из \d+/);
-    assert.match(await page.getByTestId('target-muscles').first().innerText(), /\d+%/);
+    assert.match(t, /Эта неделя\s*\n?\s*\d+ из \d+/);
+    const det = page.getByLabel(/, сегодня$/);
+    if (!(await det.count())) return; // день отдыха — сегодняшней тренировки нет
     await det.first().click();
     await page.waitForTimeout(1500);
     const tm = await page.getByTestId('target-muscles').innerText();
