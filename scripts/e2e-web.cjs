@@ -319,17 +319,16 @@ const closeSheet = async (pg) => {
     // «Сегодня»: одно главное действие, три кольца дня и одна строка тренера — на первом экране
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    for (const l of ['Калории, открыть питание', 'Вода: добавить или уменьшить', 'Сон, чек-ин']) {
+    for (const l of ['Калории, открыть питание', 'Шаги, как рассчитана цель', 'Сон, чек-ин', 'Вода: добавить или уменьшить']) {
       const b = await page.getByLabel(l).first().boundingBox();
       assert.ok(b && b.y + b.height < 956 - 80, `${l} на первом экране`);
     }
     const coachLine = await page.getByTestId('coach-feed').boundingBox();
     assert.ok(coachLine && coachLine.y + coachLine.height < 956 - 80, 'строка тренера на первом экране');
-    // Шаги — в дневнике дня (тап по дате)
-    await page.getByLabel('Дневник: календарь дней').click();
-    await page.waitForTimeout(700);
-    assert.ok(await page.getByLabel('Шаги, как рассчитана цель').isVisible(), 'шаги в дневнике дня');
-    await closeSheet(page);
+    // Вода — компактной строкой: +250 в один тап
+    await page.getByLabel('Плюс 250 мл воды').first().click();
+    await page.waitForTimeout(300);
+    assert.match(await page.getByLabel('Вода: добавить или уменьшить').innerText(), /250 мл/);
     await shot('home');
   });
 
@@ -859,8 +858,11 @@ const closeSheet = async (pg) => {
       assert.match(t, /Тренировка дня|Сегодня|Тренировка выполнена/, 'главное на сегодня — крупно, без служебных подписей');
       // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
       assert.match(await page.getByLabel(/Калории, открыть питание/).first().innerText(), /ккал/, 'калории дня');
-      await page.getByLabel('Почему? Объяснение решений тренера').click();
+      // «Почему так» — в листе тренера (строка тренера на главной)
+      await page.getByTestId('coach-feed').click();
       await page.waitForTimeout(700);
+      await page.getByLabel('Почему? Объяснение решений тренера').click();
+      await page.waitForTimeout(900);
       const why = await page.getByTestId('coach-why').innerText();
       assert.match(why, /Уверенность:/);
       assert.match(why, /ккал/);
@@ -1153,9 +1155,16 @@ const closeSheet = async (pg) => {
     await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Эта неделя\s*\n?\s*\d+ из \d+/);
-    const det = page.getByLabel(/, сегодня$/);
+    assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Эта неделя');
+    assert.match(await page.evaluate(() => document.body.innerText), /\d+ из \d+/);
+    // Календарь листается: следующая неделя — план по ротации, назад — текущая
+    await page.getByLabel('Следующая неделя').click();
+    await page.waitForTimeout(600);
+    assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Следующая неделя');
+    assert.match(await page.evaluate(() => document.body.innerText), /по плану/);
+    await page.getByLabel('Предыдущая неделя').click();
+    await page.waitForTimeout(600);
+    const det = page.getByLabel(/: .+, сегодня$/);
     if (!(await det.count())) return; // день отдыха — сегодняшней тренировки нет
     await det.first().click();
     await page.waitForTimeout(1500);

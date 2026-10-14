@@ -6,6 +6,8 @@ import { Header, Screen } from '@/components/Screen';
 import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { Ambient, Appear } from '@/components/motion';
+import { Sheet } from '@/components/Sheet';
+import { afterModalClose } from '@/components/modalGate';
 import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
@@ -38,6 +40,7 @@ export default function SessionDetail() {
   const s = sessions.find((x) => x.id === id);
   const [energyOpen, setEnergyOpen] = useState(false);
   const [allPrs, setAllPrs] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
   const [note, setNote] = useState(s?.notes ?? '');
 
   const debrief = useMemo(() => (s ? workoutDebrief(s, sessions, customs) : null), [s, sessions, customs]);
@@ -111,11 +114,15 @@ export default function SessionDetail() {
         title={fresh ? 'Тренировка завершена' : ''}
         onBack={() => (fresh ? router.replace('/') : router.back())}
         right={
-          <IconButton
-            name="trash-outline"
-            label="Удалить тренировку"
-            onPress={() => confirm('Удалить тренировку?', 'Она пропадёт из истории и статистики.', 'Удалить', () => { useWorkouts.getState().deleteSession(s.id); router.back(); }, true)}
-          />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {/* Разбор тренера — отдельной кнопкой, не в основном потоке */}
+            {debrief.lines.length ? <IconButton name="sparkles" label="Разбор тренера" color={colors.accent} onPress={() => setCoachOpen(true)} /> : null}
+            <IconButton
+              name="trash-outline"
+              label="Удалить тренировку"
+              onPress={() => confirm('Удалить тренировку?', 'Она пропадёт из истории и статистики.', 'Удалить', () => { useWorkouts.getState().deleteSession(s.id); router.back(); }, true)}
+            />
+          </View>
         }
       />
 
@@ -214,17 +221,6 @@ export default function SessionDetail() {
           );
         })}
       </Card>
-      {debrief.lines.length ? (
-        <Section title={`Тренер ${BRAND}`}>
-          {debrief.lines.map((l) => (
-            <T key={l} v="body" style={{ lineHeight: 22 }}>
-              {l}
-            </T>
-          ))}
-          <Button title="Разобрать с тренером" size="sm" variant="ghost" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } })} style={{ alignSelf: 'flex-start', paddingHorizontal: 0 }} />
-        </Section>
-      ) : null}
-
       {!(fresh || feelIdx < 0) ? feelSection : null}
       {fresh ? (
         <Button
@@ -240,6 +236,25 @@ export default function SessionDetail() {
         />
       ) : null}
       <EnergySheet visible={energyOpen} onClose={() => setEnergyOpen(false)} energy={energy} weightKg={bodyW} />
+      <Sheet visible={coachOpen} onClose={() => setCoachOpen(false)} title={`Тренер ${BRAND}`} subtitle="Разбор этой тренировки">
+        <View style={{ gap: 10 }} testID="coach-debrief">
+          {debrief.lines.map((l) => (
+            <T key={l} v="body" style={{ lineHeight: 22 }}>
+              {l}
+            </T>
+          ))}
+          <Button
+            title="Обсудить с тренером"
+            icon="chatbubbles-outline"
+            variant="secondary"
+            style={{ marginTop: space.sm }}
+            onPress={() => {
+              setCoachOpen(false);
+              afterModalClose(() => router.push({ pathname: '/coach', params: { q: 'Разбери мою сегодняшнюю тренировку' } }));
+            }}
+          />
+        </View>
+      </Sheet>
     </Screen>
   );
 }

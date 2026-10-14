@@ -18,7 +18,9 @@ import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
-import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
+import { ExerciseMedia, prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
+import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
+import { Anatomy } from '@/features/exercises/Anatomy';
 import { TechniqueView } from '@/features/exercises/TechniqueView';
 import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
@@ -748,10 +750,19 @@ function ExerciseFocus({
           <T v="h1" numberOfLines={2} style={{ fontSize: 28, lineHeight: 32 }}>
             {ex.name}
           </T>
+          {/* Мышечная группа — сразу под названием, как в Fit Session */}
+          <T v="body" color={colors.textDim} numberOfLines={1} style={{ marginTop: 4 }} testID="exercise-muscles">
+            {[...primary, ...secondary.slice(0, 1)].join(' · ')}
+          </T>
         </View>
-        {/* Техника — в листе; замена и остальное — в «•••» */}
-        <IconButton name="play-circle-outline" label="Техника выполнения" onPress={() => setTechOpen(true)} size={20} style={{ width: 40, height: 40 }} />
-        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 40, height: 40 }} />
+        {/* Картинка упражнения справа — тап открывает технику; остальное — в «•••» */}
+        <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => { haptic.tap(); setTechOpen(true); }} style={({ pressed }) => [styles.thumbBtn, pressed && { transform: [{ scale: 0.95 }] }]}>
+          <ExerciseThumb ex={ex} size={68} />
+          <View style={styles.thumbPlay}>
+            <Icon name="play" size={11} color={colors.onAccent} />
+          </View>
+        </Pressable>
+        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" onPress={onMenu} size={18} style={{ width: 36, height: 36, alignSelf: 'flex-start' }} />
       </View>
 
       {rec ? (
@@ -833,6 +844,31 @@ function ExerciseFocus({
           </View>
         </View>
       ) : null}
+
+      {/* Техника внизу: анимация движения и карта мышц; подробный разбор — по «Техника ›» */}
+      <View style={styles.techBlock} testID="technique-inline">
+        <ExerciseMedia exercise={ex} height={210} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 96 }}>
+            <Anatomy primary={ex.primary} secondary={ex.secondary} sex={sex} scale={0.22} showLegend={false} />
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+              {primary.join(', ')}
+            </T>
+            {secondary.length ? (
+              <T v="small" style={{ fontSize: 13 }}>
+                помогают: {secondary.join(', ')}
+              </T>
+            ) : null}
+            <Pressable accessibilityRole="button" onPress={() => setTechOpen(true)} hitSlop={8} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+              <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+                Как выполнять ›
+              </T>
+            </Pressable>
+          </View>
+        </View>
+      </View>
 
       <Sheet visible={platesOpen} onClose={() => setPlatesOpen(false)} title={rec && rec.weight ? `Штанга ${fmtWeight(rec.weight)} кг` : 'Блины'} subtitle={layout ? `Гриф ${fmtWeight(layout.bar)} кг · на каждую сторону` : undefined}>
         {layout ? (
@@ -1047,11 +1083,14 @@ function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
 const styles = themed({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, paddingBottom: 8, backgroundColor: colors.bg },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
-  block: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: 10, paddingVertical: 8 },
+  block: { backgroundColor: colors.surface, borderRadius: radius.xl, paddingHorizontal: 10, paddingVertical: 10 },
+  thumbBtn: { borderRadius: 18, overflow: 'hidden' },
+  thumbPlay: { position: 'absolute', right: 4, bottom: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  techBlock: { gap: space.md, marginTop: space.lg },
   rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
-  setRowCurrent: { backgroundColor: colors.surface2, paddingVertical: 6 },
-  inputCurrent: { height: 54, fontSize: 26 },
+  setRowCurrent: { backgroundColor: colors.surface2, paddingVertical: 8, borderRadius: radius.md },
+  inputCurrent: { height: 56, fontSize: 30, fontWeight: '800' },
   ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.surface3, marginBottom: 4, maxWidth: '100%' },
   navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },
@@ -1066,9 +1105,9 @@ const styles = themed({
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingHorizontal: 4, borderRadius: radius.sm },
-  input: { flex: 1, minWidth: 0, width: 0, height: 42, borderRadius: radius.sm, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  input: { flex: 1, minWidth: 0, width: 0, height: 44, borderRadius: radius.sm, backgroundColor: 'transparent', color: colors.text, textAlign: 'center', fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
-  check: { width: 48, height: 42, borderRadius: radius.sm, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
   warm: { paddingVertical: 4, paddingHorizontal: 4 },

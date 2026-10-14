@@ -294,4 +294,10 @@ test('неделя одним списком: сделано / сегодня / 
   assert.deepEqual(days.map((d) => d.status), ['done', 'rest', 'planned']);
   // Без плана — только «сегодня отдых»
   assert.deepEqual(weekAgenda({ today: today0, plan: null, sessions: [] }).map((d) => d.status), ['rest']);
+  // Следующая неделя продолжает ротацию: ср B, пт A → пн B, ср A, пт B
+  const next = weekAgenda({ today: today0, plan, sessions: [done(mon, 'A')], weekStart: addDays(mon, 7) });
+  assert.deepEqual(next.map((d) => [d.status, d.template?.id]), [['planned', 'B'], ['planned', 'A'], ['planned', 'B']]);
+  // Прошлая неделя — сделанное и пропуски, без «сегодня»
+  const prev = weekAgenda({ today: today0, plan, sessions: [done(addDays(mon, -7), 'A'), done(addDays(mon, -5), 'B')], weekStart: addDays(mon, -7) });
+  assert.deepEqual(prev.map((d) => d.status), ['done', 'done', 'missed']);
 });

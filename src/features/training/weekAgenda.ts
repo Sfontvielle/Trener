@@ -3,9 +3,10 @@ import { addDays, startOfWeek, weekdayIndex } from '@/utils/date';
 import { plannedTemplateFor } from './today';
 
 /**
- * Неделя тренировок одним списком: что сделано, что сегодня, что впереди и что пропущено.
- * Будущие дни продолжают ротацию плана (Верх А → Низ А → Верх Б…) от сегодняшней или последней тренировки,
- * перенос/отмена дня (override) учитываются. Дни отдыха не показываются, кроме сегодняшнего.
+ * Неделя тренировок одним списком: что сделано, что сегодня, что впереди и что пропущено — для текущей,
+ * прошлых и следующих недель (weekStart). Будущие дни продолжают ротацию плана (Верх А → Низ А → Верх Б…)
+ * от сегодняшней или последней тренировки, перенос/отмена дня (override) учитываются. Дни отдыха не
+ * показываются, кроме сегодняшнего.
  */
 export type AgendaStatus = 'done' | 'today' | 'planned' | 'missed' | 'rest';
 
@@ -16,17 +17,22 @@ export interface AgendaDay {
   session?: WorkoutSession;
 }
 
-export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; sessions: WorkoutSession[]; overrides?: Record<ISODate, DayOverride | undefined> }): AgendaDay[] {
+export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; sessions: WorkoutSession[]; overrides?: Record<ISODate, DayOverride | undefined>; weekStart?: ISODate }): AgendaDay[] {
   const { today, plan, sessions } = args;
   const overrides = args.overrides ?? {};
-  const from = startOfWeek(today);
+  const target = args.weekStart ?? startOfWeek(today);
+  // Будущие недели продолжают ротацию: проходим дни от текущей недели до нужной, показываем только нужную
+  const cur = startOfWeek(today);
+  const from = target < cur ? target : cur;
+  const days = Math.round((Date.parse(`${addDays(target, 6)}T12:00:00`) - Date.parse(`${from}T12:00:00`)) / 86400000) + 1;
   const done = sessions.filter((s) => s.status === 'completed');
-  const out: AgendaDay[] = [];
+  const all: AgendaDay[] = [];
   const byId = (id?: string | null) => (id ? plan?.templates.find((t) => t.id === id) : undefined);
   // Последний шаблон ротации — от него считаются будущие дни
   let last: string | undefined;
+  const out = { push: (d: AgendaDay) => all.push(d) };
 
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < days; i++) {
     const date = addDays(from, i);
     const s = done.filter((x) => x.date === date).sort((a, b) => b.startedAt - a.startedAt)[0];
     const ov = overrides[date];
@@ -69,7 +75,7 @@ export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; ses
       last = t.id;
     }
   }
-  return out;
+  return all.filter((d) => d.date >= target);
 }
 
 function lastPlanned(done: WorkoutSession[], before: ISODate): string | undefined {

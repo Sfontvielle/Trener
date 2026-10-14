@@ -60,6 +60,8 @@ const PROFILE = {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2500);
   await shot('1-today');
+  await page.getByTestId('coach-feed').click();
+  await page.waitForTimeout(700);
   await page.getByLabel('Почему? Объяснение решений тренера').click();
   await shot('2-why');
   await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });

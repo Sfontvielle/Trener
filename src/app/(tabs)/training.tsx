@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Animated, FlatList, PanResponder, Platform, Pressable, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Exercise, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
@@ -7,7 +7,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
 import { haptic } from '@/services/haptics';
-import { Ambient, Appear, FadeIn, Progress, Tap } from '@/components/motion';
+import { Ambient, Appear, FadeIn, Progress, Tap, prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
 import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/weekAgenda';
 import { usePlan } from '@/stores/plan';
@@ -34,7 +34,7 @@ import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
-import { formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
+import { addDays, formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { journalDay, journalSections, KIND_COLOR, KIND_LABEL, prCounts, sessionEmoji, sessionKind, sessionStats, weekStreak, type SessionStats, type WeekStats } from '@/features/training/journal';
 import { BRAND } from '@/config/brand';
@@ -112,7 +112,16 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
   const checkins = useCheckins((s) => s.byDate);
   const overrides = usePlan((s) => s.overrides);
   const adjustments = usePlan((s) => s.adjustments);
-  const days = useMemo(() => weekAgenda({ today: d, plan, sessions, overrides }), [d, plan, sessions, overrides]);
+  // Неделя, которую смотрим: 0 — текущая, −1 — прошлая, +1 — следующая (листается стрелками и свайпом)
+  const [wk, setWk] = useState({ offset: 0, dir: 0 });
+  const ws = addDays(startOfWeek(d), wk.offset * 7);
+  const days = useMemo(() => weekAgenda({ today: d, plan, sessions, overrides, weekStart: ws }), [d, plan, sessions, overrides, ws]);
+  const shift = (dir: 1 | -1) => {
+    const next = Math.max(-26, Math.min(8, wk.offset + dir));
+    if (next === wk.offset) return;
+    haptic.tap();
+    setWk({ offset: next, dir });
+  };
   const prog = agendaProgress(days);
   const deload = useMemo(() => checkDeload({ plan, sessions, checkins, adjustments, overrides }), [plan, sessions, checkins, adjustments, overrides]);
   const deloadActive = isDeloadActive(overrides);
@@ -124,6 +133,10 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
     return { g, p: target ? Math.round(week[g] ?? 0) / target : 0 };
   });
   if (!plan) return <EmptyState icon="calendar-outline" title="Плана пока нет" text={`Заполни профиль — ${BRAND} создаст план автоматически.`} action="Профиль" onAction={() => router.push('/profile')} />;
+  const openDay = (day: AgendaDay) => {
+    if (day.session) router.push({ pathname: '/workout/[id]', params: { id: day.session.id } });
+    else if (day.template) router.push({ pathname: '/workout/preview', params: { templateId: day.template.id } });
+  };
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: bottom }} showsVerticalScrollIndicator={false}>
@@ -165,31 +178,33 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
         </Card>
       ) : null}
 
-      {/* Главное: сколько сделано из плана недели — крупно, полоса наливается */}
-      <Appear i={0} style={styles.weekHero}>
-        <View accessibilityLabel={`Неделя: сделано ${prog.done} из ${prog.planned} тренировок`}>
-          <T v="caption">Эта неделя</T>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
-            <T v="hero">
-              {prog.done} из {prog.planned}
-            </T>
-            <T v="bodyDim">{plural(prog.planned, 'тренировка', 'тренировки', 'тренировок')}</T>
-          </View>
-        </View>
-        <Progress value={prog.planned ? prog.done / prog.planned : 0} color={prog.done >= prog.planned && prog.planned ? colors.accent : colors.text} height={5} style={{ marginTop: space.md }} />
-      </Appear>
+      {/* Календарь недели сверху: листается стрелками и свайпом — прошлые и следующие недели */}
+      <WeekCalendar weekStart={ws} offset={wk.offset} today={d} days={days} onShift={shift} onOpen={(day) => openDay(day)} />
 
-      {/* Дни недели — один спокойный список */}
-      <View style={{ marginTop: space.xl }}>
-        {days.map((day, i) => (
-          <Appear key={day.date} i={1 + i}>
-            <AgendaRow day={day} last={i === days.length - 1} customs={customs} tw={tw} onRestTrain={openHub} />
-          </Appear>
-        ))}
-      </View>
+      <SlideIn key={ws} dir={wk.dir}>
+        {/* Главное: сколько сделано из плана недели — крупно, полоса наливается */}
+        <View style={styles.weekHero} accessibilityLabel={`Неделя: сделано ${prog.done} из ${prog.planned} тренировок`}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+            <T v="hero">{wk.offset > 0 ? prog.planned : `${prog.done} из ${prog.planned}`}</T>
+            <T v="bodyDim">{plural(prog.planned, 'тренировка', 'тренировки', 'тренировок')}{wk.offset > 0 ? ' по плану' : ''}</T>
+          </View>
+          {wk.offset <= 0 ? <Progress value={prog.planned ? prog.done / prog.planned : 0} color={prog.done >= prog.planned && prog.planned ? colors.accent : colors.text} height={5} style={{ marginTop: space.md }} /> : null}
+        </View>
+
+        {/* Дни недели — один спокойный список */}
+        <View style={{ marginTop: space.lg }}>
+          {days.length ? (
+            days.map((day, i) => <AgendaRow key={day.date} day={day} last={i === days.length - 1} customs={customs} tw={tw} onRestTrain={openHub} />)
+          ) : (
+            <T v="small" style={{ paddingVertical: space.md }}>
+              Тренировок на этой неделе не было.
+            </T>
+          )}
+        </View>
+      </SlideIn>
 
       {/* Второстепенное — строками */}
-      <Appear i={2 + days.length} style={styles.navList}>
+      <Appear i={2} style={styles.navList}>
         <NavRow title={`План · ${plan.splitLabel}`} label="План и сплит" onPress={() => setPlanOpen(true)} />
         <NavRow title={`Объём · в норме ${volGroups.filter((g) => g.p >= 0.9).length} из ${volGroups.length}`} label="Объём за неделю" onPress={() => setVolOpen(true)} last />
       </Appear>
@@ -219,6 +234,101 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
       </Sheet>
     </ScrollView>
   );
+}
+
+const MONTHS_GEN = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const dayNum = (iso: string) => Number(iso.slice(8, 10));
+const monthOf = (iso: string) => MONTHS_GEN[Number(iso.slice(5, 7)) - 1];
+
+/** Подпись недели: «Эта неделя», «Прошлая», «Следующая» или даты */
+function weekLabel(offset: number, ws: string): string {
+  if (offset === 0) return 'Эта неделя';
+  if (offset === -1) return 'Прошлая неделя';
+  if (offset === 1) return 'Следующая неделя';
+  const we = addDays(ws, 6);
+  return monthOf(ws) === monthOf(we) ? `${dayNum(ws)}–${dayNum(we)} ${monthOf(we)}` : `${dayNum(ws)} ${monthOf(ws)} – ${dayNum(we)} ${monthOf(we)}`;
+}
+
+/**
+ * Календарь недели: стрелки и свайп листают недели, у дня — отметка: сделано ✓, запланировано •, пропуск ○.
+ * Тап по дню с тренировкой — итоги или состав.
+ */
+function WeekCalendar({ weekStart, offset, today: td, days, onShift, onOpen }: { weekStart: string; offset: number; today: string; days: AgendaDay[]; onShift: (dir: 1 | -1) => void; onOpen: (d: AgendaDay) => void }) {
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onPanResponderRelease: (_, g) => {
+          if (g.dx < -40) onShift(1);
+          else if (g.dx > 40) onShift(-1);
+        },
+      }),
+    [onShift],
+  );
+  const byDate = Object.fromEntries(days.map((x) => [x.date, x]));
+  return (
+    <View style={styles.cal} {...pan.panHandlers} testID="week-calendar">
+      <View style={styles.calHead}>
+        <Tap accessibilityRole="button" accessibilityLabel="Предыдущая неделя" onPress={() => onShift(-1)} hitSlop={10} style={styles.calArrow} scaleTo={0.88}>
+          <Icon name="chevron-back" size={18} color={colors.textDim} />
+        </Tap>
+        <T v="body" style={{ flex: 1, textAlign: 'center', fontWeight: '700' }} testID="week-label">
+          {weekLabel(offset, weekStart)}
+        </T>
+        <Tap accessibilityRole="button" accessibilityLabel="Следующая неделя" onPress={() => onShift(1)} hitSlop={10} style={styles.calArrow} scaleTo={0.88}>
+          <Icon name="chevron-forward" size={18} color={colors.textDim} />
+        </Tap>
+      </View>
+      <SlideIn key={weekStart} dir={0} style={styles.calRow}>
+        {Array.from({ length: 7 }, (_, i) => {
+          const date = addDays(weekStart, i);
+          const it = byDate[date];
+          const isToday = date === td;
+          const st = it?.status;
+          return (
+            <Pressable
+              key={date}
+              accessibilityRole="button"
+              accessibilityLabel={`${WD[i]} ${dayNum(date)}${isToday ? ', сегодня' : ''}${st === 'done' ? ', сделано' : st === 'today' || st === 'planned' ? `, ${it?.template?.name ?? 'тренировка'}` : st === 'missed' ? ', пропущено' : ''}`}
+              disabled={!it?.session && !it?.template}
+              onPress={() => it && onOpen(it)}
+              style={styles.calDay}
+            >
+              <T v="small" style={{ fontSize: 12 }} color={isToday ? colors.text : colors.muted}>
+                {WD[i]}
+              </T>
+              <View style={[styles.calNum, isToday && styles.calToday]}>
+                <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }} color={isToday ? colors.bg : date < td ? colors.textDim : colors.text}>
+                  {dayNum(date)}
+                </T>
+              </View>
+              <View style={styles.calMarkBox}>
+                {st === 'done' ? (
+                  <View style={styles.calDone}>
+                    <Icon name="checkmark" size={10} color={colors.onAccent} />
+                  </View>
+                ) : st === 'today' || st === 'planned' ? (
+                  <View style={styles.calDot} />
+                ) : st === 'missed' ? (
+                  <View style={styles.calMissed} />
+                ) : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </SlideIn>
+    </View>
+  );
+}
+
+/** Плавная смена недели: содержимое въезжает с той стороны, куда листали */
+function SlideIn({ dir, style, children }: { dir: number; style?: StyleProp<ViewStyle>; children: React.ReactNode }) {
+  const [a] = useState(() => new Animated.Value(dir && !prefersReducedMotion() ? 0 : 1));
+  useEffect(() => {
+    if (!dir || prefersReducedMotion()) return;
+    Animated.spring(a, { toValue: 1, useNativeDriver: Platform.OS !== 'web', speed: 16, bounciness: 4 }).start();
+  }, [a, dir]);
+  return <Animated.View style={[style, { opacity: a, transform: [{ translateX: a.interpolate({ inputRange: [0, 1], outputRange: [dir * 36, 0] }) }] }]}>{children}</Animated.View>;
 }
 
 /** День недели: дата слева, тренировка и её параметры, справа — статус. Сегодня — единственная лаймовая кнопка */
@@ -581,7 +691,18 @@ const JournalCard = React.memo(function JournalCard({ s, stats, customs }: { s: 
 });
 
 const styles = themed({
-  weekHero: { marginTop: space.md },
+  weekHero: { marginTop: space.lg },
+  cal: { marginTop: space.xs, paddingVertical: 10, paddingHorizontal: 6, borderRadius: radius.xl, backgroundColor: colors.surface },
+  calHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 6 },
+  calArrow: { width: 36, height: 32, alignItems: 'center', justifyContent: 'center' },
+  calRow: { flexDirection: 'row' },
+  calDay: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 4 },
+  calNum: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  calToday: { backgroundColor: colors.text },
+  calMarkBox: { height: 14, alignItems: 'center', justifyContent: 'center' },
+  calDone: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  calDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textDim },
+  calMissed: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: colors.warning },
   agendaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66 },
   agendaTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 },
   agendaLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
