@@ -10,7 +10,7 @@ import { getExercise } from '../src/data/exercises';
 import { matchMarker } from '../src/features/labs/catalog';
 import { normalizeUnit, toCanonical } from '../src/features/labs/normalize';
 import { detectDate, detectLab, parseLabText, parseLine } from '../src/features/labs/parse';
-import { compareWithPrevious, consecutiveRise, healthFlags, interpretResult, markerSeries, statusOf } from '../src/features/labs/analysis';
+import { compareWithPrevious, consecutiveRise, healthFlags, interpretResult, labComparison, labTable, markerSeries, outside, statusOf, verdictOf } from '../src/features/labs/analysis';
 import { draftFromExtracted, draftFromParsed, draftIssues, parseRefText, reportFromDraft } from '../src/features/labs/report';
 import { bpCategory, bpSignals, healthGate, healthMonitor, labSignals, newLabChanges, rhrTrend } from '../src/features/health/monitor';
 import type { HealthDay } from '../src/features/health/model';
@@ -144,6 +144,59 @@ test('Анализы: «Что изменилось с прошлого анал
   assert.equal(by.ferritin.direction, 'new');
   assert.equal(markerSeries(reports, 'hct').length, 2);
   assert.equal(statusOf(reports[1].results[1]), 'high');
+});
+
+test('Анализы: отчёт по загрузке — выросло, снизилось, вне референса, улучшилось/ухудшилось относительно референса', () => {
+  const reports = [
+    rep('a', '2026-03-01', [['hct', 47.0, '%', 40, 50], ['ldl', 3.6, 'ммоль/л', undefined, 3.0], ['alt', 30, 'ед/л', undefined, 41], ['hdl', 1.4, 'ммоль/л', 1.0, undefined], ['ferritin', 25, 'мкг/л', 30, 400]]),
+    rep('b', '2026-09-01', [['hct', 51.5, '%', 40, 50], ['ldl', 3.2, 'ммоль/л', undefined, 3.0], ['alt', 31, 'ед/л', undefined, 41], ['hdl', 1.2, 'ммоль/л', 1.0, undefined], ['ferritin', 60, 'мкг/л', 30, 400], ['tsh', 2.1, 'мед/л', 0.4, 4.0]]),
+  ];
+  const r = labComparison(reports, undefined, 'male')!;
+  const ids = (xs: { markerId?: string }[]) => xs.map((x) => x.markerId).sort();
+  assert.equal(r.reportId, 'b');
+  assert.equal(r.prevDate, '2026-03-01');
+  assert.deepEqual(ids(r.rose), ['ferritin', 'hct']);
+  assert.deepEqual(ids(r.fell), ['hdl', 'ldl']);
+  assert.deepEqual(ids(r.outOfRange), ['hct', 'ldl'], 'ЛПНП всё ещё выше, гематокрит вышел');
+  assert.deepEqual(ids(r.worsened), ['hct']);
+  assert.deepEqual(ids(r.improved), ['ferritin', 'ldl'], 'ферритин вернулся в референс, ЛПНП ближе к нему');
+  assert.equal(r.items.find((i) => i.markerId === 'hct')!.reason, 'вышел за референс');
+  assert.equal(r.items.find((i) => i.markerId === 'ferritin')!.reason, 'вернулся в референс');
+  assert.equal(r.items.find((i) => i.markerId === 'ldl')!.reason, 'ближе к референсу');
+  assert.equal(r.items.find((i) => i.markerId === 'hdl')!.verdict, 'neutral', 'внутри референса снижение — не «хуже»');
+  assert.deepEqual(ids(r.stable), ['alt']);
+  assert.deepEqual(ids(r.first), ['tsh']);
+  assert.deepEqual(r.items.find((i) => i.markerId === 'hct')!.series, [47, 51.5], 'мини-график — история до этой даты');
+  // Отчёт по старой загрузке — без сравнения, всё «впервые»
+  const old = labComparison(reports, 'a', 'male')!;
+  assert.equal(old.prevDate, undefined);
+  assert.equal(old.first.length, 5);
+  assert.deepEqual(ids(old.outOfRange), ['ferritin', 'ldl']);
+  // Пограничные случаи
+  assert.equal(outside(5, 1, 4), 0.25);
+  assert.equal(outside(3, 1, 4), 0);
+  assert.equal(verdictOf(5, 0.5, { low: 1, high: 4 }, true).reason, 'отклонение в другую сторону');
+  assert.equal(verdictOf(5, 5.05, { low: 1, high: 4 }, false).verdict, 'neutral', 'несущественное изменение вне диапазона не оценивается');
+  assert.equal(verdictOf(5, 7, {}, true).verdict, 'neutral', 'без референса — без оценки');
+  assert.equal(labComparison([], undefined, 'male'), null);
+});
+
+test('Анализы: таблица — показатели × даты, новые слева, разные единицы не смешиваются', () => {
+  const reports = [
+    rep('a', '2026-03-01', [['hct', 47.0, '%', 40, 50], ['ldl', 3.6, 'ммоль/л', undefined, 3.0]]),
+    rep('b', '2026-09-01', [['hct', 51.5, '%', 40, 50], ['ldl', 140, 'мг/дл']]),
+  ];
+  const t = labTable(reports, 'male');
+  assert.deepEqual(t.columns.map((c) => c.id), ['b', 'a']);
+  const hct = t.rows.find((x) => x.markerId === 'hct')!;
+  assert.deepEqual(hct.cells.map((c) => c?.text), ['51,5', '47']);
+  assert.equal(hct.cells[0]!.status, 'high');
+  assert.equal(t.rows[0].markerId, 'hct', 'порядок — по разделам каталога (кровь раньше липидов)');
+  const ldl = t.rows.find((x) => x.markerId === 'ldl')!;
+  assert.equal(ldl.unit, 'ммоль/л');
+  assert.deepEqual(ldl.cells.map((c) => c?.text), ['3,62', '3,6'], 'мг/дл пересчитываются в ммоль/л — однозначный пересчёт');
+  const odd = labTable([rep('c', '2026-01-01', [['alt', 0.5, 'мккат/л']]), rep('d', '2026-02-01', [['alt', 30, 'ед/л']])]);
+  assert.deepEqual(odd.rows[0].cells.map((c) => c?.text ?? null), ['30', null], 'единица без пересчёта не смешивается со строкой');
 });
 
 test('Анализы: интерпретация без диагнозов, серьёзные пороги, рост три раза подряд', () => {

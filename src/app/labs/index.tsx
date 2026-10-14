@@ -11,24 +11,19 @@ import { useLabs } from '@/stores/labs';
 import { useProfile } from '@/stores/profile';
 import { useLabDraft } from '@/stores/labDraft';
 import { BIOMARKER_BY_ID, CATEGORY_LABEL, CATEGORY_ORDER, type LabCategory } from '@/features/labs/catalog';
-import { comparable, compareWithPrevious, healthFlags, statusOf, type LabStatus } from '@/features/labs/analysis';
+import { comparable, healthFlags, labComparison, markerSeries, statusOf } from '@/features/labs/analysis';
+import { ReportPills, STATUS, fmtLab, openMarker, reportTitle } from '@/features/labs/ui';
+import { Tap } from '@/components/motion';
+import { Sparkline } from '@/components/charts';
 import { draftFromText, labRecognitionAvailable, manualDraft, pickLabDocuments, pickLabPhotos, recognizeLabFiles, type LabFile } from '@/services/labExtract';
 import { formatDayShort, today } from '@/utils/date';
 import type { LabResult } from '@/types';
 import { afterModalClose } from '@/components/modalGate';
 
-const STATUS: Record<LabStatus, { color: string; label: string }> = {
-  high: { color: colors.warning, label: 'выше референса' },
-  low: { color: colors.warning, label: 'ниже референса' },
-  normal: { color: colors.accent, label: 'в пределах референса' },
-  unknown: { color: colors.muted, label: 'нет референса' },
-};
-
-const fmt = (x: number) => String(Math.round(x * 100) / 100).replace('.', ',');
-
 /**
- * Анализы: загрузка (PDF, фото, скриншоты, несколько страниц; любые лаборатории), история по показателям,
- * «Что изменилось с прошлого анализа», значимые для здоровья находки. Без диагнозов и назначений.
+ * Анализы: загрузка (PDF, фото, скриншоты, несколько страниц; любые лаборатории) → проверка → отчёт по загрузке
+ * (что выросло / снизилось / вне референса / лучше / хуже), последние значения с мини-графиком динамики,
+ * таблица всех анализов и история загрузок. Без диагнозов и назначений.
  */
 export default function LabsScreen() {
   const reports = useLabs((s) => s.reports);
@@ -37,7 +32,6 @@ export default function LabsScreen() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [allChanges, setAllChanges] = useState(false);
 
   const latest = useMemo(() => {
     const m = new Map<string, { r: LabResult; date: string }>();
@@ -50,7 +44,7 @@ export default function LabsScreen() {
     }
     return byCat;
   }, [reports]);
-  const changes = useMemo(() => (reports.length >= 2 ? compareWithPrevious(reports) : null), [reports]);
+  const last = useMemo(() => labComparison(reports, undefined, sex), [reports, sex]);
   const flags = useMemo(() => healthFlags(reports, sex), [reports, sex]);
 
   const recognize = async (pick: () => Promise<LabFile[] | null>) => {
@@ -81,12 +75,11 @@ export default function LabsScreen() {
     router.push('/labs/review');
   };
 
-  const significant = changes?.items.filter((c) => c.significant) ?? [];
-  const same = changes?.items.filter((c) => !c.significant && c.direction === 'same') ?? [];
+  const openReport = (id: string) => router.push({ pathname: '/labs/report', params: { id } });
 
   return (
     <Screen>
-      <Header title="Анализы" subtitle="Любые лаборатории · история · изменения" right={<Button title="Добавить" icon="add" size="sm" onPress={() => setAddOpen(true)} />} />
+      <Header title="Анализы" right={<Button title="Добавить" icon="add" size="sm" onPress={() => setAddOpen(true)} />} />
       {busy ? <Banner icon="hourglass-outline" text="Распознаю бланк… Это может занять до минуты." /> : null}
 
       {flags.length ? (
@@ -115,34 +108,17 @@ export default function LabsScreen() {
         />
       ) : null}
 
-      {changes && changes.items.length ? (
-        <Card style={{ gap: 8, marginBottom: space.md }} testID="lab-changes">
-          <T v="caption">Что изменилось с прошлого анализа · {formatDayShort(changes.date!)}</T>
-          {significant.length === 0 ? <T v="small">Существенных изменений нет.</T> : null}
-          {(allChanges ? significant : significant.slice(0, 6)).map((c) => (
-            <Pressable key={c.name} accessibilityRole="button" onPress={() => c.markerId && router.push({ pathname: '/labs/[marker]', params: { marker: c.markerId } })} style={styles.changeRow}>
-              <T v="body" style={{ flex: 1, fontSize: 14 }}>
-                {c.name}
-              </T>
-              <T v="body" style={{ fontWeight: '800', fontSize: 14 }} color={c.direction === 'up' ? colors.warning : colors.accent}>
-                {c.text}
-              </T>
-            </Pressable>
-          ))}
-          {same.length ? (
-            <T v="small">
-              Без существенных изменений: {same.slice(0, allChanges ? 50 : 4).map((c) => c.name).join(', ')}
-              {!allChanges && same.length > 4 ? ` и ещё ${same.length - 4}` : ''}
-            </T>
-          ) : null}
-          {significant.length > 6 || same.length > 4 ? (
-            <Pressable accessibilityRole="button" onPress={() => setAllChanges(!allChanges)}>
-              <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-                {allChanges ? 'Свернуть' : 'Показать все'}
-              </T>
-            </Pressable>
-          ) : null}
-        </Card>
+      {last ? (
+        <Tap accessibilityRole="button" accessibilityLabel={`Отчёт по анализу ${reportTitle(last)}`} onPress={() => openReport(last.reportId)} style={styles.report} testID="lab-changes">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="caption">Последний анализ</T>
+              <T v="h3">{reportTitle(last)}</T>
+            </View>
+            <Icon name="chevron-forward" size={18} color={colors.muted} />
+          </View>
+          <ReportPills c={last} />
+        </Tap>
       ) : null}
 
       {CATEGORY_ORDER.filter((c) => latest.get(c)?.length).map((cat) => (
@@ -155,29 +131,31 @@ export default function LabsScreen() {
               const st = statusOf(r, sex);
               const c = comparable(r);
               const b = r.markerId ? BIOMARKER_BY_ID[r.markerId] : undefined;
+              const series = r.markerId ? markerSeries(reports, r.markerId).map((x) => x.value) : [];
               return (
-                <Pressable
+                <Tap
                   key={key}
                   accessibilityRole="button"
-                  accessibilityLabel={`${b?.name ?? r.name}: ${fmt(c.value)} ${c.unit}, ${STATUS[st].label}`}
+                  accessibilityLabel={`${b?.name ?? r.name}: ${fmtLab(c.value)} ${c.unit}, ${STATUS[st].label}`}
                   disabled={!r.markerId}
-                  onPress={() => r.markerId && router.push({ pathname: '/labs/[marker]', params: { marker: r.markerId } })}
+                  onPress={() => openMarker(r.markerId)}
+                  scaleTo={0.985}
                   style={[styles.row, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
                 >
                   <View style={[styles.dot, { backgroundColor: STATUS[st].color }]} />
                   <View style={{ flex: 1 }}>
-                    <T v="body" style={{ fontSize: 14, fontWeight: '700' }}>
+                    <T v="body" numberOfLines={1} style={{ fontSize: 14, fontWeight: '700' }}>
                       {b?.name ?? r.name}
                     </T>
                     <T v="small" style={{ fontSize: 11 }}>
                       {formatDayShort(date)} · {STATUS[st].label}
                     </T>
                   </View>
-                  <T v="body" style={{ fontWeight: '800', fontVariant: ['tabular-nums'] }}>
-                    {r.valueText ?? fmt(r.value)} <T v="small">{r.unit}</T>
+                  <Sparkline values={series} color={STATUS[st].color} />
+                  <T v="body" style={{ fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 64, textAlign: 'right' }}>
+                    {r.valueText ?? fmtLab(r.value)} <T v="small">{r.unit}</T>
                   </T>
-                  {r.markerId ? <Icon name="chevron-forward" size={14} color={colors.muted} /> : null}
-                </Pressable>
+                </Tap>
               );
             })}
           </View>
@@ -187,23 +165,32 @@ export default function LabsScreen() {
       {reports.length ? (
         <View style={{ marginBottom: space.md }}>
           <T v="caption" style={{ marginBottom: 6 }}>
-            Загруженные анализы
+            История загрузок
           </T>
           <View style={styles.list}>
-            {[...reports].reverse().map((rep, i) => (
+            <Pressable accessibilityRole="button" accessibilityLabel="Таблица всех анализов" onPress={() => router.push('/labs/table')} style={styles.row}>
+              <Icon name="grid-outline" size={16} color={colors.accent} />
+              <T v="body" style={{ flex: 1, fontSize: 14, fontWeight: '700' }}>
+                Таблица всех анализов
+              </T>
+              <Icon name="chevron-forward" size={14} color={colors.muted} />
+            </Pressable>
+            {[...reports].reverse().map((rep) => (
               <Pressable
                 key={rep.id}
                 accessibilityRole="button"
+                accessibilityLabel={`Анализ ${reportTitle(rep)}: отчёт`}
                 accessibilityHint="Удерживайте, чтобы удалить"
+                onPress={() => openReport(rep.id)}
                 onLongPress={() => confirm('Удалить анализ?', `${formatDayShort(rep.date)}${rep.lab ? ` · ${rep.lab}` : ''} — ${rep.results.length} показателей`, 'Удалить', () => useLabs.getState().remove(rep.id), true)}
-                style={[styles.row, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
+                style={[styles.row, { borderTopWidth: 1, borderTopColor: colors.border }]}
               >
                 <Icon name={rep.source.kind === 'pdf' ? 'document-outline' : rep.source.kind === 'image' ? 'image-outline' : 'create-outline'} size={16} color={colors.textDim} />
                 <T v="body" style={{ flex: 1, fontSize: 14 }}>
-                  {formatDayShort(rep.date)}
-                  {rep.lab ? ` · ${rep.lab}` : ''}
+                  {reportTitle(rep)}
                 </T>
                 <T v="small">{rep.results.length} показ.</T>
+                <Icon name="chevron-forward" size={14} color={colors.muted} />
               </Pressable>
             ))}
           </View>
@@ -261,5 +248,5 @@ const styles = themed({
   list: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 },
+  report: { gap: 12, padding: space.lg, borderRadius: radius.xl, backgroundColor: colors.surface, marginBottom: space.lg },
 });

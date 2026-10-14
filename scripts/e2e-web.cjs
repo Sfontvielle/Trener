@@ -889,25 +889,49 @@ const closeSheet = async (pg) => {
       assert.ok(await page.getByText('Проверьте распознанные данные').isVisible(), 'экран проверки обязателен');
     };
     await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
-    // Любое значение можно исправить до сохранения
+    // Уверенно распознанное — компактной таблицей; любое значение можно исправить до сохранения
+    assert.equal(await page.getByLabel('Значение, строка 3').count(), 0, 'строки свёрнуты');
+    await page.getByLabel('Изменить: АЛТ').click();
+    await page.waitForTimeout(300);
     await page.getByLabel('Значение, строка 3').fill('31');
     await page.getByText('Подтвердить и сохранить').click();
     await page.waitForTimeout(1000);
-    let t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Гематокрит/);
-    assert.match(t, /31/);
+    // После сохранения — сразу отчёт по загрузке
+    let t = await page.getByTestId('lab-report').innerText();
+    assert.match(t, /Первый анализ/);
+    assert.match(t, /Вне референса/);
+    assert.match(await page.getByTestId('lab-report-list').innerText(), /ЛПНП/);
     await paste('ИНВИТРО\nДата взятия образца: 01.09.2026\nГематокрит (HCT) 48,1 % 39 - 49\nХолестерин ЛПНП 3,5 ммоль/л < 3,0 H\nАЛТ 31 Ед/л < 41');
     await page.getByText('Подтвердить и сохранить').click();
     await page.waitForTimeout(1000);
+    t = await page.getByTestId('lab-report').innerText();
+    assert.match(t, /Сравнение с анализом 1 мар/);
+    // По умолчанию — что ухудшилось относительно референса: ЛПНП выше и дальше от него
+    let list = await page.getByTestId('lab-report-list').innerText();
+    assert.match(list, /ЛПНП/);
+    assert.match(list, /дальше от референса/);
+    assert.match(list, /↑ 0,4/);
+    await page.getByLabel('Повысилось: 2').click();
+    await page.waitForTimeout(500);
+    list = await page.getByTestId('lab-report-list').innerText();
+    assert.match(list, /↑ 2,1 п\.п\./);
+    assert.match(t, /Без существенных изменений: АЛТ/);
+    await page.getByText('Таблица всех анализов').last().click();
+    await page.waitForTimeout(800);
+    const table = await page.getByTestId('lab-table').innerText();
+    assert.match(table, /48,1/);
+    assert.match(table, /46/);
+    await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
     const ch = await page.getByTestId('lab-changes').innerText();
-    assert.match(ch, /Что изменилось с прошлого анализа/i);
-    assert.match(ch, /↑ 2,1 п\.п\./);
-    assert.match(ch, /↑ 0,4/);
-    await shot('labs');
+    assert.match(ch, /Последний анализ/);
+    assert.match(ch, /ухудшилось/);
     await page.getByLabel(/^Гематокрит: 48,1/).click();
     await page.waitForTimeout(900);
     t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /референс вашей лаборатории: 39 – 49/);
+    assert.match(t, /↑ 2,1 п\.п\. с прошлого/);
     await shot('lab-marker');
   });
 
