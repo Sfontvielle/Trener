@@ -300,6 +300,22 @@
   Хороший прогресс в зале — не доказательство, что со здоровьем всё в порядке.
 - **Источник.** Pope 2014 (Endocrine Society: последствия PED), Bhasin 2018 (гематокрит), ACC/AHA 2017 (давление).
 
+## 19. Состав тела: процент жира, пропорции, фото
+
+- **Процент жира** (`progress/body.ts`, `estimateBodyFat`) — всегда диапазоном, лучшим доступным способом:
+  свежий (≤30 дней) замер прибором ±2 п.п.; формула ВМС США по росту, шее и талии (у женщин + бёдра) — Hodgdon &
+  Beckett 1984, ±3,5 п.п.; RFM по росту и талии — Woolcott & Bergman 2018, ±4,5 п.п.; по ИМТ и возрасту — Deurenberg
+  1991, ±5 п.п. Замеры старше 60 дней не используются. Уровни — ориентиры ACE (мужчины 14/18/25 %, женщины 21/25/32 %).
+- **Пропорции.** Талия/рост ≥0,5 — абдоминальный жир (Ashwell 2012); талия/бёдра >0,90 у мужчин и >0,85 у женщин (ВОЗ
+  2008). Грудь/талия <1,25 и бедро/рука вне 1,45–1,95 (м) / 1,6–2,2 (ж) — **эвристика RYNJI** для «что подтянуть».
+- **Жир локально не сжигается** (Vispute 2011): «запас жира» показывает, где он заметен; акцент
+  в плане — про мышцы (+2 подхода в неделю на отстающие группы, по нажатию, отменяется так же).
+- **Тренд**: талия против веса за 3–10 недель — набор с ростом талии ≥1,5 см на кг (и ≥2 см) → замедлить; вес вверх при
+  талии ±1 см → качественный набор; вес и талия вниз → уходит жир; вес стоит, талия вниз → рекомпозиция.
+- **Фото** (`/v1/body/analyze`) — визуальная оценка модели: диапазон процента жира не шире 10 п.п., зоны только из
+  списка, ответ проверяется на устройстве (`parsePhotoAnalysis`). Итог с замерами (`combineBodyFat`): пересечение
+  диапазонов, если не пересекаются — честно шире; прибор важнее фото, фото точнее ИМТ. Без оценок внешности и медицины.
+
 ## Оставшиеся эвристики (честный список)
 
 | Эвристика | Где |
@@ -327,6 +343,8 @@
 | «Существенное» изменение анализа: 1 п.п. / 5% | `labs/analysis.ts` |
 | Список показателей, останавливающих повышение нагрузки | `health/monitor.ts` (`TRAINING_GATE_MARKERS`) |
 | Пульс покоя +7 уд/мин к личной норме | `health/monitor.ts` |
+| Пороги пропорций грудь/талия и бедро/рука, +2 подхода на акцент | `progress/body.ts` |
+| «Улучшилось/ухудшилось» анализа — только относительно референса лаборатории | `labs/analysis.ts` (`verdictOf`) |
 
 ## Источники
 
@@ -361,3 +379,9 @@
 - KDIGO 2024 CKD guideline, *Kidney Int* 2024. doi:10.1016/j.kint.2023.10.018
 - ADA Standards of Care 2025: Diagnosis and Classification, *Diabetes Care* 2025. doi:10.2337/dc25-S002
 - EASL Clinical Practice Guidelines: Drug-induced liver injury, *J Hepatol* 2019. doi:10.1016/j.jhep.2019.02.014
+- Hodgdon JA, Beckett MB. Prediction of percent body fat for U.S. Navy men and women from body circumferences and height. Naval Health Research Center, Report 84-11/84-29, 1984.
+- Woolcott OO, Bergman RN. Relative fat mass (RFM) as a new estimator of whole-body fat percentage, *Sci Rep* 2018. doi:10.1038/s41598-018-29362-1
+- Deurenberg P et al. Body mass index as a measure of body fatness: age- and sex-specific prediction formulas, *Br J Nutr* 1991. doi:10.1079/BJN19910073
+- Ashwell M et al. Waist-to-height ratio is a better screening tool than waist circumference and BMI, *Obes Rev* 2012. doi:10.1111/j.1467-789X.2011.00952.x
+- WHO. Waist circumference and waist–hip ratio: report of a WHO expert consultation, 2008.
+- Vispute SS et al. The effect of abdominal exercise on abdominal fat, *J Strength Cond Res* 2011. doi:10.1519/JSC.0b013e3181fb4a46
