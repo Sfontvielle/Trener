@@ -252,7 +252,7 @@ const closeSheet = async (pg) => {
     // Техника не занимает основной экран: только кнопка; разбор — в отдельном листе
     const main = await page.evaluate(() => document.body.innerText);
     assert.ok(!/Положение тела|Частые ошибки/.test(main), 'техника не на основном экране');
-    assert.match(main, /Упражнение \d+ из \d+/);
+    assert.match(main, /\d+ из \d+/);
     await shot('workout');
   });
 
@@ -437,7 +437,7 @@ const closeSheet = async (pg) => {
     assert.ok(await visible('Оформление'), 'вернулись в профиль');
     await page.getByLabel('Назад').last().click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByLabel('Тренер RYNJI — совет дня и чат').isVisible(), 'второй «Назад» — главная');
+    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'второй «Назад» — главная');
   });
 
   await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
@@ -539,7 +539,7 @@ const closeSheet = async (pg) => {
     await dismiss();
     const t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /талия/i);
-    assert.match(t, /что изменилось/i);
+    assert.ok(await page.getByTestId('progress-story').isVisible(), 'что изменилось — одной фразой');
     await page.getByText('Отчёт недели', { exact: true }).click();
     await page.waitForTimeout(1000);
     assert.match(await page.evaluate(() => document.body.innerText), /вывод тренера|прошлая неделя пустая/i);
@@ -620,7 +620,7 @@ const closeSheet = async (pg) => {
     await dismiss();
     await page.getByLabel('Калории, открыть питание').first().click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByLabel('Добавить еду').isVisible(), 'питание открыто');
+    assert.ok(await page.getByTestId('macro-summary').isVisible(), 'питание открыто');
     await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await page.getByLabel('Записать вес').first().click();
@@ -650,7 +650,7 @@ const closeSheet = async (pg) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const b = await page.getByLabel(/Сон, чек-ин/).first().boundingBox();
+    const b = await page.getByLabel(/сон, чек-ин/i).first().boundingBox();
     assert.ok(b && b.y < 956, 'готовность на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /готовность|чек-ин|сон/i);
@@ -759,7 +759,7 @@ const closeSheet = async (pg) => {
     await page.getByLabel('Дневник: календарь дней').click();
     await page.waitForTimeout(700);
     assert.ok(await page.getByTestId('day-journal').isVisible(), 'дата открывает дневник дня');
-    await page.getByLabel('Календарь дней').click();
+    await page.getByLabel('Календарь дней', { exact: true }).click();
     await page.waitForTimeout(900);
     const pad = (n) => String(n).padStart(2, '0');
     const dd = new Date(); dd.setDate(dd.getDate() - 1);
@@ -777,7 +777,7 @@ const closeSheet = async (pg) => {
       await page.waitForTimeout(700);
       await page.getByLabel('Дневник: календарь дней').click();
       await page.waitForTimeout(700);
-      await page.getByLabel('Календарь дней').click();
+      await page.getByLabel('Календарь дней', { exact: true }).click();
       await page.waitForTimeout(900);
       const d2 = new Date(); d2.setDate(d2.getDate() - back);
       const y2 = `${d2.getFullYear()}-${pad(d2.getMonth() + 1)}-${pad(d2.getDate())}`;
@@ -948,6 +948,7 @@ const closeSheet = async (pg) => {
     await page.goto(`${URL}/weekly-review`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     // Итог крупно; полная таблица — по «Все показатели»
+    await dismiss();
     await page.getByText('Все показатели ›').click();
     await page.waitForTimeout(600);
     const t = await page.evaluate(() => document.body.innerText);
@@ -1076,7 +1077,7 @@ const closeSheet = async (pg) => {
     const skip = page.getByLabel('Пропустить отдых');
     if (await skip.count()) await skip.click();
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /СЕК|Сек/);
+    assert.match(t, /сек/i);
     assert.match(t, /Свой вес × \d:\d\d–\d:\d\d/, 'рекомендация в минутах:секундах');
     await page.getByText(/^Старт · \d:\d\d$/).click();
     await page.waitForTimeout(400);

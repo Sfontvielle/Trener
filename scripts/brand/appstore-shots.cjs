@@ -79,7 +79,7 @@ const PROFILE = {
   await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
   await dismiss();
-  await page.getByLabel('Почему такие КБЖУ?').click();
+  // Кольцо «осталось ккал» — главный экран питания (объяснение КБЖУ — по тапу на кольцо)
   await shot('6-nutrition');
   await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1800);
