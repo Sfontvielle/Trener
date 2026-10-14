@@ -6,7 +6,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import type { Exercise, PlannedExercise } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { ExerciseLoop } from '@/features/exercises/ExerciseThumb';
 import { Field, NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
 import { useWorkouts } from '@/stores/workouts';
@@ -30,7 +31,7 @@ import { haptic } from '@/services/haptics';
  *  - templateId — редактирование шаблона плана («Мой план») → «Сохранить».
  */
 export default function Builder() {
-  const params = useLocalSearchParams<{ rationale?: string; templateId?: string }>();
+  const params = useLocalSearchParams<{ templateId?: string }>();
   const draft = useWorkouts((s) => s.draft);
   const setDraft = useWorkouts((s) => s.setDraft);
   const customs = useWorkouts((s) => s.customExercises);
@@ -56,15 +57,6 @@ export default function Builder() {
   };
   const ssLabels = supersetLabels(exercises);
   const minutes = useMemo(() => estimateMinutes(exercises, customs), [exercises, customs]);
-  const groups = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const pe of exercises) {
-      const ex = getExercise(pe.exerciseId, customs);
-      ex?.groups.primary.forEach((g) => m.set(g, (m.get(g) ?? 0) + pe.sets));
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [exercises, customs]);
-
   const prefs = useMemo(() => (profile ? getPrefs(profile) : null), [profile]);
   // Оптимизатор порядка: предлагает, но не переставляет без согласия
   const orderSig = exercises.map((e) => e.exerciseId).join('|');
@@ -141,38 +133,23 @@ export default function Builder() {
       {!isTemplate && draft!.source === 'custom' ? (
         <Field placeholder="Название (необязательно)" value={draft!.name === 'Своя тренировка' ? '' : draft!.name} onChangeText={(t) => setDraft({ ...draft!, name: t || 'Своя тренировка' })} style={{ marginBottom: space.md }} />
       ) : null}
-      {params.rationale && !isTemplate ? (
-        <View style={{ marginBottom: space.md }}>
-          <Banner tone="accent" icon="sparkles" text={String(params.rationale)} />
-        </View>
-      ) : null}
-      {groups.length ? (
-        <T v="small" style={{ marginBottom: space.md }}>
-          Нагрузка: {groups.map(([g, n]) => `${GROUP_LABEL[g]} ${n}`).join(' · ')}
-        </T>
-      ) : null}
-
       {order?.changed && keptOrder !== orderSig ? (
         <View style={styles.suggest}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Icon name="swap-vertical" size={18} color={colors.accent} />
-            <T v="body" style={{ fontWeight: '800', flex: 1 }}>
-              Оптимизировать порядок?
+          <Icon name="swap-vertical" size={16} color={colors.accent} />
+          <Pressable style={{ flex: 1 }} hitSlop={6} onPress={() => setWhyOrder(!whyOrder)} accessibilityRole="button" accessibilityLabel="Порядок можно улучшить, почему">
+            <T v="small" color={colors.text}>
+              Порядок можно улучшить
             </T>
-            <Pressable hitSlop={8} onPress={() => setWhyOrder(!whyOrder)} accessibilityRole="button">
-              <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
-                Почему?
-              </T>
-            </Pressable>
-          </View>
-          <T v="small" numberOfLines={3}>
-            {order.order.map((pe) => getExercise(pe.exerciseId, customs)?.name ?? pe.exerciseId).join(' → ')}
-          </T>
-          {whyOrder ? <T v="small" color={colors.text}>{order.why}</T> : null}
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button title="Применить" size="sm" onPress={() => { setExercises(order.order); toast('Порядок обновлён'); }} style={{ flex: 1 }} />
-            <Button title="Оставить мой порядок" size="sm" variant="secondary" onPress={() => setKeptOrder(orderSig)} style={{ flex: 1.4 }} />
-          </View>
+            {whyOrder ? <T v="small" style={{ fontSize: 12 }}>{order.why}</T> : null}
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => { setExercises(order.order); toast('Порядок обновлён'); }} accessibilityRole="button">
+            <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
+              Применить
+            </T>
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => setKeptOrder(orderSig)} accessibilityRole="button" accessibilityLabel="Оставить мой порядок">
+            <Icon name="close" size={16} color={colors.muted} />
+          </Pressable>
         </View>
       ) : null}
       {visibleIssues.map((it) => (
@@ -210,23 +187,35 @@ export default function Builder() {
           return (
             <React.Fragment key={`${pe.exerciseId}-${i}`}>
             <View style={[styles.item, !!ssLabels[i] && { borderColor: colors.accentLine }]}>
-              <Pressable style={styles.itemHead} onPress={() => setExpanded(open ? null : i)} accessibilityRole="button" accessibilityLabel={`${ex?.name}, изменить`}>
-                <View style={[styles.idx, !!ssLabels[i] && { backgroundColor: colors.accent }]}>
-                  <T v="small" style={{ fontWeight: '800' }} color={ssLabels[i] ? colors.onAccent : colors.text}>
-                    {ssLabels[i] ?? i + 1}
-                  </T>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
-                    {ex?.name ?? pe.exerciseId}
-                  </T>
-                  <T v="small">
-                    {pe.sets} × {range}
-                    {timed ? '' : ` · RIR ${pe.targetRir}`}
-                  </T>
-                </View>
-                <Icon name={open ? 'chevron-up' : 'create-outline'} size={18} color={colors.muted} />
-              </Pressable>
+              <View style={styles.itemHead}>
+                {/* «Гифка» упражнения: тап — техника */}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Техника: ${ex?.name ?? ''}`} onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: pe.exerciseId } })} hitSlop={4}>
+                  {ex ? <ExerciseLoop ex={ex} size={60} delay={i * 180} /> : null}
+                  {ssLabels[i] ? (
+                    <View style={styles.ss}>
+                      <T v="small" style={{ fontWeight: '800', fontSize: 10 }} color={colors.onAccent}>
+                        {ssLabels[i]}
+                      </T>
+                    </View>
+                  ) : null}
+                </Pressable>
+                <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => setExpanded(open ? null : i)} accessibilityRole="button" accessibilityLabel={`${ex?.name}, изменить`}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
+                      {ex?.name ?? pe.exerciseId}
+                    </T>
+                    {ex ? (
+                      <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
+                        {ex.groups.primary.map((g) => GROUP_LABEL[g]).join(', ')}
+                      </T>
+                    ) : null}
+                    <T v="small" color={colors.text} style={{ fontVariant: ['tabular-nums'] }}>
+                      {pe.sets} × {range}
+                    </T>
+                  </View>
+                  <Icon name={open ? 'chevron-up' : 'create-outline'} size={18} color={colors.muted} />
+                </Pressable>
+              </View>
               {open ? (
                 <View style={{ gap: 10, marginTop: 10 }}>
                   {pe.why ? (
@@ -262,9 +251,12 @@ export default function Builder() {
                 style={[styles.link, linked && styles.linkOn]}
               >
                 <Icon name={linked ? 'link' : 'link-outline'} size={14} color={linked ? colors.onAccent : colors.muted} />
-                <T v="small" style={{ fontSize: 11, fontWeight: '800' }} color={linked ? colors.onAccent : colors.muted}>
-                  {linked ? 'Суперсет' : 'Объединить в суперсет'}
-                </T>
+                {/* Без суперсета — только значок связи (подпись — для VoiceOver), чтобы не шуметь между упражнениями */}
+                {linked ? (
+                  <T v="small" style={{ fontSize: 11, fontWeight: '800' }} color={colors.onAccent}>
+                    Суперсет
+                  </T>
+                ) : null}
               </Pressable>
             ) : null}
             </React.Fragment>
@@ -287,9 +279,9 @@ export default function Builder() {
 const styles = themed({
   item: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: 12 },
   itemHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
-  suggest: { gap: 8, padding: space.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accentLine, backgroundColor: colors.accentDim, marginBottom: space.md },
+  suggest: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: colors.surface, marginBottom: space.md },
+  ss: { position: 'absolute', top: -4, left: -4, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   issue: { flexDirection: 'row', gap: 10, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 8 },
-  idx: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', paddingHorizontal: 10, height: 26, marginVertical: -4, borderRadius: 13, backgroundColor: colors.bg },
   linkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
 });

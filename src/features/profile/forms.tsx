@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import type { Equipment, GoalType, HealthProfile, UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Banner, Chip, Icon, T } from '@/components/ui';
+import { Banner, Chip, Icon, Segmented, T } from '@/components/ui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Field, NumberStepper } from '@/components/inputs';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
@@ -224,7 +224,7 @@ export function SexPicker({ value, onChange }: { value: UserProfile['sex']; onCh
   );
 }
 
-export function BodySection({ p, set }: { p: UserProfile; set: Setter }) {
+export function BodySection({ p, set, activity }: { p: UserProfile; set: Setter; activity?: boolean }) {
   return (
     <View style={{ gap: space.lg }}>
       <SexPicker value={p.sex} onChange={(v) => set({ sex: v })} />
@@ -235,6 +235,45 @@ export function BodySection({ p, set }: { p: UserProfile; set: Setter }) {
         <View style={styles.rowLine} />
         <NumberStepper inline label="Вес" unit="кг" value={p.weightKg} onChange={(v) => set({ weightKg: v })} step={0.5} decimals={1} min={35} max={250} />
       </View>
+      {activity ? <ActivityPicker p={p} set={set} /> : null}
+    </View>
+  );
+}
+
+/**
+ * Шаги в день — главный множитель бытового расхода (±200–400 ккал). Без вопроса расчёт брал 7000 шагов и сидячую
+ * работу — для активных людей калории занижались. Корзины → типичное значение внутри диапазона.
+ */
+export const STEP_BUCKETS: { key: string; label: string; steps: number; min: number }[] = [
+  { key: 'low', label: 'до 5 тыс', steps: 4000, min: 0 },
+  { key: 'mid', label: '5–9 тыс', steps: 7000, min: 5000 },
+  { key: 'high', label: '9–12 тыс', steps: 10500, min: 9000 },
+  { key: 'top', label: '12 тыс+', steps: 13000, min: 12000 },
+];
+
+export const stepBucketOf = (steps: number) => [...STEP_BUCKETS].reverse().find((b) => steps >= b.min)!.key;
+
+export function ActivityPicker({ p, set }: { p: UserProfile; set: Setter }) {
+  return (
+    <View style={{ gap: 8 }} testID="activity-picker">
+      <T v="caption">Шагов в день, обычно</T>
+      <Segmented items={STEP_BUCKETS.map((b) => ({ key: b.key, label: b.label }))} value={stepBucketOf(p.stepsPerDay)} onChange={(k) => set({ stepsPerDay: STEP_BUCKETS.find((b) => b.key === k)!.steps })} />
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: p.workStyle === 'physical' }}
+        accessibilityLabel="Физическая работа"
+        onPress={() => {
+          haptic.tap();
+          set({ workStyle: p.workStyle === 'physical' ? 'desk' : 'physical' });
+        }}
+        hitSlop={6}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', paddingVertical: 4 }}
+      >
+        <Icon name={p.workStyle === 'physical' ? 'checkbox' : 'square-outline'} size={20} color={p.workStyle === 'physical' ? colors.accent : colors.textDim} />
+        <T v="small" color={colors.text}>
+          Физическая работа
+        </T>
+      </Pressable>
     </View>
   );
 }

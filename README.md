@@ -124,7 +124,7 @@ src/
     profile/           формы, применение профиля (пересчёт плана), демо-данные
   stores/              zustand-сторы, каждый — отдельный ключ AsyncStorage
   storage/             слой хранения (заменяется на SQLite без изменения экранов)
-  services/            Open Food Facts, AI API, haptics, Apple Health (services/health)
+  services/            базы продуктов (Open Food Facts, USDA, UPCitemdb), AI API, haptics, Apple Health (services/health)
   data/                114 упражнений (RU), встроенные кадры техники, базовые продукты
   types/               доменная модель
 server/                AI Coach backend (Node + @anthropic-ai/sdk)
@@ -135,7 +135,11 @@ scripts/logic-test.ts  автотесты логики
 
 - Кадры фаз движения: [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain), встроены в приложение (работают офлайн).
 - Анатомические контуры: `react-native-body-highlighter` (MIT).
-- Продукты: [Open Food Facts](https://world.openfoodfacts.org) (ODbL) — поиск и штрихкоды; найденные продукты кэшируются локально.
+- Продукты: [Open Food Facts](https://world.openfoodfacts.org) (ODbL) — поиск и штрихкоды; запасные базы по штрихкоду —
+  [USDA FoodData Central](https://fdc.nal.usda.gov) (брендовые товары с GTIN; ключ `EXPO_PUBLIC_FDC_KEY`, без него — DEMO_KEY)
+  и [UPCitemdb](https://www.upcitemdb.com) (только название — КБЖУ дописываются с этикетки). Найденные и созданные с этикетки
+  продукты хранятся локально со штрихкодом и в следующий раз находятся сразу. Встроенная офлайн-библиотека — 198 базовых
+  продуктов и блюд (справочные значения на 100 г).
 
 - Научные основания рекомендаций (калории, БЖУ, клетчатка, темп набора, шаги, прогрессия, восстановление), источники,
   ограничения и список оставшихся эвристик: [docs/SCIENCE.md](docs/SCIENCE.md).

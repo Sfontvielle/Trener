@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, Pressable, StyleProp, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { Animated, PixelRatio, Pressable, StyleProp, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { colors, radius, space, themed } from '@/theme';
 import { Icon, T } from './ui';
 import { haptic } from '@/services/haptics';
@@ -49,6 +49,17 @@ export function Field({ label, hint, error, style, accessory, ...rest }: TextInp
  * Числовое поле со степпером: крупные кнопки ± и прямой ввод.
  * Значение хранится числом; ввод через запятую тоже принимается.
  */
+/**
+ * Ширина поля числа — по числу символов, размеру шрифта и системному масштабу текста (Dynamic Type):
+ * иначе «26» при крупном шрифте обрезалось до «2». Цифры моноширинные (tabular-nums) ≈ 0,62 кегля.
+ */
+const INPUT_MAX_SCALE = 1.3;
+export function inputWidth(text: string, fontSize: number, fontScale = PixelRatio.getFontScale()): number {
+  const k = Math.min(Math.max(fontScale, 1), INPUT_MAX_SCALE);
+  const chars = Math.max(2, text.length);
+  return Math.ceil(chars * fontSize * 0.64 * k) + 12;
+}
+
 export function NumberStepper({
   value,
   onChange,
@@ -90,7 +101,8 @@ export function NumberStepper({
     haptic.tap();
     onChange(clamp(Math.round((value + d) * 1000) / 1000));
   };
-  const h = compact ? 40 : 48;
+  const h = compact ? 40 : inline ? 44 : 48;
+  const fontSize = inline ? 24 : compact ? 18 : 20;
   return (
     <View style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
       {label ? (
@@ -122,9 +134,14 @@ export function NumberStepper({
             selectTextOnFocus
             selectionColor={colors.accent}
             accessibilityLabel={label}
-            style={[styles.stepInput, { width: Math.max(44, text.length * (compact ? 12 : 14) + 14) }, compact && { fontSize: 18 }, inline && { fontSize: 24 }]}
+            maxFontSizeMultiplier={INPUT_MAX_SCALE}
+            style={[styles.stepInput, { fontSize, width: inputWidth(text, fontSize) }]}
           />
-          {unit ? <T v="small">{unit}</T> : null}
+          {unit ? (
+            <T v="small" numberOfLines={1}>
+              {unit}
+            </T>
+          ) : null}
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={`Увеличить ${label ?? ''}`} onPress={() => bump(step)} style={[styles.stepBtn, { width: h }, inline && styles.stepBtnRound]} hitSlop={4}>
           <Icon name="add" size={20} color={colors.textDim} />
@@ -215,11 +232,12 @@ const styles = themed({
     fontWeight: '500',
   },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md },
-  stepperInline: { width: 188, backgroundColor: 'transparent' },
+  // Ширина — по содержимому, не меньше 196 (кнопки −/+ у возраста, роста и веса стоят ровно друг под другом)
+  stepperInline: { minWidth: 196, flexShrink: 0, backgroundColor: 'transparent', gap: 6 },
   stepBtnRound: { borderRadius: 24, backgroundColor: colors.surface2 },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
-  stepInput: { flexShrink: 1, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },
   track: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.surface3, padding: 3 },

@@ -124,7 +124,8 @@ export function openGenerated(minutes: number, focus: GenFocus, quick = false) {
   const preferIds = plan?.templates.flatMap((t) => t.exercises.map((e) => e.exerciseId)) ?? [];
   const r = generateWorkout({ profile, sessions: ws.sessions, minutes, focus, readiness, preferIds, quick, plan, customs: ws.customExercises });
   useWorkouts.getState().setDraft({ ...r.draft, name: r.draft.name });
-  router.push({ pathname: '/workout/builder', params: { rationale: r.rationale.join('\n') } });
+  // Объяснение выбора дня не показываем: экран — только упражнения и «Начать»
+  router.push('/workout/builder');
 }
 
 export function openCustomBuilder() {

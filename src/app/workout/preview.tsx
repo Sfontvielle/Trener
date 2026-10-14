@@ -13,7 +13,7 @@ import { historyFor, recommend } from '@/features/training/progression';
 import { startTodayPlanned } from '@/features/training/actions';
 import { useProfile } from '@/stores/profile';
 import { scaleSets } from '@/features/training/scale';
-import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
+import { ExerciseLoop } from '@/features/exercises/ExerciseThumb';
 import { TargetMuscles } from '@/features/exercises/TargetMuscles';
 
 /** Состав тренировки перед стартом: упражнения, рекомендации по весам, режим дня */
@@ -68,7 +68,7 @@ export default function Preview() {
       <Appear i={2} style={styles.list}>
         {rows.map(({ ex, rec }, i) => (
           <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={({ pressed }) => [styles.row, i < rows.length - 1 && styles.line, pressed && { opacity: 0.6 }]}>
-            <ExerciseThumb ex={ex} size={52} />
+            <ExerciseLoop ex={ex} size={56} delay={i * 180} />
             <View style={{ flex: 1, gap: 2 }}>
               <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
                 {ex.name}
