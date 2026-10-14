@@ -118,7 +118,7 @@ const PROFILE = {
   await audit('/workout/active (навигатор с суперсетом)');
   await page.getByLabel(/^Прогулка фермера, /).click();
   await page.waitForTimeout(900);
-  await page.getByText(/^Старт · /).click();
+  await page.getByLabel(/^Старт · /).click();
   await page.waitForTimeout(800);
   await audit('/workout/active (таймер удержания)');
   routes.push('/workout/active (суперсет, таймер)');

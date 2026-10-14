@@ -24,6 +24,8 @@ export const FOCUS_LABEL: Record<GenFocus, string> = {
   full: 'Всё тело',
 };
 
+const WORKOUT_NAME: Record<Exclude<GenFocus, 'auto'>, string> = { push: 'Жимовая', pull: 'Тяговая', legs: 'Ноги', upper: 'Верх тела', lower: 'Низ тела', full: 'Всё тело' };
+
 /** Фокус → шаблон дня из библиотеки сплитов */
 const FOCUS_DAY: Record<Exclude<GenFocus, 'auto'>, string> = { push: 'push', pull: 'pull', legs: 'legs', upper: 'upA', lower: 'loA', full: 'fbA' };
 const DAY_FOCUS: Record<string, Exclude<GenFocus, 'auto'>> = {
@@ -208,7 +210,8 @@ export function generateWorkout(args: {
   const ordered = orderExercises(list(), prefs.priorityMuscles, customs);
   rationale.push(`~${estimateMinutes(ordered, customs)} мин, ${ordered.reduce((a, e) => a + e.sets, 0)} рабочих подходов.`);
 
-  const name = args.quick ? `Быстрая · ${FOCUS_LABEL[focus]}` : `${FOCUS_LABEL[focus]} · сгенерирована`;
+  // Имя — как день плана: «Верх», «Ноги», «Всё тело»; быстрая — с пометкой
+  const name = args.quick ? `Быстрая · ${FOCUS_LABEL[focus]}` : WORKOUT_NAME[focus];
   return {
     draft: { id: uid('d_'), name, focus: def.focus, source: args.quick ? 'quick' : 'generated', exercises: ordered, createdAt: Date.now() },
     rationale,

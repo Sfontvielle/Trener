@@ -586,7 +586,7 @@ export interface FoodProduct {
   per100: Macros;
   /** Стандартная порция, если известна */
   serving?: { label: string; grams: number };
-  source: 'openfoodfacts' | 'local' | 'custom';
+  source: 'openfoodfacts' | 'usda' | 'local' | 'custom';
   /** Тэги для подбора «что добрать» */
   tags?: FoodTag[];
   imageUrl?: string;

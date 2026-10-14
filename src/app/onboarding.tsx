@@ -18,11 +18,12 @@ import { fmtNum } from '@/utils/format';
 
 /**
  * Знакомство — 5 коротких шагов, по одному вопросу на экран и без маркетинговых текстов:
- * имя → тело → цель → тренировки (дни недели вручную, темп) → старт. Здоровье, оборудование, активность
+ * имя → тело и активность (шаги) → цель → тренировки (дни недели вручную, темп) → старт. Здоровье, оборудование
  * и питание — позже, тренер напомнит на главной.
  */
 const STEPS = 5;
 const TITLES = ['Как тебя зовут?', 'Параметры тела', 'Главная цель', 'Тренировки', ''];
+// Шаги и работа спрашиваются на шаге тела: от них зависит бытовой расход (±200–400 ккал)
 
 export default function Onboarding() {
   const [step, setStep] = useState(0);
@@ -77,7 +78,7 @@ export default function Onboarding() {
             style={styles.nameInput}
           />
         ) : null}
-        {step === 1 ? <BodySection p={p} set={set} /> : null}
+        {step === 1 ? <BodySection p={p} set={set} activity /> : null}
         {step === 2 ? <GoalPicker p={p} set={set} /> : null}
         {step === 3 ? <TrainingSection p={p} set={set} compact /> : null}
         {step === 4 && preview ? <Start name={p.name.trim()} plan={preview.plan} target={preview.target} /> : null}
@@ -128,6 +129,7 @@ function Start({ name, plan, target }: { name: string; plan: ReturnType<typeof g
             {[...target.steps, ...plan.rationale].map((st, i) => (
               <T key={i} v="small">
                 {st.label}: {st.value}
+                {st.label === 'Бытовая активность' || st.label === 'Тренировки' ? ` (${st.note})` : ''}
               </T>
             ))}
           </View>

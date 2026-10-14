@@ -8,11 +8,9 @@ import { useUi } from '@/stores/ui';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { MODE_LABEL } from './today';
-import { FOCUS_LABEL, type GenFocus } from './generator';
 import { openCustomBuilder, openGenerated, resumeActive, startTodayPlanned } from './actions';
 import { useProfile } from '@/stores/profile';
 import { formatDayShort } from '@/utils/date';
-import { BRAND } from '@/config/brand';
 import { afterModalClose } from '@/components/modalGate';
 
 const MINUTES = [30, 45, 60, 75, 90];
@@ -46,7 +44,6 @@ export function TrainingHub() {
   const sessionMin = useProfile((s) => s.profile?.sessionMinutes ?? 60);
   const [genOpen, setGenOpen] = useState(false);
   const [minutes, setMinutes] = useState(() => MINUTES.reduce((a, b) => (Math.abs(b - sessionMin) < Math.abs(a - sessionMin) ? b : a), 60));
-  const [focus, setFocus] = useState<GenFocus>('auto');
 
   const run = (fn: () => void) => {
     close();
@@ -103,34 +100,22 @@ export function TrainingHub() {
 
         {genOpen ? (
           <View style={styles.gen}>
-            <T v="h3">Сгенерировать тренировку</T>
-            <T v="small">{BRAND} учтёт сплит, готовность, недавно нагруженные мышцы, остаток недельного объёма, ограничения и оборудование.</T>
-            <T v="caption" style={{ marginTop: space.sm }}>
-              Время
-            </T>
+            <T v="h3">Сколько есть времени?</T>
             <View style={styles.chips}>
               {MINUTES.map((m) => (
                 <Chip key={m} label={`${m} мин`} active={minutes === m} onPress={() => setMinutes(m)} />
               ))}
             </View>
-            <T v="caption" style={{ marginTop: space.sm }}>
-              Фокус
-            </T>
-            <View style={styles.chips}>
-              {(Object.keys(FOCUS_LABEL) as GenFocus[]).map((f) => (
-                <Chip key={f} label={FOCUS_LABEL[f]} active={focus === f} onPress={() => setFocus(f)} />
-              ))}
-            </View>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: space.md }}>
               <Button title="Отмена" variant="secondary" onPress={() => setGenOpen(false)} style={{ flex: 1 }} />
-              <Button title="Сгенерировать" icon="sparkles" onPress={() => run(() => openGenerated(minutes, focus))} style={{ flex: 1.6 }} />
+              <Button title="Сгенерировать" icon="sparkles" onPress={() => run(() => openGenerated(minutes, 'auto'))} style={{ flex: 1.6 }} />
             </View>
           </View>
         ) : (
           <Row
             icon="sparkles"
             title={tw.kind === 'workout' ? 'Сгенерировать другую' : 'Сгенерировать тренировку'}
-            sub={tw.kind === 'workout' ? 'Если план сегодня не подходит: другое время или фокус' : 'День твоего сплита с наибольшим недобором объёма'}
+            sub={tw.kind === 'workout' ? 'Если план сегодня не подходит по времени' : 'День твоего сплита с наибольшим недобором объёма'}
             onPress={() => setGenOpen(true)}
           />
         )}

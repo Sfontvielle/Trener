@@ -221,7 +221,7 @@ function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { produc
   const allergen = avoid ? allergenIn(`${product.name} ${product.brand ?? ''}`, avoid.allergyWords) : undefined;
   const forbidden = !allergen && profile ? allergenIn(product.name, healthOf(profile).forbiddenFoods) : undefined;
   return (
-    <Sheet visible={!!product} onClose={onClose} title={product.name} subtitle={product.brand ?? (product.source === 'local' ? 'Базовый продукт' : product.source === 'custom' ? 'Свой продукт' : 'Open Food Facts')}>
+    <Sheet visible={!!product} onClose={onClose} title={product.name} subtitle={product.brand ?? (product.source === 'local' ? 'Базовый продукт' : product.source === 'custom' ? 'Свой продукт' : product.source === 'usda' ? 'USDA FoodData Central' : 'Open Food Facts')}>
       <View style={{ gap: space.md }}>
         <FavStar id={product.id} />
         {allergen ? <Banner tone="danger" icon="warning-outline" text={`В профиле указано: «${allergen}». Проверь состав на упаковке — название может не отражать все ингредиенты.`} /> : null}
@@ -374,6 +374,8 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
             const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: fib !== undefined && fib <= 100 ? { kcal, protein: p, fat: f, carbs: c, fiber: fib } : { kcal, protein: p, fat: f, carbs: c }, source: 'custom', barcode: barcode || undefined };
             useNutrition.getState().cacheProduct(prod);
             setV({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
+            // Своя база: в следующий раз этот штрихкод найдётся сразу, без интернета
+            if (barcode) toast('Сохранено в твою базу — по штрихкоду найдётся сразу', 'checkmark-circle');
             onCreated(prod);
           }}
         />

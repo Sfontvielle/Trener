@@ -66,7 +66,7 @@ import { dayInsights } from '../src/features/science/insights';
 import { buildDaySummary, dayMarkers } from '../src/features/day/summary';
 import { healthUiState } from '../src/features/health/state';
 import { LOCAL_FOODS } from '../src/data/foods';
-import { mapOffProduct } from '../src/services/foodApi';
+import { FoodApiError, lookupBarcode, mapFdcFood, mapOffProduct, offName, upcItemName } from '../src/services/foodApi';
 import { PICKER_CATALOG, joinItems, splitItems, toggleItem } from '../src/features/profile/pickerCatalog';
 
 import { checkDeload } from '../src/features/training/deload';
@@ -93,6 +93,25 @@ test('КБЖУ: набор > поддержание > сушка, белок р�
     assert.ok(t.steps.length >= 6, 'расчёт прозрачен');
   }
   assert.ok(cut.kcal >= cut.bmr, 'не ниже BMR');
+});
+
+test('КБЖУ: проверка арифметики на примере (26 лет, 180 см, 78,5 кг, Пн/Ср/Пт по 70 мин, сбалансированный набор)', () => {
+  const p = { ...base, age: 26, weightKg: 78.5, daysPerWeek: 3, ratePctPerWeek: 0.35 };
+  const t = computeNutritionTarget(p);
+  // Миффлин: 10·78,5 + 6,25·180 − 5·26 + 5 = 1785
+  assert.equal(Math.round(bmrMifflin(p, 78.5)), 1785);
+  assert.equal(t.bmr, 1790);
+  // ×1,34 (7000 шагов, сидячая) = 2392; тренировки 3·70·0,07·78,5/7 = 165 → 2557; профицит 0,35% · 78,5 · 7700/7 = 302
+  assert.equal(t.tdee, 2560);
+  assert.equal(t.kcal, 2860);
+  // Шаги — главный рычаг бытового расхода: 10 500 шагов (×1,42) дают +~140 ккал, физическая работа — ещё +~210
+  assert.equal(computeNutritionTarget({ ...p, stepsPerDay: 10500 }).kcal, 3000);
+  assert.equal(computeNutritionTarget({ ...p, stepsPerDay: 10500, workStyle: 'physical' }).kcal, 3220);
+  // Темп: консервативный < сбалансированный < быстрый (на ~130 ккал на шаг)
+  const k = [0.2, 0.35, 0.5].map((r) => computeNutritionTarget({ ...p, ratePctPerWeek: r }).kcal);
+  assert.deepEqual(k, [2730, 2860, 2990]);
+  // Вес: −8,5 кг ≈ −170 ккал (основной обмен, тренировки и профицит зависят от массы)
+  assert.equal(computeNutritionTarget({ ...p, weightKg: 70 }).kcal, 2690);
 });
 
 test('Тренд веса сглаживает одиночный выброс', () => {
@@ -1035,6 +1054,63 @@ test('Питание: суммы КБЖУ и клетчатка — неизве
   // Open Food Facts: fiber_100g есть → берём; нет → undefined
   assert.equal(mapOffProduct({ code: '4600000000003', product_name: 'Хлебцы', nutriments: { 'energy-kcal_100g': 380, proteins_100g: 10, fat_100g: 3, carbohydrates_100g: 70, fiber_100g: 12 } })?.per100.fiber, 12);
   assert.equal(mapOffProduct({ code: '4600000000003', product_name: 'Хлебцы', nutriments: { 'energy-kcal_100g': 380, proteins_100g: 10, fat_100g: 3, carbohydrates_100g: 70 } })?.per100.fiber, undefined);
+});
+
+test('Штрихкод: разбор Open Food Facts — КБЖУ на порцию, название на другом языке; USDA и UPCitemdb', () => {
+  // В базе только «на порцию» (30 г) — пересчёт на 100 г
+  const srv = mapOffProduct({ code: '4600000000010', product_name_ru: 'Батончик', serving_quantity: 30, nutriments: { 'energy-kcal_serving': 150, proteins_serving: 6, fat_serving: 5, carbohydrates_serving: 20 } })!;
+  assert.deepEqual(srv.per100, { kcal: 500, protein: 20, fat: 16.7, carbs: 66.7 });
+  // Названия только на английском — продукт всё равно найден
+  assert.equal(offName({ product_name_en: 'Protein bar' }), 'Protein bar');
+  assert.equal(mapOffProduct({ code: '1', product_name_en: 'Protein bar', nutriments: { 'energy-kcal_100g': 380, proteins_100g: 30, fat_100g: 12, carbohydrates_100g: 35 } })?.name, 'Protein bar');
+  // USDA: только при совпадении GTIN (UPC-A 12 ↔ EAN-13 с ведущим нулём)
+  const food = { fdcId: 1, gtinUpc: '041570054161', description: 'ALMOND MILK', brandOwner: 'Blue Diamond', servingSize: 240, servingSizeUnit: 'ml', foodNutrients: [{ nutrientId: 1008, value: 17 }, { nutrientId: 1003, value: 0.4 }, { nutrientId: 1004, value: 1.04 }, { nutrientId: 1005, value: 1.25 }] };
+  const u = mapFdcFood(food, '0041570054161')!;
+  assert.equal(u.source, 'usda');
+  assert.deepEqual(u.per100, { kcal: 17, protein: 0.4, fat: 1, carbs: 1.3 });
+  assert.equal(u.name, 'Almond milk');
+  assert.equal(u.serving?.grams, 240);
+  assert.equal(mapFdcFood(food, '4600000000003'), null, 'другой код — не тот продукт');
+  assert.deepEqual(upcItemName({ code: 'OK', items: [{ title: 'Snickers 50g', brand: 'Mars' }] }), { name: 'Snickers 50g', brand: 'Mars' });
+  assert.equal(upcItemName({ code: 'OK', items: [] }), undefined);
+});
+
+test('Штрихкод: поиск по нескольким базам по очереди; нет КБЖУ — название для этикетки; нет сети — сразу понятно', async () => {
+  const real = globalThis.fetch;
+  const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
+  const calls: string[] = [];
+  try {
+    // Нет в Open Food Facts → нашёлся в USDA
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url);
+      if (url.includes('openfoodfacts')) return reply(404, { status: 0 });
+      if (url.includes('nal.usda.gov')) return reply(200, { foods: [{ fdcId: 7, gtinUpc: '041570054161', description: 'ALMOND MILK', foodNutrients: [{ nutrientId: 1008, value: 17 }, { nutrientId: 1003, value: 0.4 }, { nutrientId: 1004, value: 1 }, { nutrientId: 1005, value: 1.3 }] }] });
+      return reply(404, {});
+    }) as typeof fetch;
+    const p = await lookupBarcode('041570054161', 'upc_a');
+    assert.equal(p.source, 'usda');
+    assert.ok(calls.filter((c) => c.includes('openfoodfacts')).length >= 2, 'сначала все варианты кода в Open Food Facts');
+    // Нигде нет КБЖУ, но UPCitemdb знает название → «нашёлся, но без КБЖУ» с названием для формы
+    globalThis.fetch = (async (url: string) => {
+      if (url.includes('upcitemdb')) return reply(200, { code: 'OK', items: [{ title: 'Сырок глазированный', brand: 'Б.Ю.Александров' }] });
+      if (url.includes('nal.usda.gov')) return reply(200, { foods: [] });
+      return reply(404, { status: 0 });
+    }) as typeof fetch;
+    await assert.rejects(lookupBarcode('4607012345677'), (e: unknown) => e instanceof FoodApiError && e.kind === 'not_found' && e.partial?.name === 'Сырок глазированный');
+    // Запасная база упала — результат не прячется, ответ «нет в базах»
+    globalThis.fetch = (async (url: string) => {
+      if (url.includes('openfoodfacts')) return reply(404, { status: 0 });
+      throw new TypeError('network');
+    }) as typeof fetch;
+    await assert.rejects(lookupBarcode('4607012345677'), (e: unknown) => e instanceof FoodApiError && e.kind === 'not_found' && /нет в базах/.test(e.message));
+    // Нет сети вообще — «нет подключения», а не «не найден»
+    globalThis.fetch = (async () => {
+      throw new TypeError('network');
+    }) as typeof fetch;
+    await assert.rejects(lookupBarcode('4607012345677'), (e: unknown) => e instanceof FoodApiError && e.kind === 'offline');
+  } finally {
+    globalThis.fetch = real;
+  }
 });
 
 test('Завершение тренировки: после последнего подхода всё выполнено, прогресс 100%', () => {
