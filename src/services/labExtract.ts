@@ -32,7 +32,7 @@ function mediaTypeOf(name: string, mime?: string | null): string {
   return 'image/jpeg';
 }
 
-async function readBase64(uri: string, webFile?: Blob): Promise<string> {
+export async function readBase64(uri: string, webFile?: Blob): Promise<string> {
   if (Platform.OS === 'web') {
     const blob = webFile ?? (await (await fetch(uri)).blob());
     return await new Promise<string>((resolve, reject) => {

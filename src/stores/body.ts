@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { BodyMetric, ISODate, WeightEntry } from '@/types';
 import { persistOptions } from '@/storage/persist';
 import { uid } from '@/utils/id';
+import type { PhotoAnalysis } from '@/features/progress/body';
 
 /** Фото прогресса: файл хранится в папке приложения, в сторе — только ссылка и дата */
 export interface ProgressPhoto {
@@ -17,6 +18,9 @@ interface BodyState {
   weights: WeightEntry[];
   metrics: BodyMetric[];
   photos: ProgressPhoto[];
+  /** Анализы фото прогресса (последние 10) */
+  analyses: PhotoAnalysis[];
+  addAnalysis: (a: PhotoAnalysis) => void;
   addPhoto: (p: Omit<ProgressPhoto, 'id' | 'createdAt'>) => void;
   removePhoto: (id: string) => void;
   removeMetric: (id: string) => void;
@@ -32,6 +36,8 @@ export const useBody = create<BodyState>()(
       weights: [],
       metrics: [],
       photos: [],
+      analyses: [],
+      addAnalysis: (a) => set((s) => ({ analyses: [...s.analyses, a].slice(-10) })),
       addPhoto: (p) => set((s) => ({ photos: [...s.photos, { ...p, id: uid('ph_'), createdAt: Date.now() }].sort((a, b) => (a.date < b.date ? -1 : 1)) })),
       removePhoto: (id) => set((s) => ({ photos: s.photos.filter((x) => x.id !== id) })),
       removeMetric: (id) => set((s) => ({ metrics: s.metrics.filter((x) => x.id !== id) })),
@@ -43,8 +49,8 @@ export const useBody = create<BodyState>()(
       removeWeight: (id) => set((s) => ({ weights: s.weights.filter((w) => w.id !== id) })),
       // Один замер одного вида в день: повторная запись заменяет
       addMetric: (m) => set((s) => ({ metrics: [...s.metrics.filter((x) => !(x.date === m.date && x.kind === m.kind)), { ...m, id: uid('m_') }].sort((a, b) => (a.date < b.date ? -1 : 1)) })),
-      reset: () => set({ weights: [], metrics: [], photos: [] }),
+      reset: () => set({ weights: [], metrics: [], photos: [], analyses: [] }),
     }),
-    persistOptions<BodyState>('body', 1, (s) => ({ weights: s.weights, metrics: s.metrics, photos: s.photos }) as BodyState),
+    persistOptions<BodyState>('body', 1, (s) => ({ weights: s.weights, metrics: s.metrics, photos: s.photos, analyses: s.analyses }) as BodyState),
   ),
 );

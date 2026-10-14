@@ -358,7 +358,7 @@ export interface WeightEntry {
 export interface BodyMetric {
   id: ID;
   date: ISODate;
-  kind: 'waist' | 'chest' | 'hips' | 'arm' | 'thigh' | 'bodyfat';
+  kind: 'waist' | 'neck' | 'chest' | 'hips' | 'arm' | 'thigh' | 'bodyfat';
   value: number;
 }
 

@@ -41,7 +41,8 @@ export default function Measurements() {
     for (const x of metrics) if (!m[x.kind] || m[x.kind]!.date <= x.date) m[x.kind] = x;
     return m;
   }, [metrics]);
-  const [picked, setPicked] = useState<Kind[]>(() => (last.waist ? KINDS.filter((k) => last[k]) : ['waist']));
+  // По умолчанию — талия и шея: по ним считается процент жира (формула ВМС США)
+  const [picked, setPicked] = useState<Kind[]>(() => (last.waist ? KINDS.filter((k) => last[k]) : ['waist', 'neck']));
   const [vals, setVals] = useState<Record<Kind, number>>(() => Object.fromEntries(KINDS.map((k) => [k, last[k]?.value ?? METRIC_META[k].def])) as Record<Kind, number>);
   const [pose, setPose] = useState<ProgressPhoto['pose']>('front');
   const d = today();

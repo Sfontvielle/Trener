@@ -525,7 +525,7 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByText('Экспортировать мои данные').isVisible());
   });
 
-  await check('29. Отчёт недели и замеры доступны из «Прогресса»; данные переживают перезапуск', async () => {
+  await check('29. Отчёт недели, тело и статистика доступны из «Прогресса»; данные переживают перезапуск', async () => {
     await page.goto(`${URL}/measurements`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -536,9 +536,29 @@ const closeSheet = async (pg) => {
     await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /талия/i);
     assert.ok(await page.getByTestId('progress-story').isVisible(), 'что изменилось — одной фразой');
+    // Сила, рекорды и подробная статистика — не на первом экране, а в «Статистике»
+    let t = await page.evaluate(() => document.body.innerText);
+    assert.doesNotMatch(t, /Рабочие веса и рекорды|Расчётный максимум/);
+    assert.match(t, /% жира/, 'тело одной строкой: процент жира диапазоном');
+    await page.getByLabel('Тело: состав, фото и замеры').click();
+    await page.waitForTimeout(900);
+    t = await page.evaluate(() => document.body.innerText);
+    assert.match(await page.getByTestId('body-fat').innerText(), /\d+(,\d)?–\d+(,\d)?/);
+    assert.match(t, /по (шее|росту) и талии|прибором/, 'по свежим замерам, а не по ИМТ');
+    assert.match(t, /Талия/);
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
+    await page.getByLabel('Статистика: сила, рекорды, нагрузка').click();
+    await page.waitForTimeout(900);
+    assert.match(await page.evaluate(() => document.body.innerText), /Расчётный максимум/);
+    await page.getByText('Нагрузка', { exact: true }).last().click();
+    await page.waitForTimeout(600);
+    assert.match(await page.evaluate(() => document.body.innerText), /Что изменилось · к предыдущим 30 дням/);
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
     await page.getByText('Отчёт недели', { exact: true }).click();
     await page.waitForTimeout(1000);
     assert.match(await page.evaluate(() => document.body.innerText), /вывод тренера|прошлая неделя пустая/i);

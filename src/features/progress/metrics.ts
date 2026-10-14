@@ -4,6 +4,7 @@ import type { BodyMetric } from '@/types';
 type Kind = BodyMetric['kind'];
 export const METRIC_META: Record<Kind, { label: string; unit: string; step: number; min: number; max: number; def: number; hint: string }> = {
   waist: { label: 'Талия', unit: 'см', step: 0.5, min: 40, max: 200, def: 85, hint: 'на уровне пупка, на выдохе' },
+  neck: { label: 'Шея', unit: 'см', step: 0.5, min: 25, max: 60, def: 38, hint: 'под кадыком, лента слегка вниз спереди' },
   chest: { label: 'Грудь', unit: 'см', step: 0.5, min: 50, max: 200, def: 100, hint: 'по самой широкой части' },
   hips: { label: 'Бёдра (таз)', unit: 'см', step: 0.5, min: 50, max: 200, def: 100, hint: 'по самой выступающей точке ягодиц' },
   arm: { label: 'Рука', unit: 'см', step: 0.5, min: 15, max: 70, def: 35, hint: 'бицепс в напряжении' },

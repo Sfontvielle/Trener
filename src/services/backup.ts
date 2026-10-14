@@ -31,7 +31,7 @@ export interface BackupFile {
     profile: { profile: unknown; settings: unknown };
     plan: { plan: unknown; target: unknown; overrides: unknown; adjustments: unknown };
     checkins: { byDate: unknown };
-    body: { weights: unknown; metrics: unknown; photos?: unknown };
+    body: { weights: unknown; metrics: unknown; photos?: unknown; analyses?: unknown };
     nutrition: { entries: unknown; products: unknown; recent: unknown; lastGrams: unknown; meals?: unknown; water?: unknown; favorites?: unknown };
     workouts: { sessions: unknown; draft: unknown; customExercises: unknown };
     coach: { messages: unknown; summary: unknown; summarizedUntil: unknown; memory: unknown; advice?: unknown; knowledge?: unknown };
@@ -57,7 +57,7 @@ export function buildBackup(): BackupFile {
       profile: { profile: p.profile, settings: p.settings },
       plan: { plan: pl.plan, target: pl.target, overrides: pl.overrides, adjustments: pl.adjustments },
       checkins: { byDate: useCheckins.getState().byDate },
-      body: { weights: b.weights, metrics: b.metrics, photos: b.photos },
+      body: { weights: b.weights, metrics: b.metrics, photos: b.photos, analyses: b.analyses },
       nutrition: { entries: n.entries, products: n.products, recent: n.recent, lastGrams: n.lastGrams, meals: n.meals, water: n.water, favorites: n.favorites },
       // активная тренировка не входит в копию — это незавершённое состояние
       workouts: { sessions: w.sessions, draft: w.draft, customExercises: w.customExercises },
@@ -203,7 +203,7 @@ export function restoreBackup(b: BackupFile): void {
   usePlan.setState({ plan: d.plan?.plan ?? null, target: d.plan?.target ?? null, overrides: obj(d.plan?.overrides), adjustments: arr(d.plan?.adjustments) });
   // Старые копии (сон только в часах) нормализуются той же миграцией, что и хранилище
   useCheckins.setState(migrateCheckins({ byDate: obj(d.checkins?.byDate) }, 1));
-  useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics), photos: arr(d.body?.photos) });
+  useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics), photos: arr(d.body?.photos), analyses: arr(d.body?.analyses) });
   useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams), meals: arr(d.nutrition?.meals), water: obj(d.nutrition?.water), favorites: arr(d.nutrition?.favorites) });
   useJournal.setState({ notes: arr(d.journal?.notes) });
   useLabs.setState({ reports: arr(d.labs?.reports) });
