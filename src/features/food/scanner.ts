@@ -38,6 +38,37 @@ export function normalizeBarcode(raw: string, type?: string): string {
   return d;
 }
 
+/**
+ * Варианты одного кода для поиска в базе: одна и та же упаковка записана в разных системах по-разному
+ * (UPC-A 12 цифр ↔ EAN-13 с ведущим 0, GTIN-14 с ведущими нулями ↔ EAN-13, UPC-E ↔ UPC-A).
+ * Возвращает только коды с верной контрольной цифрой, без повторов, исходный — первым.
+ */
+export function barcodeCandidates(raw: string, type?: string): string[] {
+  const d = normalizeBarcode(raw, type);
+  const out: string[] = [];
+  const add = (c: string) => {
+    if (c && isValidGtin(c) && !out.includes(c)) out.push(c);
+  };
+  add(d);
+  if (d.length === 12) add(`0${d}`);
+  if (d.length === 13 && d[0] === '0') add(d.slice(1));
+  if (d.length === 14) {
+    if (d[0] === '0') add(d.slice(1));
+    if (d.startsWith('00')) add(d.slice(2));
+  }
+  // 8 цифр: и как EAN-8, и как развёрнутый UPC-E (сканер не всегда верно сообщает тип)
+  const raw8 = raw.replace(/\D/g, '');
+  if (raw8.length === 8) {
+    add(raw8);
+    const upcA = normalizeBarcode(raw8, 'upc_e');
+    if (upcA.length === 12) {
+      add(upcA);
+      add(`0${upcA}`);
+    }
+  }
+  return out;
+}
+
 export type ScanPhase = 'scanning' | 'locked';
 
 export class ScanGate {
@@ -54,16 +85,29 @@ export class ScanGate {
     return this.lastCode;
   }
 
-  /** true — только для первого валидного кода; дальше false до retry() */
+  private pending: string | null = null;
+
+  /**
+   * Код — только для первого валидного считывания; дальше null до retry(). Короткие коды (8 цифр) нужно
+   * прочитать дважды подряд: их чаще всего «находит» в куске длинного кода или в смазанном кадре.
+   */
   accept(raw: string, type?: string): string | null {
     if (this.phase === 'locked') {
       this.ignored++;
       return null;
     }
     const code = normalizeBarcode(raw, type);
-    if (!isValidGtin(code)) return null;
+    if (!isValidGtin(code)) {
+      this.pending = null;
+      return null;
+    }
+    if (code.length === 8 && this.pending !== code) {
+      this.pending = code;
+      return null;
+    }
     this.phase = 'locked';
     this.lastCode = code;
+    this.pending = null;
     return code;
   }
 
@@ -71,6 +115,7 @@ export class ScanGate {
   retry() {
     this.phase = 'scanning';
     this.lastCode = null;
+    this.pending = null;
     this.ignored = 0;
   }
 }

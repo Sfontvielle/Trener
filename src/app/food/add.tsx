@@ -13,7 +13,7 @@ import { usePlan } from '@/stores/plan';
 import { useProfile } from '@/stores/profile';
 import { allergenIn, foodAvoidance, healthOf } from '@/features/profile/health';
 import { searchLocalFoods, LOCAL_FOODS } from '@/data/foods';
-import { foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
+import { FoodApiError, foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
 import { macrosFor, remaining, sumMacros } from '@/features/nutrition/status';
 import { frequentProducts, lastPortion } from '@/features/nutrition/quick';
 import { today } from '@/utils/date';
@@ -40,7 +40,7 @@ const TAB_HINT: Record<FoodTab, string> = {
 };
 
 export default function AddFood() {
-  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string; enterBarcode?: string }>();
+  const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string; enterBarcode?: string; name?: string }>();
   const date = params.date || today();
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
@@ -51,6 +51,7 @@ export default function AddFood() {
   const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? LOCAL_FOODS.find((f) => f.id === params.productId) ?? null : null));
   const [barcodeOpen, setBarcodeOpen] = useState(params.enterBarcode === '1');
   const [customOpen, setCustomOpen] = useState(params.manual === '1');
+  const [custom, setCustom] = useState<{ barcode?: string; name?: string }>({});
   const reqId = useRef(0);
 
   const recent = useMemo(() => recentIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [recentIds, products]);
@@ -174,8 +175,8 @@ export default function AddFood() {
         }
       />
       <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal || undefined} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
-      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); afterModalClose(() => setSelected(p)); }} />
-      <CustomProductSheet visible={customOpen} initialName={q} barcode={params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); afterModalClose(() => setSelected(p)); }} />
+      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); afterModalClose(() => setSelected(p)); }} onCreate={(code, nm) => { setBarcodeOpen(false); setCustom({ barcode: code, name: nm }); afterModalClose(() => setCustomOpen(true)); }} />
+      <CustomProductSheet visible={customOpen} initialName={custom.name || params.name || q} barcode={custom.barcode || params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); afterModalClose(() => setSelected(p)); }} />
     </Screen>
   );
 }
@@ -295,14 +296,16 @@ function MacroCell({ label, v, rem }: { label: string; v: number | undefined; re
   );
 }
 
-function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose: () => void; onFound: (p: FoodProduct) => void }) {
+function BarcodeSheet({ visible, onClose, onFound, onCreate }: { visible: boolean; onClose: () => void; onFound: (p: FoodProduct) => void; onCreate: (code: string, name?: string) => void }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [missing, setMissing] = useState<{ name?: string } | null>(null);
   const cache = useNutrition((s) => s.cacheProduct);
   const find = async () => {
     setBusy(true);
     setErr(null);
+    setMissing(null);
     try {
       const p = await lookupBarcode(code);
       cache(p);
@@ -310,6 +313,7 @@ function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose
       setCode('');
     } catch (e) {
       setErr(foodErrorText(e));
+      if (e instanceof FoodApiError && e.kind === 'not_found') setMissing({ name: e.partial?.name });
     } finally {
       setBusy(false);
     }
@@ -319,14 +323,19 @@ function BarcodeSheet({ visible, onClose, onFound }: { visible: boolean; onClose
       <View style={{ gap: space.md }}>
         <Field placeholder="4600000000000" keyboardType="number-pad" value={code} onChangeText={(t) => setCode(t.replace(/\D/g, ''))} maxLength={14} />
         {err ? <Banner tone="warning" text={err} /> : null}
-        <Button title="Найти" icon="search" loading={busy} disabled={code.length < 8} onPress={find} />
+        {missing ? (
+          <Button title={missing.name ? 'Добавить с этикетки' : 'Создать продукт с этим кодом'} icon="add-circle-outline" onPress={() => onCreate(code, missing.name)} />
+        ) : (
+          <Button title="Найти" icon="search" loading={busy} disabled={code.length < 8} onPress={find} />
+        )}
       </View>
     </Sheet>
   );
 }
 
 function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string; barcode?: string }) {
-  const [name, setName] = useState('');
+  // Открыт сразу (из сканера) — название подставляется с первого кадра
+  const [name, setName] = useState(() => (visible ? initialName.replace(/^\d+$/, '') : ''));
   const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
   // При открытии листа подставляем то, что искали
   const [wasVisible, setWasVisible] = useState(visible);

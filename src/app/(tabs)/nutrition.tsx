@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
-import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
+import type { FoodEntry, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, Card, EmptyState, Icon, IconButton, SectionTitle, T } from '@/components/ui';
+import { Button, Card, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Ring } from '@/components/charts';
 import { Ambient, Appear, Progress, Tap, useCountUp } from '@/components/motion';
 import { Sheet } from '@/components/Sheet';
@@ -19,11 +19,10 @@ import { useWorkouts } from '@/stores/workouts';
 import { fiberTarget } from '@/features/nutrition/targets';
 import { dayProgress, macroState, macrosFor, sumFiber, sumMacros, type MacroState } from '@/features/nutrition/status';
 import { stateColor } from '@/components/macroColor';
-import { suggestMeals, type MealSuggestion } from '@/features/nutrition/suggest';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { applyCalorieDelta, recalibrateCalories } from '@/features/profile/applyProfile';
 import { LOCAL_FOODS } from '@/data/foods';
-import { addDays, daysBetween, relativeDay, today } from '@/utils/date';
+import { addDays, daysBetween, relativeDay } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
@@ -46,14 +45,12 @@ export default function Nutrition() {
   const nut = useDayNutrition(date);
   const profile = useProfile((s) => s.profile);
   const products = useNutrition((s) => s.products);
-  const recent = useNutrition((s) => s.recent);
   const allEntries = useNutrition((s) => s.entries);
   const adjustments = usePlan((s) => s.adjustments);
   const weights = useBody((s) => s.weights);
   const metrics = useBody((s) => s.metrics);
   const sessions = useWorkouts((s) => s.sessions);
   const [edit, setEdit] = useState<FoodEntry | null>(null);
-  const [moreMeals, setMoreMeals] = useState(false);
   const [addFor, setAddFor] = useState<MealSlot | null>(null);
   const [saveMeal, setSaveMeal] = useState<{ slot: MealSlot; entries: FoodEntry[] } | null>(null);
   const saveAsMeal = (slot: MealSlot, list: FoodEntry[]) => setSaveMeal({ slot, entries: list });
@@ -76,11 +73,6 @@ export default function Nutrition() {
     toast(meal ? `${MEAL_LABEL[meal]} скопирован` : `Скопировано продуктов: ${ids.length}`, 'copy-outline', { label: 'Отменить', onPress: () => useNutrition.getState().removeEntries(ids) });
   };
 
-  const suggestions = useMemo(() => {
-    if (!profile || !nut.remaining || !isToday) return null;
-    const recentProducts = recent.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p).slice(0, 25);
-    return suggestMeals({ remaining: nut.remaining, profile, todayEntries: nut.entries, recentProducts });
-  }, [profile, nut.remaining, nut.entries, recent, products, isToday]);
 
   const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, allEntries, adjustments, metrics, sessions]);
   const [whyOpen, setWhyOpen] = useState(false);
@@ -92,13 +84,7 @@ export default function Nutrition() {
   const left = Math.round(target.kcal - nut.eaten.kcal);
   const meals: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
-  const addSuggestion = (o: MealSuggestion) => {
-    const add = useNutrition.getState().addEntry;
-    const meal = mealForHour(new Date().getHours());
-    o.items.forEach((it) => add(it.product, it.grams, meal, today()));
-    haptic.success();
-    toast(`Добавлено: ~${Math.round(o.total.kcal)} ккал`);
-  };
+
 
   const pct = nut.eaten.kcal / target.kcal;
   return (
@@ -123,6 +109,9 @@ export default function Nutrition() {
               <KcalLeft value={left} color={left < 0 ? stateColor(kState) : colors.text} />
               <T v="small" style={{ marginTop: 2 }}>
                 {left >= 0 ? (isToday ? 'осталось ккал' : `осталось · ${relativeDay(date).toLowerCase()}`) : 'ккал сверх нормы'}
+              </T>
+              <T v="small" style={{ marginTop: 6, fontSize: 12, fontVariant: ['tabular-nums'] }} color={colors.text}>
+                {fmtNum(nut.eaten.kcal)} из {fmtNum(target.kcal)}
               </T>
             </View>
           </Ring>
@@ -163,6 +152,11 @@ export default function Nutrition() {
                 {list.length ? <T v="body" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }}>{fmtNum(mm.kcal)}</T> : null}
                 <Icon name="add" size={20} color={colors.textDim} />
               </Pressable>
+              {list.length ? (
+                <T v="small" style={{ marginLeft: 44, marginTop: -6, marginBottom: 4, fontSize: 12, fontVariant: ['tabular-nums'] }}>
+                  Б {Math.round(mm.protein)} · Ж {Math.round(mm.fat)} · У {Math.round(mm.carbs)}
+                </T>
+              ) : null}
               {list.length === 0 && usual[m] ? (
                 <Pressable accessibilityRole="button" accessibilityLabel={`Добавить обычный ${MEAL_LABEL[m].toLowerCase()}`} onPress={() => addUsual(usual[m]!)} style={({ pressed }) => [styles.hint, pressed && { opacity: 0.6 }]} testID={`usual-${m}`}>
                   <T v="small" numberOfLines={1} style={{ fontSize: 13 }}>
@@ -204,7 +198,7 @@ export default function Nutrition() {
 
       <WaterRow date={date} />
 
-      {review && isToday && review.status !== 'insufficient_data' ? (
+      {review && isToday && review.status === 'adjust' ? (
         // Итог алгоритма одной фразой; действие — только если правило предлагает изменение
         <Card tone={review.status === 'adjust' ? 'warning' : undefined} style={{ marginTop: space.lg, gap: 8 }} testID="calorie-review">
           <T v="body" color={colors.text} style={{ fontSize: 15 }}>
@@ -221,35 +215,6 @@ export default function Nutrition() {
             <Button title={`Перейти на мой расход (~${fmtNum(review.maintenance.kcal)} ккал)`} size="sm" variant="secondary" onPress={() => { const r = recalibrateCalories(); toast(r.message, r.ok ? 'checkmark-circle' : 'alert-circle'); }} />
           ) : null}
         </Card>
-      ) : null}
-
-      {isToday && suggestions && suggestions.options.length ? (
-        <>
-          <SectionTitle title="Что добрать" action="Спросить тренера" onAction={() => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас, чтобы закрыть норму?' } })} />
-          <View style={{ gap: 10 }}>
-            {suggestions.notes.slice(0, 1).map((n) => (
-              <T key={n} v="small" color={n.includes('превыш') ? colors.warning : colors.textDim}>
-                {n}
-              </T>
-            ))}
-            {suggestions.options.slice(0, moreMeals ? 3 : 1).map((o) => (
-              <Card key={o.id} style={{ gap: 8 }}>
-                <T v="body" style={{ fontWeight: '700' }}>
-                  {o.items.map((it) => `${it.product.name} ${it.grams} г`).join(' + ')}
-                </T>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <T v="small" style={{ flex: 1 }}>
-                    ~{Math.round(o.total.kcal)} ккал · Б {Math.round(o.total.protein)} · {o.why}
-                  </T>
-                  <Button title="Добавить" size="sm" icon="add" variant="secondary" onPress={() => addSuggestion(o)} />
-                </View>
-              </Card>
-            ))}
-            {suggestions.options.length > 1 ? (
-              <Button title={moreMeals ? 'Скрыть варианты' : `Ещё варианты (${suggestions.options.length - 1})`} size="sm" variant="ghost" onPress={() => setMoreMeals(!moreMeals)} />
-            ) : null}
-          </View>
-        </>
       ) : null}
 
       <AddFoodSheet visible={!!addFor} onClose={() => setAddFor(null)} date={date} meal={addFor ?? 'snack'} />
@@ -277,6 +242,14 @@ export default function Nutrition() {
               ))}
             </View>
             <ConfidenceLine level={explain.confidence.level} note={explain.confidence.note} />
+            {review && review.status !== 'insufficient_data' ? (
+              <View style={{ gap: 4, marginTop: 4 }} testID="calorie-review-why">
+                <T v="body" color={colors.text} style={{ fontSize: 15 }}>
+                  {review.summary}
+                </T>
+                {review.maintenance ? <T v="small" style={{ fontSize: 12 }}>{review.maintenance.text}</T> : null}
+              </View>
+            ) : null}
             <Button title="Подробный расчёт" variant="ghost" size="sm" onPress={() => { setWhyOpen(false); afterModalClose(() => router.push('/plan')); }} />
           </View>
         ) : null}

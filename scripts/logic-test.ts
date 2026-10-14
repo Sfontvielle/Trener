@@ -16,7 +16,7 @@ import { checkAllowed, progressStatus, scoreExercise } from '../src/features/tra
 import { analyzeWorkout, suggestOrder } from '../src/features/training/engine/order';
 import { estimateMinutes } from '../src/features/training/engine/time';
 import { actionKey, applyToExercises, validateAction } from '../src/features/coach/actions';
-import { cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate } from '../src/features/food/scanner';
+import { barcodeCandidates, cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate } from '../src/features/food/scanner';
 import { currentIndexOf, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress , isExerciseDone } from '../src/features/training/workoutNav';
 import { chooseSplit, compareSplits } from '../src/features/training/engine/split';
 import { estimateRecovery } from '../src/features/training/engine/recovery';
@@ -1137,6 +1137,26 @@ test('Онбординг: у каждой категории «+» есть ка
   assert.deepEqual(l, ['Ёжевика', 'Свой вариант']);
   assert.deepEqual(splitItems('Плечо, колено;\nпоясница'), ['Плечо', 'колено', 'поясница']);
   assert.equal(joinItems(['Плечо', 'Колено']), 'Плечо, Колено');
+});
+
+test('Сканер: варианты кода для базы (UPC-A ↔ EAN-13, GTIN-14, UPC-E); короткий EAN-8 — после двух одинаковых кадров', () => {
+  // UPC-A 12 цифр ↔ EAN-13 с ведущим нулём
+  assert.deepEqual(barcodeCandidates('036000291452'), ['036000291452', '0036000291452']);
+  assert.deepEqual(barcodeCandidates('0036000291452'), ['0036000291452', '036000291452']);
+  // GTIN-14 с упаковки → EAN-13
+  assert.deepEqual(barcodeCandidates('04607001771630'), ['04607001771630', '4607001771630']);
+  // Неверная контрольная цифра — ни одного варианта
+  assert.deepEqual(barcodeCandidates('4607001771631'), []);
+  // 8 цифр: EAN-8 и развёрнутый UPC-E
+  const c8 = barcodeCandidates('01234565');
+  assert.ok(c8.includes('012345000065') && c8.includes('0012345000065'), c8.join(','));
+  const g = new ScanGate();
+  assert.equal(g.accept('96385074', 'ean8'), null, 'первый кадр короткого кода — ждём подтверждения');
+  assert.equal(g.accept('96385074', 'ean8'), '96385074', 'второй такой же — принят');
+  const g2 = new ScanGate();
+  g2.accept('96385074', 'ean8');
+  assert.equal(g2.accept('96385081', 'ean8'), null, 'другой короткий код — снова ждём');
+  assert.equal(g2.accept('4607001771630', 'ean13'), '4607001771630', 'длинный — сразу');
 });
 
 test('Сканер: один штрихкод = одно событие даже при 30 кадрах/с', () => {
