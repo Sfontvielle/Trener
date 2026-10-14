@@ -8,7 +8,9 @@ import { TrendChart } from '@/components/charts';
 import { useLabs } from '@/stores/labs';
 import { useProfile } from '@/stores/profile';
 import { BIOMARKER_BY_ID, CATEGORY_LABEL } from '@/features/labs/catalog';
-import { interpretResult, markerSeries, rangeOf } from '@/features/labs/analysis';
+import { describeChange, interpretResult, markerSeries, rangeOf } from '@/features/labs/analysis';
+import { STATUS } from '@/features/labs/ui';
+import { Appear } from '@/components/motion';
 import { daysBetween, formatDayShort } from '@/utils/date';
 
 const fmt = (x: number) => String(Math.round(x * 100) / 100).replace('.', ',');
@@ -30,6 +32,7 @@ export default function MarkerScreen() {
   const last = entries[0];
   const interp = last ? interpretResult(last.r, series, sex) : null;
   const range = last ? rangeOf(last.r, sex) : null;
+  const delta = series.length >= 2 ? describeChange(b, series[series.length - 2].value, series[series.length - 1].value) : null;
   if (!b) return <Screen><Header title="Показатель" /><EmptyState icon="flask-outline" title="Показатель не найден" /></Screen>;
 
   const x0 = series[0]?.date;
@@ -39,6 +42,25 @@ export default function MarkerScreen() {
   return (
     <Screen>
       <Header title={b.name} subtitle={CATEGORY_LABEL[b.category]} />
+      {last && interp ? (
+        <Appear i={0} style={{ gap: 4, marginBottom: space.lg }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <T v="display" style={{ fontVariant: ['tabular-nums'] }}>
+              {last.r.valueText ?? fmt(last.r.value)}
+            </T>
+            <T v="h3" color={colors.textDim}>
+              {last.r.unit}
+            </T>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: STATUS[interp.status].color }} />
+            <T v="bodyDim" color={interp.status === 'high' || interp.status === 'low' ? colors.warning : colors.textDim}>
+              {STATUS[interp.status].label} · {formatDayShort(last.rep.date)}
+              {delta ? ` · ${delta.significant ? `${delta.text} с прошлого` : 'без изменений'}` : ''}
+            </T>
+          </View>
+        </Appear>
+      ) : null}
       <Card style={{ gap: 8 }}>
         <T v="caption">История · {unit}</T>
         <TrendChart points={points} unit={unit} band={range && range.source !== 'none' ? [range.low, range.high] : undefined} labels={series.length >= 2 ? [formatDayShort(series[0].date), formatDayShort(series[series.length - 1].date)] : undefined} emptyText="Нужно минимум 2 анализа для графика" />

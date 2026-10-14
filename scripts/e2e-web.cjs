@@ -66,7 +66,7 @@ const closeSheet = async (pg) => {
       await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
       await op.getByLabel('Как тебя зовут?').fill('Тест');
-      assert.match(await op.evaluate(() => document.body.innerText), /1 \/ 5/);
+      assert.match(await op.evaluate(() => document.body.innerText), /1 из 5/);
       for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
       assert.match(await op.evaluate(() => document.body.innerText), /вот твой старт/);
       await op.getByText('Начать с RYNJI').click();
@@ -319,17 +319,16 @@ const closeSheet = async (pg) => {
     // «Сегодня»: одно главное действие, три кольца дня и одна строка тренера — на первом экране
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    for (const l of ['Калории, открыть питание', 'Вода: добавить или уменьшить', 'Сон, чек-ин']) {
+    for (const l of ['Калории, открыть питание', 'Шаги, как рассчитана цель', 'Сон, чек-ин', 'Вода: добавить или уменьшить']) {
       const b = await page.getByLabel(l).first().boundingBox();
       assert.ok(b && b.y + b.height < 956 - 80, `${l} на первом экране`);
     }
     const coachLine = await page.getByTestId('coach-feed').boundingBox();
     assert.ok(coachLine && coachLine.y + coachLine.height < 956 - 80, 'строка тренера на первом экране');
-    // Шаги — в дневнике дня (тап по дате)
-    await page.getByLabel('Дневник: календарь дней').click();
-    await page.waitForTimeout(700);
-    assert.ok(await page.getByLabel('Шаги, как рассчитана цель').isVisible(), 'шаги в дневнике дня');
-    await closeSheet(page);
+    // Вода — компактной строкой: +250 в один тап
+    await page.getByLabel('Плюс 250 мл воды').first().click();
+    await page.waitForTimeout(300);
+    assert.match(await page.getByLabel('Вода: добавить или уменьшить').innerText(), /250 мл/);
     await shot('home');
   });
 
@@ -526,7 +525,7 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByText('Экспортировать мои данные').isVisible());
   });
 
-  await check('29. Отчёт недели и замеры доступны из «Прогресса»; данные переживают перезапуск', async () => {
+  await check('29. Отчёт недели, тело и статистика доступны из «Прогресса»; данные переживают перезапуск', async () => {
     await page.goto(`${URL}/measurements`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -537,9 +536,29 @@ const closeSheet = async (pg) => {
     await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /талия/i);
     assert.ok(await page.getByTestId('progress-story').isVisible(), 'что изменилось — одной фразой');
+    // Сила, рекорды и подробная статистика — не на первом экране, а в «Статистике»
+    let t = await page.evaluate(() => document.body.innerText);
+    assert.doesNotMatch(t, /Рабочие веса и рекорды|Расчётный максимум/);
+    assert.match(t, /% жира/, 'тело одной строкой: процент жира диапазоном');
+    await page.getByLabel('Тело: состав, фото и замеры').click();
+    await page.waitForTimeout(900);
+    t = await page.evaluate(() => document.body.innerText);
+    assert.match(await page.getByTestId('body-fat').innerText(), /\d+(,\d)?–\d+(,\d)?/);
+    assert.match(t, /по (шее|росту) и талии|прибором/, 'по свежим замерам, а не по ИМТ');
+    assert.match(t, /Талия/);
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
+    await page.getByLabel('Статистика: сила, рекорды, нагрузка').click();
+    await page.waitForTimeout(900);
+    assert.match(await page.evaluate(() => document.body.innerText), /Расчётный максимум/);
+    await page.getByText('Нагрузка', { exact: true }).last().click();
+    await page.waitForTimeout(600);
+    assert.match(await page.evaluate(() => document.body.innerText), /Что изменилось · к предыдущим 30 дням/);
+    await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
     await page.getByText('Отчёт недели', { exact: true }).click();
     await page.waitForTimeout(1000);
     assert.match(await page.evaluate(() => document.body.innerText), /вывод тренера|прошлая неделя пустая/i);
@@ -859,8 +878,11 @@ const closeSheet = async (pg) => {
       assert.match(t, /Тренировка дня|Сегодня|Тренировка выполнена/, 'главное на сегодня — крупно, без служебных подписей');
       // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
       assert.match(await page.getByLabel(/Калории, открыть питание/).first().innerText(), /ккал/, 'калории дня');
-      await page.getByLabel('Почему? Объяснение решений тренера').click();
+      // «Почему так» — в листе тренера (строка тренера на главной)
+      await page.getByTestId('coach-feed').click();
       await page.waitForTimeout(700);
+      await page.getByLabel('Почему? Объяснение решений тренера').click();
+      await page.waitForTimeout(900);
       const why = await page.getByTestId('coach-why').innerText();
       assert.match(why, /Уверенность:/);
       assert.match(why, /ккал/);
@@ -887,25 +909,49 @@ const closeSheet = async (pg) => {
       assert.ok(await page.getByText('Проверьте распознанные данные').isVisible(), 'экран проверки обязателен');
     };
     await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
-    // Любое значение можно исправить до сохранения
+    // Уверенно распознанное — компактной таблицей; любое значение можно исправить до сохранения
+    assert.equal(await page.getByLabel('Значение, строка 3').count(), 0, 'строки свёрнуты');
+    await page.getByLabel('Изменить: АЛТ').click();
+    await page.waitForTimeout(300);
     await page.getByLabel('Значение, строка 3').fill('31');
     await page.getByText('Подтвердить и сохранить').click();
     await page.waitForTimeout(1000);
-    let t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Гематокрит/);
-    assert.match(t, /31/);
+    // После сохранения — сразу отчёт по загрузке
+    let t = await page.getByTestId('lab-report').innerText();
+    assert.match(t, /Первый анализ/);
+    assert.match(t, /Вне референса/);
+    assert.match(await page.getByTestId('lab-report-list').innerText(), /ЛПНП/);
     await paste('ИНВИТРО\nДата взятия образца: 01.09.2026\nГематокрит (HCT) 48,1 % 39 - 49\nХолестерин ЛПНП 3,5 ммоль/л < 3,0 H\nАЛТ 31 Ед/л < 41');
     await page.getByText('Подтвердить и сохранить').click();
     await page.waitForTimeout(1000);
+    t = await page.getByTestId('lab-report').innerText();
+    assert.match(t, /Сравнение с анализом 1 мар/);
+    // По умолчанию — что ухудшилось относительно референса: ЛПНП выше и дальше от него
+    let list = await page.getByTestId('lab-report-list').innerText();
+    assert.match(list, /ЛПНП/);
+    assert.match(list, /дальше от референса/);
+    assert.match(list, /↑ 0,4/);
+    await page.getByLabel('Повысилось: 2').click();
+    await page.waitForTimeout(500);
+    list = await page.getByTestId('lab-report-list').innerText();
+    assert.match(list, /↑ 2,1 п\.п\./);
+    assert.match(t, /Без существенных изменений: АЛТ/);
+    await page.getByText('Таблица всех анализов').last().click();
+    await page.waitForTimeout(800);
+    const table = await page.getByTestId('lab-table').innerText();
+    assert.match(table, /48,1/);
+    assert.match(table, /46/);
+    await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    await dismiss();
     const ch = await page.getByTestId('lab-changes').innerText();
-    assert.match(ch, /Что изменилось с прошлого анализа/i);
-    assert.match(ch, /↑ 2,1 п\.п\./);
-    assert.match(ch, /↑ 0,4/);
-    await shot('labs');
+    assert.match(ch, /Последний анализ/);
+    assert.match(ch, /ухудшилось/);
     await page.getByLabel(/^Гематокрит: 48,1/).click();
     await page.waitForTimeout(900);
     t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /референс вашей лаборатории: 39 – 49/);
+    assert.match(t, /↑ 2,1 п\.п\. с прошлого/);
     await shot('lab-marker');
   });
 
@@ -1153,9 +1199,16 @@ const closeSheet = async (pg) => {
     await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /Эта неделя\s*\n?\s*\d+ из \d+/);
-    const det = page.getByLabel(/, сегодня$/);
+    assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Эта неделя');
+    assert.match(await page.evaluate(() => document.body.innerText), /\d+ из \d+/);
+    // Календарь листается: следующая неделя — план по ротации, назад — текущая
+    await page.getByLabel('Следующая неделя').click();
+    await page.waitForTimeout(600);
+    assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Следующая неделя');
+    assert.match(await page.evaluate(() => document.body.innerText), /по плану/);
+    await page.getByLabel('Предыдущая неделя').click();
+    await page.waitForTimeout(600);
+    const det = page.getByLabel(/: .+, сегодня$/);
     if (!(await det.count())) return; // день отдыха — сегодняшней тренировки нет
     await det.first().click();
     await page.waitForTimeout(1500);

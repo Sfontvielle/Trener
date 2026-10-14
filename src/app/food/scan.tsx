@@ -8,10 +8,10 @@ import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { useNutrition } from '@/stores/nutrition';
 import { FoodApiError, foodErrorText, lookupBarcode } from '@/services/foodApi';
 import { haptic } from '@/services/haptics';
-import { cameraGate, pickScanLens, ScanGate, scanZoom } from '@/features/food/scanner';
+import { barcodeCandidates, cameraGate, pickScanLens, ScanGate, scanZoom } from '@/features/food/scanner';
 import { BRAND } from '@/config/brand';
 
-type Phase = { kind: 'scan' } | { kind: 'loading'; code: string } | { kind: 'not_found'; code: string; text: string } | { kind: 'error'; code: string; text: string };
+type Phase = { kind: 'scan' } | { kind: 'loading'; code: string } | { kind: 'not_found'; code: string; text: string; name?: string } | { kind: 'error'; code: string; text: string };
 
 /**
  * Сканер штрихкодов как в системной Камере iPhone:
@@ -54,8 +54,9 @@ export default function Scan() {
 
   const lookup = async (code: string) => {
     setPhase({ kind: 'loading', code });
-    // Уже сканировали раньше — без сети
-    const cached = Object.values(useNutrition.getState().products).find((p) => p.barcode === code);
+    // Уже сканировали или создавали — без сети (по всем записям кода: UPC-A ↔ EAN-13 и т. п.)
+    const cands = barcodeCandidates(code);
+    const cached = Object.values(useNutrition.getState().products).find((p) => !!p.barcode && cands.includes(p.barcode));
     try {
       const p = cached ?? (await lookupBarcode(code));
       useNutrition.getState().cacheProduct(p);
@@ -64,7 +65,7 @@ export default function Scan() {
     } catch (e) {
       const notFound = e instanceof FoodApiError && e.kind === 'not_found';
       haptic.warning();
-      setPhase(notFound ? { kind: 'not_found', code, text: foodErrorText(e) } : { kind: 'error', code, text: foodErrorText(e) });
+      setPhase(notFound ? { kind: 'not_found', code, text: foodErrorText(e), name: e instanceof FoodApiError ? e.partial?.name : undefined } : { kind: 'error', code, text: foodErrorText(e) });
     }
   };
 
@@ -117,7 +118,7 @@ export default function Scan() {
             const best = pickScanLens(e.lenses);
             if (best && best !== lens) setLens(best);
           }}
-          barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'] }}
+          barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'itf14'] }}
           onBarcodeScanned={onScanned}
         />
       </Pressable>
@@ -158,20 +159,29 @@ export default function Scan() {
           </View>
         ) : null}
         {phase.kind === 'not_found' || phase.kind === 'error' ? (
-          <View style={[styles.card, { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <Icon name={phase.kind === 'not_found' ? 'help-circle-outline' : 'cloud-offline-outline'} size={22} color={colors.warning} />
-              <View style={{ flex: 1 }}>
-                <T v="h3">{phase.kind === 'not_found' ? 'Продукт не найден' : 'Не удалось проверить код'}</T>
-                <T v="small">
-                  {phase.text} · {phase.code}
-                </T>
-              </View>
+          // Не нашли — одно понятное главное действие и запасные варианты строками
+          <View style={[styles.card, { flexDirection: 'column', alignItems: 'stretch', gap: 12 }]} testID="scan-fallback">
+            <View style={{ gap: 2 }}>
+              <T v="h3">{phase.kind === 'error' ? 'Не удалось проверить код' : phase.name ? phase.name : 'Продукт не найден'}</T>
+              <T v="small">
+                {phase.kind === 'not_found' && phase.name ? 'Есть в базе, но без КБЖУ — добавь с этикетки за минуту' : phase.text} · {phase.code}
+              </T>
             </View>
-            {phase.kind === 'error' ? <Button title="Повторить поиск" icon="refresh" onPress={() => void lookup(phase.code)} /> : null}
-            <Button title="Создать продукт" icon="add-circle-outline" variant={phase.kind === 'error' ? 'secondary' : 'primary'} onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code } })} />
-            <Button title="Попробовать снова" icon="scan-outline" variant="secondary" onPress={retry} />
-            <Button title="Ввести штрих-код вручную" icon="keypad-outline" variant="ghost" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', enterBarcode: '1' } })} />
+            {phase.kind === 'error' ? (
+              <Button title="Повторить поиск" icon="refresh" live onPress={() => void lookup(phase.code)} />
+            ) : (
+              <Button
+                title={phase.name ? 'Добавить с этикетки' : 'Создать продукт'}
+                icon="add-circle-outline"
+                live
+                onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code, name: phase.kind === 'not_found' ? (phase.name ?? '') : '' } })}
+              />
+            )}
+            <View style={styles.links}>
+              <FallbackLink icon="search" label="Найти по названию" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '' } })} />
+              <FallbackLink icon="keypad-outline" label="Ввести код" onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', enterBarcode: '1' } })} />
+              <FallbackLink icon="scan-outline" label="Ещё раз" onPress={retry} />
+            </View>
           </View>
         ) : null}
         {phase.kind === 'scan' ? (
@@ -187,6 +197,17 @@ export default function Scan() {
   );
 }
 
+function FallbackLink({ icon, label, onPress }: { icon: React.ComponentProps<typeof Icon>['name']; label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { haptic.tap(); onPress(); }} hitSlop={6} style={({ pressed }) => [styles.link, pressed && { opacity: 0.6 }]}>
+      <Icon name={icon} size={18} color={colors.text} />
+      <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 12 }} numberOfLines={1}>
+        {label}
+      </T>
+    </Pressable>
+  );
+}
+
 const C = 26;
 const styles = themed({
   top: { position: 'absolute', left: 0, right: 0, top: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg },
@@ -199,6 +220,8 @@ const styles = themed({
   br: { right: -2, bottom: -2, borderRightWidth: 4, borderBottomWidth: 4, borderBottomRightRadius: radius.lg },
   focus: { position: 'absolute', alignSelf: 'center', top: 45, width: 80, height: 80, borderRadius: 12, borderWidth: 2, borderColor: colors.accent },
   bottom: { position: 'absolute', left: space.lg, right: space.lg, bottom: 0, gap: 10, alignItems: 'stretch' },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.lg, borderRadius: radius.xl, backgroundColor: colors.surface },
+  links: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  link: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: radius.md, backgroundColor: colors.surface2 },
   torch: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, height: 52, paddingHorizontal: 20, borderRadius: 26, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
 });

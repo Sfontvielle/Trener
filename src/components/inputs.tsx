@@ -59,6 +59,7 @@ export function NumberStepper({
   unit,
   label,
   compact,
+  inline,
   style,
 }: {
   value: number;
@@ -70,6 +71,8 @@ export function NumberStepper({
   unit?: string;
   label?: string;
   compact?: boolean;
+  /** Строкой: подпись слева, крупное значение и −/+ справа (единый вид для возраста, роста, веса) */
+  inline?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const fmt = (v: number) => (Number.isFinite(v) ? (decimals ? String(Math.round(v * 10 ** decimals) / 10 ** decimals).replace('.', ',') : String(Math.round(v))) : '');
@@ -89,10 +92,14 @@ export function NumberStepper({
   };
   const h = compact ? 40 : 48;
   return (
-    <View style={[{ gap: 6 }, style]}>
-      {label ? <T v="caption">{label}</T> : null}
-      <View style={[styles.stepper, { height: h }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Уменьшить ${label ?? ''}`} onPress={() => bump(-step)} style={[styles.stepBtn, { width: h }]} hitSlop={4}>
+    <View style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
+      {label ? (
+        <T v={inline ? 'body' : 'caption'} color={inline ? colors.textDim : undefined} style={inline ? { flex: 1 } : undefined}>
+          {label}
+        </T>
+      ) : null}
+      <View style={[styles.stepper, { height: h }, inline && styles.stepperInline]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Уменьшить ${label ?? ''}`} onPress={() => bump(-step)} style={[styles.stepBtn, { width: h }, inline && styles.stepBtnRound]} hitSlop={4}>
           <Icon name="remove" size={20} color={colors.textDim} />
         </Pressable>
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' }}>
@@ -115,11 +122,11 @@ export function NumberStepper({
             selectTextOnFocus
             selectionColor={colors.accent}
             accessibilityLabel={label}
-            style={[styles.stepInput, { width: Math.max(44, text.length * (compact ? 12 : 14) + 14) }, compact && { fontSize: 18 }]}
+            style={[styles.stepInput, { width: Math.max(44, text.length * (compact ? 12 : 14) + 14) }, compact && { fontSize: 18 }, inline && { fontSize: 24 }]}
           />
           {unit ? <T v="small">{unit}</T> : null}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Увеличить ${label ?? ''}`} onPress={() => bump(step)} style={[styles.stepBtn, { width: h }]} hitSlop={4}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Увеличить ${label ?? ''}`} onPress={() => bump(step)} style={[styles.stepBtn, { width: h }, inline && styles.stepBtnRound]} hitSlop={4}>
           <Icon name="add" size={20} color={colors.textDim} />
         </Pressable>
       </View>
@@ -208,6 +215,9 @@ const styles = themed({
     fontWeight: '500',
   },
   stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface2, borderRadius: radius.md },
+  stepperInline: { width: 188, backgroundColor: 'transparent' },
+  stepBtnRound: { borderRadius: 24, backgroundColor: colors.surface2 },
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   stepInput: { flexShrink: 1, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },

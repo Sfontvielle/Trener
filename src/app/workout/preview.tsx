@@ -1,18 +1,16 @@
 import React, { useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, space, themed } from '@/theme';
+import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, EmptyState, IconButton, T } from '@/components/ui';
 import { Ambient, Appear } from '@/components/motion';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout, useReadiness } from '@/hooks/useToday';
-import { getExercise } from '@/data/exercises';
+import { getExercise, GROUP_LABEL } from '@/data/exercises';
 import { historyFor, recommend } from '@/features/training/progression';
 import { startTodayPlanned } from '@/features/training/actions';
-import { MODE_LABEL } from '@/features/training/today';
-import { fmtWeight } from '@/utils/format';
 import { useProfile } from '@/stores/profile';
 import { scaleSets } from '@/features/training/scale';
 import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
@@ -23,7 +21,6 @@ export default function Preview() {
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const plan = usePlan((s) => s.plan);
   const sessions = useWorkouts((s) => s.sessions);
-  const unit = useProfile((s) => s.settings.weightUnit);
   const sex = useProfile((s) => s.profile?.sex);
   const tw = useTodayWorkout();
   const readiness = useReadiness();
@@ -56,29 +53,32 @@ export default function Preview() {
     <Screen>
       <Ambient height={380} />
       <Header title="" right={<IconButton name="create-outline" label="Изменить тренировку" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
-      {/* Главное — имя тренировки и одна строка параметров; ниже — одна кнопка и состав простым списком */}
-      <Appear i={0} style={{ gap: 6 }}>
-        <T v="caption">{isToday ? 'Сегодня' : 'Тренировка плана'}{isToday && tw.mode !== 'normal' ? <T v="caption" color={colors.warning}>{` · ${MODE_LABEL[tw.mode].toLowerCase()}`}</T> : null}</T>
-        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+      {/* Главное — название по центру и одна строка; ниже — одна кнопка и упражнения с мышечной группой */}
+      <Appear i={0} style={{ alignItems: 'center', gap: 6 }}>
+        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
           {tpl.name}
         </T>
-        <T v="bodyDim">
+        <T v="bodyDim" style={{ textAlign: 'center' }}>
           ~{isToday && tw.estMinutes ? tw.estMinutes : tpl.estMinutes} мин · {rows.length} упражнений · {totalSets} подходов
         </T>
-        {isToday && tw.mode !== 'normal' && tw.reason ? <T v="small">{tw.reason}</T> : null}
       </Appear>
       <Appear i={1} style={{ marginTop: space.xl }}>
         <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" live onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
       </Appear>
-      <Appear i={2} style={{ marginTop: space.xl }}>
+      <Appear i={2} style={styles.list}>
         {rows.map(({ ex, rec }, i) => (
           <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={({ pressed }) => [styles.row, i < rows.length - 1 && styles.line, pressed && { opacity: 0.6 }]}>
-            <ExerciseThumb ex={ex} size={44} />
-            <T v="body" style={{ flex: 1, fontWeight: '600' }} numberOfLines={2}>
-              {ex.name}
-              <T v="small" style={{ fontVariant: ['tabular-nums'], fontWeight: '500' }}>
-                {`\n${rec.sets} × ${rec.repMin}–${rec.repMax}${rec.weight > 0 ? ` · ${fmtWeight(rec.weight, unit)} ${unit === 'lb' ? 'lb' : 'кг'}` : ''}${rec.delta && rec.action !== 'new' && rec.action !== 'hold' ? ` · ${rec.delta}` : ''}`}
+            <ExerciseThumb ex={ex} size={52} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <T v="body" style={{ fontWeight: '700' }} numberOfLines={2}>
+                {ex.name}
               </T>
+              <T v="small" numberOfLines={1}>
+                {ex.groups.primary.map((g) => GROUP_LABEL[g]).join(' · ')}
+              </T>
+            </View>
+            <T v="small" color={colors.text} style={{ fontVariant: ['tabular-nums'], fontWeight: '600' }}>
+              {rec.sets}×{rec.repMin}–{rec.repMax}
             </T>
           </Pressable>
         ))}
@@ -92,6 +92,7 @@ export default function Preview() {
 }
 
 const styles = themed({
+  list: { marginTop: space.xl, borderRadius: radius.xl, backgroundColor: colors.surface, paddingHorizontal: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   line: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
 });

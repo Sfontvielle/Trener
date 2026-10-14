@@ -256,7 +256,7 @@ export default function Profile() {
 
       <GymSheet visible={gymOpen} onClose={() => setGymOpen(false)} />
       <Sheet visible={!!section} onClose={() => setSection(null)} title={section ? TITLES[section] : ''} footer={<Button title="Сохранить и пересчитать" icon="checkmark" size="lg" onPress={save} />}>
-        {draft && section === 'goal' ? <GoalPicker p={draft} set={set} /> : null}
+        {draft && section === 'goal' ? <GoalPicker p={draft} set={set} withRate /> : null}
         {draft && section === 'body' ? <BodySection p={draft} set={set} /> : null}
         {draft && section === 'training' ? <TrainingSection p={draft} set={set} /> : null}
         {draft && section === 'health' ? <HealthSection p={draft} set={set} /> : null}

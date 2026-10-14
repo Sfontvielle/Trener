@@ -1,11 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Animated, Platform, Pressable, ScrollView, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T } from '@/components/ui';
 import { Ring } from '@/components/charts';
-import { Ambient, Appear, Tap, type AmbientTone } from '@/components/motion';
+import { Ambient, Appear, Progress, Tap, prefersReducedMotion, type AmbientTone } from '@/components/motion';
 import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -229,27 +229,50 @@ export default function Home() {
           </Tap>
         </View>
 
-        <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onCoachWhy={() => setCoachWhyOpen(true)} onAddFood={() => setAddFood(true)} />
+        <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => setAddFood(true)} />
 
-        {/* День — три кольца: готовность, еда, вода. Подробности — по тапу */}
+        {/* День — три кольца: чек-ин, калории, шаги. Выполнено — галочка; вода — компактной строкой */}
         <Appear i={5}>
           <View style={styles.metrics}>
             <Metric
               a11y={readiness ? `Готовность ${readinessLabel(readiness).toLowerCase()} · сон, чек-ин` : 'Готовность · сон, чек-ин'}
+              label="Чек-ин"
               color={!readiness ? colors.textDim : readiness.band === 'go' ? colors.accent : readiness.band === 'reduce' ? colors.warning : colors.danger}
               progress={readiness ? READY_FILL[readiness.category ?? (readiness.band === 'go' ? 'normal' : readiness.band === 'reduce' ? 'reduced' : 'low')] : 0}
               value={readiness ? readinessLabel(readiness) : '—'}
-              sub={readiness ? (sleep ? `сон ${formatHours(sleep)}` : 'готовность') : 'чек-ин'}
+              sub={checkin ? (sleep ? `сон ${formatHours(sleep)}` : 'пройден') : '30 секунд'}
+              done={!!checkin}
               onPress={readiness ? () => setWhyOpen(true) : () => router.push('/checkin')}
             />
-            <Metric a11y={`Калории, открыть питание: ${fmtNum(nut.eaten.kcal)} из ${fmtNum(target?.kcal ?? 0)} ккал`} color={colors.fat} progress={target ? nut.eaten.kcal / target.kcal : 0} value={fmtNum(nut.eaten.kcal)} sub="ккал" onPress={() => router.push('/nutrition')} />
-            <Metric a11y="Вода: добавить или уменьшить" color={colors.protein} progress={water / waterGoal} value={waterText} sub={`вода из ${String(waterGoal / 1000).replace('.', ',')} л`} onPress={() => setWaterOpen(true)} />
+            <Metric
+              a11y={`Калории, открыть питание: ${fmtNum(nut.eaten.kcal)} из ${fmtNum(target?.kcal ?? 0)} ккал`}
+              label="Калории"
+              color={colors.fat}
+              progress={target ? nut.eaten.kcal / target.kcal : 0}
+              value={fmtNum(nut.eaten.kcal)}
+              sub={target ? `из ${fmtNum(target.kcal)}` : 'ккал'}
+              done={!!target && nut.eaten.kcal >= target.kcal * 0.95 && nut.eaten.kcal <= target.kcal * 1.08}
+              onPress={() => router.push('/nutrition')}
+            />
+            <Metric
+              a11y="Шаги, как рассчитана цель"
+              label="Шаги"
+              color={colors.stabilizerMuscle}
+              progress={health?.steps !== undefined && steps ? health.steps / steps.target : 0}
+              value={health?.steps !== undefined ? fmtNum(health.steps) : '—'}
+              sub={`из ${fmtNum(steps?.target ?? profile.stepsPerDay)}`}
+              done={health?.steps !== undefined && !!steps && health.steps >= steps.target}
+              onPress={() => setStepsOpen(true)}
+            />
           </View>
         </Appear>
-
-        {/* Тренер — одна строка: главный сигнал дня или вход в чат. Все сигналы и чат — в листе */}
         <Appear i={6}>
-          <CoachLine top={feed[0]} more={feed.length - 1} onPress={() => (feed.length ? setFeedOpen(true) : router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach'))} />
+          <WaterLine ml={water} goal={waterGoal} text={waterText} onOpen={() => setWaterOpen(true)} onAdd={() => { useNutrition.getState().addWater(d, 250); haptic.light(); }} />
+        </Appear>
+
+        {/* Тренер — одна строка: главный сигнал дня или вход; все сигналы, «почему так» и чат — в листе */}
+        <Appear i={7}>
+          <CoachLine top={feed[0]} more={feed.length - 1} onPress={() => setFeedOpen(true)} />
         </Appear>
       </ScrollView>
 
@@ -257,46 +280,45 @@ export default function Home() {
       <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">
         <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); afterModalClose(() => setDayOpen(x)); }} />
       </Sheet>
-      <Sheet visible={feedOpen} onClose={() => setFeedOpen(false)} title="От тренера" subtitle="Сигналы и предложения на сегодня — по важности">
-        <CoachFeed
-          items={feed}
-          limit={feed.length}
-          bare
-          onAction={(it, a) => {
-            setFeedOpen(false);
-            afterModalClose(() => runFeed(it, a));
-          }}
-          onDismiss={dismissFeed}
-        />
-        <Button
-          title="Спросить тренера"
-          icon="sparkles"
-          variant="secondary"
-          style={{ marginTop: space.md }}
-          onPress={() => {
-            setFeedOpen(false);
-            afterModalClose(() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach'));
-          }}
-        />
+      <Sheet visible={feedOpen} onClose={() => setFeedOpen(false)} title="От тренера" subtitle={feed.length ? 'Сигналы и предложения на сегодня — по важности' : 'Сигналов нет — всё по плану'}>
+        {feed.length ? (
+          <CoachFeed
+            items={feed}
+            limit={feed.length}
+            bare
+            onAction={(it, a) => {
+              setFeedOpen(false);
+              afterModalClose(() => runFeed(it, a));
+            }}
+            onDismiss={dismissFeed}
+          />
+        ) : null}
+        <View style={{ gap: 10, marginTop: space.md }}>
+          {coach ? (
+            <Button
+              title="Почему такой план"
+              icon="help-circle-outline"
+              variant="secondary"
+              accessibilityLabel="Почему? Объяснение решений тренера"
+              onPress={() => {
+                setFeedOpen(false);
+                afterModalClose(() => setCoachWhyOpen(true));
+              }}
+            />
+          ) : null}
+          <Button
+            title="Спросить тренера"
+            icon="sparkles"
+            variant="secondary"
+            onPress={() => {
+              setFeedOpen(false);
+              afterModalClose(() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach'));
+            }}
+          />
+        </View>
       </Sheet>
       <Sheet visible={journalOpen} onClose={() => setJournalOpen(false)} title="Дневник дня" subtitle={`${BRAND} записывает чек-ин, вес, еду и тренировку сам`}>
         <View style={{ gap: space.md }} testID="day-journal">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Шаги, как рассчитана цель"
-            onPress={() => {
-              setJournalOpen(false);
-              afterModalClose(() => setStepsOpen(true));
-            }}
-            style={styles.sheetRow}
-          >
-            <T v="body" style={{ flex: 1 }} color={colors.textDim}>
-              Шаги
-            </T>
-            <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }}>
-              {health?.steps !== undefined ? fmtNum(health.steps) : '—'} / {fmtNum(steps?.target ?? profile.stepsPerDay)}
-            </T>
-          </Pressable>
           {journal.length === 0 ? <T v="small">Пока пусто — записи появятся сами.</T> : null}
           <View>
             {journal.map((e, i) => (
@@ -429,7 +451,6 @@ function Hero({
   debrief,
   coach,
   evening,
-  onCoachWhy,
   onAddFood,
 }: {
   tw: ReturnType<typeof useTodayWorkout>;
@@ -437,7 +458,6 @@ function Hero({
   debrief: ReturnType<typeof workoutDebrief> | null;
   coach: CoachToday | null;
   evening: boolean;
-  onCoachWhy: () => void;
   onAddFood: () => void;
 }) {
   const eyebrow = (text: string, warn?: string) => (
@@ -471,17 +491,6 @@ function Hero({
     </Appear>
   );
   // Фокус тренера и «почему» — одна строка: решение дня, тап — данные и уверенность
-  const focus = coach ? (
-    <Appear i={3}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Почему? Объяснение решений тренера" onPress={() => { haptic.tap(); onCoachWhy(); }} hitSlop={6} style={({ pressed }) => [styles.focus, pressed && { opacity: 0.6 }]} testID="coach-focus">
-        <Icon name="sparkles" size={15} color={colors.accent} style={{ marginTop: 3 }} />
-        <T v="body" style={{ flex: 1, lineHeight: 22 }} color={colors.text} numberOfLines={3}>
-          {coach.focus?.what ?? 'Почему такой план на сегодня'}
-          <T v="body" color={colors.textDim}>{'  ›'}</T>
-        </T>
-      </Pressable>
-    </Appear>
-  ) : null;
   const cta = (b: React.ReactNode) => <Appear i={4} style={styles.heroCta}>{b}</Appear>;
 
   if (active) {
@@ -506,7 +515,6 @@ function Hero({
           () => router.push({ pathname: '/workout/[id]', params: { id: s.id } }),
           'Итоги тренировки',
         )}
-        {focus}
         {cta(<Button title="Добавить еду" icon="add" size="lg" live onPress={onAddFood} />)}
       </View>
     );
@@ -519,7 +527,6 @@ function Hero({
         {eyebrow('Тренировка дня', stop ? 'отдых' : tw.mode !== 'normal' ? MODE_LABEL[tw.mode].toLowerCase() : undefined)}
         {title(coach?.title ?? tw.template.name)}
         {meta(`~${tw.estMinutes} мин · ${tw.totalSets} подходов`, () => router.push({ pathname: '/workout/preview', params: { templateId: tid } }), 'Состав тренировки')}
-        {focus}
         {cta(<Button title="Начать тренировку" icon="play" size="lg" live={!stop} onPress={() => startTodayPlanned()} variant={stop ? 'secondary' : 'primary'} />)}
       </View>
     );
@@ -530,7 +537,6 @@ function Hero({
         {eyebrow('Сегодня')}
         {title('День отдыха')}
         {meta([tw.reason ?? 'Восстановление — часть плана', tw.nextWorkout ? `дальше ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''].filter(Boolean).join(' · '))}
-        {focus}
         {cta(<Button title="Добавить еду" icon="add" size="lg" live onPress={onAddFood} />)}
       </View>
     );
@@ -545,19 +551,63 @@ function Hero({
   );
 }
 
-/** Кольцо дня: прогресс цветом, значение внутри, короткая подпись. Тап — подробности или быстрое действие */
-function Metric({ a11y, color, progress, value, sub, onPress }: { a11y: string; color: string; progress: number; value: string; sub: string; onPress: () => void }) {
+/** Кольцо дня: прогресс цветом, значение внутри, название и «из цели» под ним; выполнено — галочка */
+function Metric({ a11y, label, color, progress, value, sub, done, onPress }: { a11y: string; label: string; color: string; progress: number; value: string; sub: string; done?: boolean; onPress: () => void }) {
   return (
-    <Tap accessibilityRole="button" accessibilityLabel={a11y} onPress={() => { haptic.tap(); onPress(); }} style={styles.metric} scaleTo={0.93}>
-      <Ring size={84} stroke={5} progress={Math.min(1, progress)} color={progress > 1.08 ? colors.warning : color} track={tint(color, 0.16)}>
-        <T v="body" style={{ fontWeight: '700', fontSize: 16, maxWidth: 66, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit>
-          {value}
-        </T>
-      </Ring>
-      <T v="small" style={{ fontSize: 13, marginTop: 8 }} numberOfLines={1} adjustsFontSizeToFit>
+    <Tap accessibilityRole="button" accessibilityLabel={`${a11y}${done ? ' · выполнено' : ''}`} onPress={() => { haptic.tap(); onPress(); }} style={styles.metric} scaleTo={0.93}>
+      <View>
+        <Ring size={84} stroke={5} progress={Math.min(1, progress)} color={progress > 1.08 ? colors.warning : color} track={tint(color, 0.16)}>
+          <T v="body" style={{ fontWeight: '700', fontSize: 16, maxWidth: 66, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit>
+            {value}
+          </T>
+        </Ring>
+        {done ? <DoneBadge /> : null}
+      </View>
+      <T v="small" color={colors.text} style={{ fontSize: 13, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>
+        {label}
+      </T>
+      <T v="small" style={{ fontSize: 12 }} numberOfLines={1} adjustsFontSizeToFit>
         {sub}
       </T>
     </Tap>
+  );
+}
+
+/** Галочка «выполнено» — пружиной, с короткой вспышкой */
+function DoneBadge() {
+  const [a] = useState(() => new Animated.Value(prefersReducedMotion() ? 1 : 0));
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    Animated.spring(a, { toValue: 1, useNativeDriver: Platform.OS !== 'web', speed: 12, bounciness: 14 }).start();
+  }, [a]);
+  return (
+    <Animated.View style={[styles.done, { opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }] }]} testID="metric-done">
+      <Icon name="checkmark" size={13} color={colors.onAccent} />
+    </Animated.View>
+  );
+}
+
+/** Вода — одной компактной строкой: сколько выпито, тонкая полоса, «+250» в один тап; выполнено — галочка */
+function WaterLine({ ml, goal, text, onOpen, onAdd }: { ml: number; goal: number; text: string; onOpen: () => void; onAdd: () => void }) {
+  const done = ml >= goal;
+  return (
+    <View style={styles.water}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Вода: добавить или уменьшить" onPress={() => { haptic.tap(); onOpen(); }} style={({ pressed }) => [{ flex: 1, gap: 6 }, pressed && { opacity: 0.6 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Icon name={done ? 'checkmark-circle' : 'water'} size={15} color={done ? colors.accent : colors.protein} />
+          <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+            Вода {text}
+            <T v="small">{` из ${String(goal / 1000).replace('.', ',')} л`}</T>
+          </T>
+        </View>
+        <Progress value={ml / goal} color={done ? colors.accent : colors.protein} track={tint(colors.protein, 0.14)} height={3} />
+      </Pressable>
+      <Tap accessibilityRole="button" accessibilityLabel="Плюс 250 мл воды" onPress={onAdd} style={styles.waterBtn} scaleTo={0.9} hitSlop={6}>
+        <T v="small" color={colors.text} style={{ fontWeight: '800' }}>
+          +250
+        </T>
+      </Tap>
+    </View>
   );
 }
 
@@ -646,10 +696,12 @@ const styles = themed({
   coachDot: { position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   hero: { gap: 10, marginTop: space.xxl },
   heroCta: { marginTop: space.lg },
-  focus: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: space.xs },
   metrics: { flexDirection: 'row', marginTop: space.xxl, marginHorizontal: -4 },
   metric: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 1 },
-  coachLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: space.xxl, paddingVertical: 15, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: colors.surface },
+  done: { position: 'absolute', top: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.bg },
+  water: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: space.xl, paddingVertical: 12, paddingHorizontal: space.md, borderRadius: radius.lg, backgroundColor: colors.surface },
+  waterBtn: { minWidth: 56, height: 36, borderRadius: 18, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  coachLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: space.md, paddingVertical: 15, paddingHorizontal: space.md, borderRadius: radius.pill, backgroundColor: colors.surface },
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: colors.surface2 },
   fit: { padding: 14, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 4 },
   jRow: { flexDirection: 'row', gap: 10 },

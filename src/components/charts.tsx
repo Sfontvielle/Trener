@@ -189,6 +189,26 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
   );
 }
 
+/** Мини-график динамики в строке списка: линия по значениям, последняя точка — цветом статуса */
+export function Sparkline({ values, width = 56, height = 24, color = colors.accent }: { values: number[]; width?: number; height?: number; color?: string }) {
+  if (values.length < 2) return <View style={{ width, height }} />;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const X = (i: number) => 3 + (i / (values.length - 1)) * (width - 6);
+  const Y = (v: number) => 3 + (1 - (max === min ? 0.5 : (v - min) / span)) * (height - 6);
+  const d = values.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const last = values.length - 1;
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width, height }}>
+      <Svg width={width} height={height}>
+        <Path d={d} stroke={colors.textDim} strokeOpacity={0.55} strokeWidth={1.6} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        <Circle cx={X(last)} cy={Y(values[last])} r={3} fill={color} />
+      </Svg>
+    </View>
+  );
+}
+
 /** Столбики по дням (напр. тренировки/калории за неделю) */
 export function MiniBars({ values, max, height = 48, highlightLast = true, color = colors.accent }: { values: number[]; max?: number; height?: number; highlightLast?: boolean; color?: string }) {
   const m = max ?? Math.max(1, ...values);

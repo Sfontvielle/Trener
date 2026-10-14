@@ -17,6 +17,7 @@ import { useThemeKey } from '@/hooks/useThemeKey';
 import { consumePendingNavState } from '@/features/settings/themeNav';
 import { maybeAutoSync } from '@/features/health/sync';
 import { maybeAutoBackup } from '@/services/backup';
+import { IntroSplash } from '@/components/IntroSplash';
 
 export { ErrorBoundaryView as ErrorBoundary };
 
@@ -124,6 +125,7 @@ function Gate() {
 
 export default function RootLayout() {
   const theme = useThemeKey();
+  const hydrated = useHydrated();
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
   }, [theme.key]);
@@ -135,6 +137,7 @@ export default function RootLayout() {
         <DialogHost />
       </SafeAreaProvider>
       <ThemeFade themeKey={theme.key} />
+      <IntroSplash ready={hydrated} />
     </GestureRoot>
   );
 }

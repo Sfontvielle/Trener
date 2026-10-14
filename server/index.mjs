@@ -289,6 +289,86 @@ async function extractLab({ files }) {
   return { lab: String(parsed.lab || '').slice(0, 60), date: /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : '', rows };
 }
 
+// ---------- Анализ фото прогресса ----------
+// Визуальная, приблизительная оценка для тренировок: процент жира диапазоном, отстающие группы, зоны с запасом
+// жира и акценты. Не медицина и не оценка внешности. Числа замеров считает приложение и присылает в контексте.
+const BODY_ZONES = ['belly', 'sides', 'hips', 'chest', 'shoulders', 'back', 'arms', 'legs', 'glutes'];
+
+const BODY_SYSTEM = `Ты оцениваешь фото прогресса пользователя фитнес-приложения RYNJI, чтобы помочь с тренировками. Оценка визуальная и приблизительная.
+Правила:
+- Процент жира — диапазоном шириной 3–6 п.п. (bodyFatLow–bodyFatHigh). Если по фото оценить нельзя (одежда скрывает силуэт, плохой свет, неудачный ракурс) — оба 0 и quality = "poor".
+- lagging — мышечные группы, которые визуально отстают в пропорциях; fatZones — где заметен запас жира; focus — зоны для акцента в тренировках и почему. Только зоны из списка, максимум 3 в каждом, коротко (до 80 символов).
+- Жир локально не сжигается: fatZones описывают, где он заметен, а focus — про мышцы, не про «сжигание» жира в зоне.
+- strengths — до 3 сильных сторон (что уже хорошо развито).
+- summary — 1–2 предложения: главный вывод и один практический шаг (тренировки, питание без крайностей).
+- Пиши по-русски, на «ты», нейтрально и уважительно: без оценок привлекательности, без стыда, без сравнения с другими людьми.
+- Не ставь диагнозов, не рассуждай о болезнях и гормонах, не советуй препараты, жёсткие диеты и обезвоживание.
+- Не идентифицируй человека и не комментируй лицо, татуировки и личные особенности.
+- Если на фото нет человека в спортивной или открытой одежде, человек выглядит несовершеннолетним, или фото интимного характера — quality = "poor", пустые списки, нули, summary пустой; в qualityNote — короткая нейтральная причина.
+- В qualityNote — совет, как снять точнее (если нужно), иначе пустая строка.
+- Учитывай замеры и профиль из контекста; если фото и замеры расходятся, опирайся на фото, но не выходи за разумные пределы.`;
+
+const zoneList = (key) => ({
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['zone', key],
+    properties: { zone: { type: 'string', enum: BODY_ZONES }, [key]: { type: 'string' } },
+  },
+});
+
+const BODY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['quality', 'qualityNote', 'bodyFatLow', 'bodyFatHigh', 'summary', 'strengths', 'lagging', 'fatZones', 'focus'],
+  properties: {
+    quality: { type: 'string', enum: ['good', 'fair', 'poor'] },
+    qualityNote: { type: 'string' },
+    bodyFatLow: { type: 'number', description: 'нижняя граница, %; 0 — нельзя оценить' },
+    bodyFatHigh: { type: 'number', description: 'верхняя граница, %; 0 — нельзя оценить' },
+    summary: { type: 'string' },
+    strengths: { type: 'array', items: { type: 'string' } },
+    lagging: zoneList('note'),
+    fatZones: zoneList('note'),
+    focus: zoneList('why'),
+  },
+};
+
+const POSE_LABEL = { front: 'спереди', side: 'сбоку', back: 'сзади' };
+
+async function analyzeBodyPhotos({ photos, context }) {
+  if (!Array.isArray(photos) || photos.length === 0 || photos.length > 3) throw Object.assign(new Error('photos: 1–3'), { status: 400 });
+  const content = [];
+  for (const [i, p] of photos.entries()) {
+    const mediaType = String(p?.mediaType || '');
+    const data = String(p?.data || '');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mediaType) || !data) throw Object.assign(new Error('unsupported file'), { status: 400 });
+    content.push({ type: 'text', text: `Фото ${i + 1}: ${POSE_LABEL[p?.pose] ?? 'ракурс не указан'}${p?.date ? `, ${String(p.date).slice(0, 10)}` : ''}` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data } });
+  }
+  content.push({ type: 'text', text: `<context>\n${String(context || '').slice(0, 4000)}\n</context>\nОцени фото прогресса по правилам.` });
+
+  const stream = client.beta.messages.stream({
+    model: MODEL,
+    max_tokens: 8000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: BODY_SYSTEM,
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: BODY_SCHEMA } },
+    messages: [{ role: 'user', content }],
+  });
+  const resp = await stream.finalMessage();
+  if (resp.stop_reason === 'refusal') return { quality: 'poor', qualityNote: 'Не удалось оценить эти фото', bodyFatLow: 0, bodyFatHigh: 0, summary: '', strengths: [], lagging: [], fatZones: [], focus: [] };
+  if (resp.stop_reason === 'max_tokens') throw Object.assign(new Error('truncated'), { status: 502 });
+  try {
+    // Приложение ещё раз проверяет ответ (parsePhotoAnalysis): зоны, границы процента, длину текстов
+    return JSON.parse(textOf(resp));
+  } catch {
+    throw Object.assign(new Error('bad model output'), { status: 502 });
+  }
+}
+
 function apiError(e) {
   if (e instanceof Anthropic.RateLimitError) return [429, 'rate_limited'];
   if (e instanceof Anthropic.AuthenticationError) return [500, 'server_auth'];
@@ -304,10 +384,11 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== 'POST') return send(res, 404, { error: 'not_found' });
   if (APP_KEY && req.headers['x-form-key'] !== APP_KEY) return send(res, 401, { error: 'unauthorized' });
   try {
-    const body = await readBody(req, req.url === '/v1/labs/extract' ? 30_000_000 : 400_000);
+    const body = await readBody(req, req.url === '/v1/labs/extract' || req.url === '/v1/body/analyze' ? 30_000_000 : 400_000);
     if (req.url === '/v1/coach') return send(res, 200, await callModel(body));
     if (req.url === '/v1/summarize') return send(res, 200, await summarize(body));
     if (req.url === '/v1/labs/extract') return send(res, 200, await extractLab(body));
+    if (req.url === '/v1/body/analyze') return send(res, 200, await analyzeBodyPhotos(body));
     return send(res, 404, { error: 'not_found' });
   } catch (e) {
     const [status, code] = apiError(e);

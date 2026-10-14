@@ -1,5 +1,5 @@
 import type { ISODate, LabReport, LabResult, Sex } from '@/types';
-import { BIOMARKER_BY_ID, type Biomarker } from './catalog';
+import { BIOMARKER_BY_ID, CATEGORY_ORDER, type Biomarker, type LabCategory } from './catalog';
 import { toCanonical } from './normalize';
 
 /**
@@ -82,6 +82,8 @@ export function markerSeries(reports: LabReport[], markerId: string): SeriesPoin
 }
 
 export interface Change {
+  /** Результат текущего анализа, к которому относится изменение */
+  resultId?: string;
   markerId?: string;
   name: string;
   date: ISODate;
@@ -132,11 +134,11 @@ export function compareWithPrevious(reports: LabReport[], reportId?: string): { 
       }
     }
     if (!prevPoint) {
-      items.push({ markerId: r.markerId, name: b?.name ?? r.name, date: cur.date, value: c.value, unit: c.unit, direction: 'new', significant: false, text: 'первое измерение' });
+      items.push({ resultId: r.id, markerId: r.markerId, name: b?.name ?? r.name, date: cur.date, value: c.value, unit: c.unit, direction: 'new', significant: false, text: 'первое измерение' });
       continue;
     }
     const ch = describeChange(b, prevPoint.value, c.value);
-    items.push({ markerId: r.markerId, name: b?.name ?? r.name, date: cur.date, prevDate: prevPoint.date, value: c.value, prev: prevPoint.value, unit: c.unit, delta: Math.round((c.value - prevPoint.value) * 100) / 100, ...ch });
+    items.push({ resultId: r.id, markerId: r.markerId, name: b?.name ?? r.name, date: cur.date, prevDate: prevPoint.date, value: c.value, prev: prevPoint.value, unit: c.unit, delta: Math.round((c.value - prevPoint.value) * 100) / 100, ...ch });
   }
   // Сначала существенные изменения
   items.sort((a, b) => Number(b.significant) - Number(a.significant));
@@ -212,4 +214,128 @@ export function healthFlags(reports: LabReport[], sex?: Sex): { markerId?: strin
     out.push({ markerId: r.markerId, name: b?.name ?? r.name, level: lvl, text: findings.find((f) => f.level === lvl)!.text, date });
   }
   return out.sort((a, b) => (a.level === 'urgent' ? -1 : 0) - (b.level === 'urgent' ? -1 : 0));
+}
+
+/**
+ * Отчёт по загрузке: каждый показатель нового анализа против прошлого значения того же показателя.
+ *   • rose / fell — существенный рост / снижение (isSignificant);
+ *   • outOfRange — сейчас выше или ниже референса;
+ *   • improved / worsened — ОТНОСИТЕЛЬНО РЕФЕРЕНСА ЛАБОРАТОРИИ (оба значения сравниваются с текущим диапазоном):
+ *     вернулся в диапазон / ближе к нему — «улучшилось», вышел из диапазона / дальше от него — «ухудшилось».
+ *     Внутри диапазона рост или снижение не оцениваются: это не «лучше» и не «хуже».
+ * Это не медицинская оценка и не повод что-то менять в приёме препаратов — только сравнение чисел с бланком.
+ */
+export type Verdict = 'improved' | 'worsened' | 'neutral';
+
+export interface ReportItem extends Change {
+  status: LabStatus;
+  verdict: Verdict;
+  /** Короткое пояснение: «вышел за референс», «вернулся в референс», «ближе к референсу»… */
+  reason?: string;
+  /** Значения показателя до этой даты включительно (одна единица) — для мини-графика */
+  series: number[];
+}
+
+export interface LabComparison {
+  reportId: string;
+  date: ISODate;
+  lab?: string;
+  prevDate?: ISODate;
+  items: ReportItem[];
+  rose: ReportItem[];
+  fell: ReportItem[];
+  outOfRange: ReportItem[];
+  improved: ReportItem[];
+  worsened: ReportItem[];
+  stable: ReportItem[];
+  first: ReportItem[];
+}
+
+/** Насколько значение вне диапазона (доля от границы); 0 — внутри */
+export function outside(value: number, low?: number, high?: number): number {
+  if (high !== undefined && value > high) return (value - high) / Math.max(Math.abs(high), 1e-9);
+  if (low !== undefined && value < low) return (low - value) / Math.max(Math.abs(low), 1e-9);
+  return 0;
+}
+
+export function verdictOf(prev: number, cur: number, range: { low?: number; high?: number }, significant: boolean): { verdict: Verdict; reason?: string } {
+  if (range.low === undefined && range.high === undefined) return { verdict: 'neutral' };
+  const a = outside(prev, range.low, range.high);
+  const b = outside(cur, range.low, range.high);
+  if (a === 0 && b === 0) return { verdict: 'neutral' };
+  if (a === 0) return { verdict: 'worsened', reason: 'вышел за референс' };
+  if (b === 0) return { verdict: 'improved', reason: 'вернулся в референс' };
+  if (!significant) return { verdict: 'neutral' };
+  // Перескок через весь диапазон (был выше — стал ниже) — отклонение сохраняется
+  const side = (v: number) => (range.high !== undefined && v > range.high ? 1 : -1);
+  if (side(prev) !== side(cur)) return { verdict: 'worsened', reason: 'отклонение в другую сторону' };
+  return b < a ? { verdict: 'improved', reason: 'ближе к референсу' } : { verdict: 'worsened', reason: 'дальше от референса' };
+}
+
+export function labComparison(reports: LabReport[], reportId?: string, sex?: Sex): LabComparison | null {
+  const sorted = [...reports].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt - b.createdAt));
+  const cur = reportId ? sorted.find((r) => r.id === reportId) : sorted[sorted.length - 1];
+  if (!cur) return null;
+  const upto = sorted.slice(0, sorted.indexOf(cur) + 1);
+  const { items: changes } = compareWithPrevious(sorted, cur.id);
+  const items: ReportItem[] = changes.map((ch) => {
+    const r = cur.results.find((x) => x.id === ch.resultId)!;
+    const status = statusOf(r, sex);
+    const series = ch.markerId ? markerSeries(upto, ch.markerId).filter((p) => p.unit === ch.unit).map((p) => p.value) : [ch.value];
+    const base = { ...ch, status, series };
+    if (ch.prev === undefined) return { ...base, verdict: 'neutral', reason: status === 'high' || status === 'low' ? STATUS_REASON[status] : undefined };
+    const range = rangeOf(r, sex);
+    const v = verdictOf(ch.prev, ch.value, range, ch.significant);
+    return { ...base, ...v, reason: v.reason ?? (status === 'high' || status === 'low' ? STATUS_REASON[status] : undefined) };
+  });
+  const prevDate = items.map((i) => i.prevDate).filter((d): d is ISODate => !!d).sort().pop();
+  const weight = (i: ReportItem) => (i.prev ? Math.abs((i.value - i.prev) / (i.prev || 1)) : 0);
+  const by = (f: (i: ReportItem) => boolean) => items.filter(f).sort((a, b) => weight(b) - weight(a));
+  return {
+    reportId: cur.id,
+    date: cur.date,
+    lab: cur.lab,
+    prevDate,
+    items,
+    rose: by((i) => i.direction === 'up'),
+    fell: by((i) => i.direction === 'down'),
+    outOfRange: by((i) => i.status === 'high' || i.status === 'low'),
+    improved: by((i) => i.verdict === 'improved'),
+    worsened: by((i) => i.verdict === 'worsened'),
+    stable: items.filter((i) => i.direction === 'same'),
+    first: items.filter((i) => i.direction === 'new'),
+  };
+}
+
+const STATUS_REASON = { high: 'выше референса', low: 'ниже референса' } as const;
+const CATEGORY_RANK = Object.fromEntries(CATEGORY_ORDER.map((c, i) => [c, i])) as Record<LabCategory, number>;
+
+/** Таблица всех анализов: показатели × даты (новые слева), значение и статус в каждой ячейке */
+export interface LabTable {
+  columns: { id: string; date: ISODate; lab?: string }[];
+  rows: { key: string; markerId?: string; name: string; unit: string; cells: ({ value: number; text: string; status: LabStatus } | null)[] }[];
+}
+
+export function labTable(reports: LabReport[], sex?: Sex): LabTable {
+  const cols = [...reports].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
+  const rows = new Map<string, LabTable['rows'][number]>();
+  cols.forEach((rep, ci) => {
+    for (const r of rep.results) {
+      const key = r.markerId ?? `name:${r.name.toLowerCase()}`;
+      const c = comparable(r);
+      let row = rows.get(key);
+      if (!row) {
+        row = { key, markerId: r.markerId, name: (r.markerId && BIOMARKER_BY_ID[r.markerId]?.name) || r.name, unit: c.unit, cells: cols.map(() => null) };
+        rows.set(key, row);
+      }
+      // Другая единица без пересчёта — в эту строку не смешиваем
+      if (c.unit !== row.unit || row.cells[ci]) continue;
+      row.cells[ci] = { value: c.value, text: fmt(c.value), status: statusOf(r, sex) };
+    }
+  });
+  const order = (k?: string) => {
+    const b = k ? BIOMARKER_BY_ID[k] : undefined;
+    return b ? CATEGORY_RANK[b.category] : 99;
+  };
+  return { columns: cols.map((r) => ({ id: r.id, date: r.date, lab: r.lab })), rows: [...rows.values()].sort((a, b) => order(a.markerId) - order(b.markerId)) };
 }

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { FoodProduct, Macros } from '@/types';
+import { barcodeCandidates } from '@/features/food/scanner';
 
 /**
  * Поиск продуктов в Open Food Facts (открытая база, есть русские продукты).
@@ -13,6 +14,8 @@ export class FoodApiError extends Error {
   constructor(
     public kind: 'offline' | 'timeout' | 'bad_response' | 'not_found',
     message: string,
+    /** Продукт есть в базе, но без КБЖУ: название и бренд — чтобы создать его с этикетки в один шаг */
+    public partial?: { name: string; brand?: string },
   ) {
     super(message);
   }
@@ -95,14 +98,32 @@ function round1(x: number) {
   return Math.round(x * 10) / 10;
 }
 
-export async function lookupBarcode(code: string): Promise<FoodProduct> {
-  const clean = code.replace(/\D/g, '');
-  if (clean.length < 8) throw new FoodApiError('not_found', 'Некорректный штрихкод');
-  const data = await fetchJson(`${OFF}/api/v2/product/${clean}.json?fields=${FIELDS}`);
-  if (!data || data.status === 0 || !data.product) throw new FoodApiError('not_found', 'Штрихкод не найден в базе');
-  const p = mapOffProduct({ ...data.product, code: clean });
-  if (!p) throw new FoodApiError('not_found', 'В базе нет КБЖУ для этого продукта');
-  return p;
+/**
+ * Поиск по штрихкоду: пробуем все записи одного кода (UPC-A ↔ EAN-13, GTIN-14, UPC-E — barcodeCandidates),
+ * при сбое сети — один повтор. Продукт без КБЖУ — not_found с названием (partial), чтобы дополнить с этикетки.
+ */
+export async function lookupBarcode(code: string, type?: string): Promise<FoodProduct> {
+  const list = barcodeCandidates(code, type);
+  if (!list.length) throw new FoodApiError('not_found', 'Штрихкод прочитан с ошибкой — попробуй ещё раз');
+  let partial: FoodApiError['partial'];
+  for (const c of list) {
+    let data: any;
+    try {
+      data = await fetchJson(`${OFF}/api/v2/product/${c}.json?fields=${FIELDS}`).catch(async (e) => {
+        if (e instanceof FoodApiError && (e.kind === 'timeout' || e.kind === 'bad_response')) return fetchJson(`${OFF}/api/v2/product/${c}.json?fields=${FIELDS}`);
+        throw e;
+      });
+    } catch (e) {
+      if (e instanceof FoodApiError && e.kind === 'not_found') continue;
+      throw e;
+    }
+    if (!data || data.status === 0 || !data.product) continue;
+    const p = mapOffProduct({ ...data.product, code: list[0] });
+    if (p) return p;
+    const name = String(data.product.product_name_ru || data.product.product_name || data.product.generic_name || '').trim();
+    if (name && !partial) partial = { name, brand: brandOf(data.product.brands) };
+  }
+  throw new FoodApiError('not_found', partial ? `«${partial.name}» есть в базе, но без КБЖУ` : 'Штрихкода нет в базе', partial);
 }
 
 /**
