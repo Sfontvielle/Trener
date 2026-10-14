@@ -66,7 +66,7 @@ const closeSheet = async (pg) => {
       await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
       await op.getByLabel('Как тебя зовут?').fill('Тест');
-      assert.match(await op.evaluate(() => document.body.innerText), /1 \/ 5/);
+      assert.match(await op.evaluate(() => document.body.innerText), /1 из 5/);
       for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
       assert.match(await op.evaluate(() => document.body.innerText), /вот твой старт/);
       await op.getByText('Начать с RYNJI').click();

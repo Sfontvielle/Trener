@@ -3,9 +3,10 @@ import { Pressable, View } from 'react-native';
 import type { Equipment, GoalType, HealthProfile, UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Banner, Chip, Icon, T } from '@/components/ui';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Field, NumberStepper } from '@/components/inputs';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
-import { GOAL_LABEL, defaultRate } from '@/features/nutrition/targets';
+import { GOAL_LABEL, GOAL_SHORT, defaultRate } from '@/features/nutrition/targets';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 import { EMPTY_HEALTH, healthOf, healthTraining } from './health';
@@ -17,11 +18,14 @@ import { bodyTrend } from '@/features/science/bodyTrend';
 import { goalPresets, presetForRate, rateWarning, recommendedPreset } from '@/features/coach/decisions/goals';
 
 export const GOAL_DESC: Record<GoalType, string> = {
-  bulk: 'Профицит калорий, упор на прогрессию весов',
-  cut: 'Дефицит калорий, сохраняем силу и мышцы',
-  recomp: 'Вес ≈ стабилен: меньше жира, больше мышц',
-  maintain: 'Держим форму и результаты',
+  bulk: 'больше мышц и силы',
+  cut: 'меньше жира, сила остаётся',
+  recomp: 'мышцы вместо жира',
+  maintain: 'держать форму',
 };
+
+/** Стартовые дни недели для N тренировок (0 = понедельник) — как в генераторе плана */
+export const DEFAULT_DAYS: Record<number, number[]> = { 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
 
 export const GYM_EQUIPMENT: Equipment[] = ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'pullupbar', 'ezbar', 'smith', 'kettlebell', 'band'];
 export const HOME_DEFAULT: Equipment[] = ['dumbbell', 'bench', 'pullupbar', 'band'];
@@ -51,7 +55,7 @@ export function defaultProfile(): UserProfile {
     stepsPerDay: 7000,
     workStyle: 'desk',
     preferredTime: 'evening',
-    preferredDays: [],
+    preferredDays: [0, 1, 3, 4],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -69,7 +73,10 @@ function Opt<V extends string | number>({ items, value, onChange }: { items: { v
   );
 }
 
-export function GoalPicker({ p, set }: { p: UserProfile; set: Setter }) {
+const GOAL_ICON: Record<GoalType, React.ComponentProps<typeof MaterialCommunityIcons>['name']> = { bulk: 'arm-flex', cut: 'fire', recomp: 'swap-horizontal', maintain: 'scale-balance' };
+
+/** Цель — четыре варианта крупно, без лишнего текста. Темп выбирается отдельно (RatePresets) */
+export function GoalPicker({ p, set, withRate }: { p: UserProfile; set: Setter; withRate?: boolean }) {
   return (
     <View style={{ gap: 10 }}>
       {(Object.keys(GOAL_LABEL) as GoalType[]).map((g) => {
@@ -79,21 +86,25 @@ export function GoalPicker({ p, set }: { p: UserProfile; set: Setter }) {
             key={g}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}
+            accessibilityLabel={GOAL_SHORT[g]}
             onPress={() => {
               haptic.tap();
               set({ goal: g, ratePctPerWeek: g === 'bulk' || g === 'cut' ? goalPresets(g, p.level, p.weightKg).find((x) => x.id === recommendedPreset({ goal: g, level: p.level, sex: p.sex, heightCm: p.heightCm, weightKg: p.weightKg }).id)!.ratePct : defaultRate(g, p.level) });
             }}
-            style={[styles.goal, active && { borderColor: colors.accent, backgroundColor: colors.accentDim }]}
+            style={({ pressed }) => [styles.goal, active && styles.goalOn, pressed && { opacity: 0.8 }]}
           >
+            <MaterialCommunityIcons name={GOAL_ICON[g]} size={24} color={active ? colors.accent : colors.textDim} />
             <View style={{ flex: 1 }}>
-              <T v="h3">{GOAL_LABEL[g]}</T>
-              <T v="small">{GOAL_DESC[g]}</T>
+              <T v="h3">{GOAL_SHORT[g]}</T>
+              <T v="small" style={{ fontSize: 13 }}>
+                {GOAL_DESC[g]}
+              </T>
             </View>
             <View style={[styles.radio, active && { borderColor: colors.accent }]}>{active ? <View style={styles.radioDot} /> : null}</View>
           </Pressable>
         );
       })}
-      {p.goal === 'bulk' || p.goal === 'cut' ? <RatePresets p={p} set={set} /> : null}
+      {withRate && (p.goal === 'bulk' || p.goal === 'cut') ? <RatePresets p={p} set={set} /> : null}
     </View>
   );
 }
@@ -102,7 +113,7 @@ export function GoalPicker({ p, set }: { p: UserProfile; set: Setter }) {
  * Темп цели — пресеты (Консервативный / Сбалансированный / Более быстрый). Рекомендуемый зависит от массы, талии,
  * опыта и истории. Свой темп можно выбрать — при агрессивном RYNJI объясняет последствия, но не запрещает.
  */
-function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
+export function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
   const metrics = useBody((s) => s.metrics);
   const weights = useBody((s) => s.weights);
   const [custom, setCustom] = useState(false);
@@ -127,7 +138,7 @@ function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
               haptic.tap();
               set({ ratePctPerWeek: x.ratePct });
             }}
-            style={[styles.goal, { paddingVertical: 10 }, active && { borderColor: colors.accent, backgroundColor: colors.accentDim }]}
+            style={[styles.goal, { paddingVertical: 12 }, active && styles.goalOn]}
           >
             <View style={{ flex: 1, gap: 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -142,24 +153,21 @@ function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
                   </View>
                 ) : null}
               </View>
-              <T v="small" style={{ fontSize: 12, fontVariant: ['tabular-nums'] }} color={colors.text}>
+              <T v="small" style={{ fontSize: 12, fontVariant: ['tabular-nums'] }} color={active ? colors.text : colors.textDim}>
                 {p.goal === 'bulk' ? '+' : '−'}
-                {String(x.kgPerWeek).replace('.', ',')} кг/нед · {p.goal === 'bulk' ? '+' : '−'}
-                {String(Math.round(x.kgPerMonth * 10) / 10).replace('.', ',')} кг/мес · ~{x.kcalPerDay} ккал/день
+                {String(x.kgPerWeek).replace('.', ',')} кг/нед · ~{x.kcalPerDay} ккал/день
               </T>
-              <T v="small" style={{ fontSize: 12 }}>
-                {x.note}
-              </T>
+              {active ? (
+                <T v="small" style={{ fontSize: 12 }}>
+                  {x.note}
+                </T>
+              ) : null}
             </View>
             <View style={[styles.radio, active && { borderColor: colors.accent }]}>{active ? <View style={styles.radioDot} /> : null}</View>
           </Pressable>
         );
       })}
-      {rec.why ? (
-        <T v="small" style={{ fontSize: 12 }}>
-          Почему рекомендуем: {rec.why}
-        </T>
-      ) : null}
+
       {custom || !current ? (
         <Opt
           items={(p.goal === 'bulk' ? [0.15, 0.25, 0.35, 0.5, 0.75, 1.0] : [0.4, 0.6, 0.8, 1.0, 1.25]).map((v) => ({ v, label: `${String(v).replace('.', ',')}%` }))}
@@ -167,9 +175,9 @@ function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
           onChange={(v) => set({ ratePctPerWeek: v })}
         />
       ) : (
-        <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setCustom(true)}>
-          <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
-            Свой темп
+        <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setCustom(true)} style={{ alignSelf: 'flex-start' }}>
+          <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+            Свой темп ›
           </T>
         </Pressable>
       )}
@@ -181,34 +189,94 @@ function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
         </View>
       ) : null}
       <T v="small" style={{ fontSize: 11 }}>
-        Это стартовая точка, а не гарантия: дальше {BRAND} сверяет темп с трендом веса, талией и силовыми и предлагает корректировки.
+        Старт, а не гарантия: дальше {BRAND} подстроит темп по тренду веса и силовым.
       </T>
+    </View>
+  );
+}
+
+/** Пол — две карточки с иконками */
+export function SexPicker({ value, onChange }: { value: UserProfile['sex']; onChange: (v: UserProfile['sex']) => void }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 12 }}>
+      {(['male', 'female'] as const).map((sx) => {
+        const active = value === sx;
+        return (
+          <Pressable
+            key={sx}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={sx === 'male' ? 'Мужчина' : 'Женщина'}
+            onPress={() => {
+              haptic.tap();
+              onChange(sx);
+            }}
+            style={({ pressed }) => [styles.sexCard, active && styles.goalOn, pressed && { transform: [{ scale: 0.97 }] }]}
+          >
+            <MaterialCommunityIcons name={sx === 'male' ? 'human-male' : 'human-female'} size={52} color={active ? colors.accent : colors.textDim} />
+            <T v="body" style={{ fontWeight: '700' }} color={active ? colors.text : colors.textDim}>
+              {sx === 'male' ? 'Мужчина' : 'Женщина'}
+            </T>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
 export function BodySection({ p, set }: { p: UserProfile; set: Setter }) {
   return (
-    <View style={{ gap: space.md }}>
-      <View style={{ gap: 6 }}>
-        <T v="caption">Пол</T>
-        <Opt items={[{ v: 'male', label: 'Мужской' }, { v: 'female', label: 'Женский' }]} value={p.sex} onChange={(v) => set({ sex: v })} />
+    <View style={{ gap: space.lg }}>
+      <SexPicker value={p.sex} onChange={(v) => set({ sex: v })} />
+      <View style={styles.rows}>
+        <NumberStepper inline label="Возраст" unit="лет" value={p.age} onChange={(v) => set({ age: Math.round(v) })} min={14} max={90} />
+        <View style={styles.rowLine} />
+        <NumberStepper inline label="Рост" unit="см" value={p.heightCm} onChange={(v) => set({ heightCm: Math.round(v) })} min={130} max={230} />
+        <View style={styles.rowLine} />
+        <NumberStepper inline label="Вес" unit="кг" value={p.weightKg} onChange={(v) => set({ weightKg: v })} step={0.5} decimals={1} min={35} max={250} />
       </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <NumberStepper label="Возраст" value={p.age} onChange={(v) => set({ age: Math.round(v) })} min={14} max={90} style={{ flex: 1 }} />
-        <NumberStepper label="Рост" unit="см" value={p.heightCm} onChange={(v) => set({ heightCm: Math.round(v) })} min={130} max={230} style={{ flex: 1 }} />
+    </View>
+  );
+}
+
+/**
+ * Дни тренировок — выбор вручную: тап по дню включает/выключает его, число тренировок в неделю = выбранные дни (2–6).
+ */
+export function DayPicker({ p, set }: { p: UserProfile; set: Setter }) {
+  const days = p.preferredDays.length === p.daysPerWeek && p.preferredDays.length ? p.preferredDays : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
+  const toggle = (d: number) => {
+    const on = days.includes(d);
+    const next = on ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b);
+    if (next.length < 2 || next.length > 6) {
+      haptic.warning?.();
+      return;
+    }
+    haptic.tap();
+    set({ preferredDays: next, daysPerWeek: next.length });
+  };
+  return (
+    <View style={{ gap: 10 }} testID="day-picker">
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {WEEKDAYS_SHORT.map((w, i) => {
+          const on = days.includes(i);
+          return (
+            <Pressable key={w} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`${w}: ${on ? 'тренировка' : 'отдых'}`} onPress={() => toggle(i)} hitSlop={4} style={({ pressed }) => [styles.day, on && styles.dayOn, pressed && { transform: [{ scale: 0.92 }] }]}>
+              <T v="body" style={{ fontWeight: '700' }} color={on ? colors.bg : colors.textDim}>
+                {w}
+              </T>
+            </Pressable>
+          );
+        })}
       </View>
-      <NumberStepper label="Вес" unit="кг" value={p.weightKg} onChange={(v) => set({ weightKg: v })} step={0.5} decimals={1} min={35} max={250} />
+      <T v="small">
+        {days.length} {days.length < 5 ? 'тренировки' : 'тренировок'} в неделю · {days.map((d) => WEEKDAYS_SHORT[d]).join(', ')}
+      </T>
     </View>
   );
 }
 
 export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Setter; compact?: boolean }) {
   const toggleEq = (e: Equipment) => set({ equipment: p.equipment.includes(e) ? p.equipment.filter((x) => x !== e) : [...p.equipment, e] });
-  const toggleDay = (d: number) => {
-    const next = p.preferredDays.includes(d) ? p.preferredDays.filter((x) => x !== d) : [...p.preferredDays, d];
-    set({ preferredDays: next.sort() });
-  };
   return (
     <View style={{ gap: space.md }}>
       <View style={{ gap: 6 }}>
@@ -224,26 +292,15 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
         />
       </View>
       {compact ? null : <NumberStepper label="Стаж тренировок, лет" value={p.trainingYears} onChange={(v) => set({ trainingYears: v })} step={0.5} decimals={1} min={0} max={40} />}
-      <View style={{ gap: 6 }}>
-        <T v="caption">Сколько дней в неделю реально можешь</T>
-        <Opt items={[2, 3, 4, 5, 6].map((v) => ({ v, label: String(v) }))} value={p.daysPerWeek} onChange={(v) => set({ daysPerWeek: v, preferredDays: p.preferredDays.length === v ? p.preferredDays : [] })} />
+      <View style={{ gap: 8 }}>
+        <T v="caption">Дни тренировок</T>
+        <DayPicker p={p} set={set} />
       </View>
       {compact ? null : (
       <>
       <View style={{ gap: 6 }}>
         <T v="caption">Длительность тренировки</T>
         <Opt items={[45, 60, 75, 90].map((v) => ({ v, label: `${v} мин` }))} value={[45, 60, 75, 90].reduce((a, b) => (Math.abs(b - p.sessionMinutes) < Math.abs(a - p.sessionMinutes) ? b : a))} onChange={(v) => set({ sessionMinutes: v })} />
-      </View>
-      <View style={{ gap: 6 }}>
-        <T v="caption">Дни тренировок (необязательно)</T>
-        <View style={styles.wrap}>
-          {WEEKDAYS_SHORT.map((w, i) => (
-            <Chip key={w} label={w} active={p.preferredDays.includes(i)} onPress={() => toggleDay(i)} style={{ minWidth: 46, justifyContent: 'center' }} />
-          ))}
-        </View>
-        <T v="small" style={{ fontSize: 12 }} color={p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? colors.warning : colors.textDim}>
-          {p.preferredDays.length && p.preferredDays.length !== p.daysPerWeek ? `Выбрано ${p.preferredDays.length}, нужно ${p.daysPerWeek} — иначе ${BRAND} расставит дни сам.` : `Если не выбрать — ${BRAND} равномерно распределит тренировки.`}
-        </T>
       </View>
       </>
       )}
@@ -259,9 +316,7 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
         />
       </View>
       {compact ? (
-        <T v="small" style={{ fontSize: 12 }}>
-          {p.location === 'gym' ? 'Считаем, что в зале есть штанга, гантели, тренажёры и блоки.' : 'Дома: гантели, турник и резинки.'} Уточнить оборудование можно позже.
-        </T>
+        p.goal === 'bulk' || p.goal === 'cut' ? <RatePresets p={p} set={set} /> : null
       ) : (
       <View style={{ gap: 6 }}>
         <T v="caption">Доступное оборудование</T>
@@ -462,7 +517,13 @@ export function PickerField({ label, value, onChange, category, placeholder, hin
 
 const styles = themed({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface },
+  goal: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 16, paddingHorizontal: space.lg, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'transparent' },
+  goalOn: { borderColor: colors.accent, backgroundColor: colors.accentDim },
+  sexCard: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, height: 132, borderRadius: radius.xl, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: 'transparent' },
+  rows: { borderRadius: radius.lg, backgroundColor: colors.surface, paddingHorizontal: space.md },
+  rowLine: { height: 0.5, backgroundColor: colors.borderStrong },
+  day: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 },
+  dayOn: { backgroundColor: colors.text },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   recBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.accent },
