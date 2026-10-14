@@ -499,9 +499,15 @@ const closeSheet = async (pg) => {
     const copyDay = page.getByText('Скопировать весь вчерашний день');
     const copyMeal = page.getByLabel(/^Скопировать .* со вчера$/);
     assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
+    // Вода могла быть добавлена раньше (на «Сегодня») — проверяем прибавку, а не абсолютное значение
+    const water = async () => {
+      const m = (await page.evaluate(() => document.body.innerText)).match(/Вода (\d+(?:,\d+)?) (мл|л)/);
+      return m ? Math.round(Number(m[1].replace(',', '.')) * (m[2] === 'л' ? 1000 : 1)) : 0;
+    };
+    const before = await water();
     await page.getByLabel('Плюс 250 мл воды').click();
     await page.waitForTimeout(300);
-    assert.match(await page.evaluate(() => document.body.innerText), /Вода 250 мл/);
+    assert.equal(await water(), before + 250);
     await shot('nutrition');
   });
 
