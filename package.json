@@ -8,6 +8,7 @@
     "@kingstinct/react-native-healthkit": "^16.0.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "^58.0.19",
+    "expo-apple-authentication": "~58.0.2",
     "expo-camera": "~58.0.12",
     "expo-constants": "~58.0.13",
     "expo-dev-client": "~58.0.15",
@@ -52,7 +53,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts scripts/profiles-test.ts scripts/journal-test.ts scripts/body-test.ts",
+    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts scripts/profiles-test.ts scripts/journal-test.ts scripts/body-test.ts scripts/account-test.ts",
     "server": "node --env-file-if-exists=server/.env server/index.mjs",
     "server:install": "npm --prefix server install",
     "lint": "expo lint"

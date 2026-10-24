@@ -27,6 +27,8 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { GymSheet } from '@/features/training/GymSheet';
 import { BRAND } from '@/config/brand';
+import { useAccount } from '@/stores/account';
+import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -67,6 +69,8 @@ export default function Profile() {
   const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
   const [section, setSection] = useState<Section>(null);
   const [gymOpen, setGymOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const apple = useAccount((s) => s.apple);
   const [draft, setDraft] = useState<UserProfile | null>(null);
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
@@ -162,6 +166,8 @@ export default function Profile() {
 
       <SectionTitle title="Настройки" />
       <Card style={{ paddingVertical: 4, marginBottom: space.md }}>
+        <Row label="Аккаунт" value={accountSummary(apple)} onPress={() => setAccountOpen(true)} />
+        <Divider />
         <Row label="Оформление" value={`${settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Системная' : 'Тёмная'} тема`} onPress={() => router.push('/appearance')} />
         <Divider />
         <Row label="Apple Health" value={healthSummary} onPress={() => router.push('/health')} />
@@ -250,7 +256,7 @@ export default function Profile() {
           confirm('Удалить все данные?', 'Профиль, план, тренировки, питание, замеры и память тренера будут удалены с устройства без возможности восстановления (кроме ранее экспортированного файла).', 'Удалить всё', async () => {
             await resetAllStores();
             await clearAllData();
-            router.replace('/onboarding');
+            router.replace('/welcome');
           }, true)
         }
       />
@@ -260,6 +266,7 @@ export default function Profile() {
       </T>
 
       <GymSheet visible={gymOpen} onClose={() => setGymOpen(false)} />
+      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
       <Sheet visible={!!section} onClose={() => setSection(null)} title={section ? TITLES[section] : ''} footer={<Button title="Сохранить и пересчитать" icon="checkmark" size="lg" onPress={save} />}>
         {draft && section === 'goal' ? <GoalPicker p={draft} set={set} withRate /> : null}
         {draft && section === 'body' ? <BodySection p={draft} set={set} /> : null}
