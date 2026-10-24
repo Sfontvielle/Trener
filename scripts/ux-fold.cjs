@@ -101,7 +101,7 @@ function measure({ fold }) {
   await page.evaluate((p) => localStorage.setItem('form.profile', JSON.stringify({ state: { profile: p, settings: {} }, version: 1 })), PROFILE);
   await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
-  await page.getByText('Тренировки', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await page.getByText('Сохранить и пересчитать').click();
   await page.waitForTimeout(1200);
   await page.goto(`${URL}/data`, { waitUntil: 'networkidle' });

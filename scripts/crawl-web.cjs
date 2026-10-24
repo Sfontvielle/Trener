@@ -37,7 +37,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   await page.evaluate((p) => localStorage.setItem('form.profile', JSON.stringify({ state: { profile: p, settings: {} }, version: 1 })), PROFILE);
   await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
-  await page.getByText('Тренировки', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await page.getByText('Сохранить и пересчитать').click();
   await page.waitForTimeout(1200);
   await page.goto(`${URL}/data`, { waitUntil: 'networkidle' });
@@ -155,10 +155,20 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await p2.evaluate(() => localStorage.clear()).catch(() => {});
       await p2.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
       await p2.evaluate(() => localStorage.clear());
-      await p2.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
+      await p2.goto(URL, { waitUntil: 'networkidle' });
       await p2.waitForTimeout(1200);
-      await p2.getByLabel('Как тебя зовут?').fill('Тест');
-      for (let i = 0; i < 4; i++) { await p2.getByText('Далее', { exact: true }).click(); await p2.waitForTimeout(300); }
+      // Приветствие → без входа → 5 этапов анкеты
+      await p2.getByText('Начать', { exact: true }).click(); await p2.waitForTimeout(600);
+      await p2.getByText('Продолжить без входа', { exact: true }).click(); await p2.waitForTimeout(800);
+      const next = async () => { await p2.getByRole('button', { name: 'Далее', exact: true }).click(); await p2.waitForTimeout(300); };
+      await p2.getByLabel('Как тебя зовут?').fill('Тест'); await next();
+      await p2.getByLabel('Мужчина').click();
+      await p2.getByLabel('Возраст, лет').fill('29'); await p2.getByLabel('Рост, см').fill('180'); await p2.getByLabel('Текущий вес, кг').fill('80'); await next();
+      await p2.getByLabel('Набор массы').click(); await next();
+      await p2.getByLabel('Средний', { exact: true }).click();
+      for (const d of ['Пн', 'Ср', 'Пт']) await p2.getByLabel(`${d}: отдых`).click();
+      await p2.getByText('60 мин', { exact: true }).click(); await p2.getByText('Зал', { exact: true }).click(); await next();
+      await p2.getByLabel('Сидячая', { exact: true }).click(); await p2.getByText('5–9 тыс', { exact: true }).click(); await p2.getByText('7–8 ч', { exact: true }).click(); await p2.getByText('Нет', { exact: true }).click(); await next();
       await p2.getByText('Начать с RYNJI').click();
       await p2.waitForTimeout(1500);
       await p2.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });

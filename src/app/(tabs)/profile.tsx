@@ -55,7 +55,7 @@ const TRAINING_TIMES = [[7, 0], [12, 0], [17, 0], [18, 0], [19, 0]] as const;
 const hm = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`;
 
 type Section = 'goal' | 'body' | 'training' | 'health' | 'life' | 'food' | null;
-const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', health: 'Здоровье и особенности', life: 'Активность', food: 'Питание и предпочтения' };
+const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', health: 'Здоровье и особенности', life: 'Образ жизни и сон', food: 'Питание и предпочтения' };
 
 export default function Profile() {
   const profile = useProfile((s) => s.profile);
@@ -151,7 +151,7 @@ export default function Profile() {
         <Divider />
         <Row label="Предпочтения и ограничения" value={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
         <Divider />
-        <Row label="Активность" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа`} onPress={() => open('life')} />
+        <Row label="Образ жизни и сон" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа${profile.sleepHours ? ` · сон ~${String(profile.sleepHours).replace('.', ',')} ч` : ''}`} onPress={() => open('life')} />
         <Divider />
         <Row label="Питание" value={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
       </Card>

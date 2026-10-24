@@ -52,7 +52,8 @@ export default function CheckIn() {
   const set = (patch: Partial<DailyCheckIn>) => setC((x) => ({ ...x, ...patch }));
   const checkins = useCheckins((s) => s.byDate);
   const healthDays = useHealth((s) => s.days);
-  const r = useMemo(() => computeReadiness(c, { sessions, sleepBaseline: sleepBaseline(d, checkins, healthDays) }), [c, sessions, d, checkins, healthDays]);
+  const usualSleep = useProfile((s) => s.profile?.sleepHours);
+  const r = useMemo(() => computeReadiness(c, { sessions, sleepBaseline: sleepBaseline(d, checkins, healthDays, usualSleep) }), [c, sessions, d, checkins, healthDays, usualSleep]);
   const cat = r.category ?? readinessCategory(r.score, r.band);
   const catColor = cat === 'high' || cat === 'normal' ? colors.accent : cat === 'reduced' ? colors.warning : colors.danger;
   const tw = useTodayWorkout();

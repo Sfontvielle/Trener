@@ -47,6 +47,50 @@ const openFeed = async (pg) => {
   await pg.waitForTimeout(800);
   return pg.getByTestId('coach-feed-list').innerText();
 };
+/** Первый запуск: приветствие → «Продолжить без входа» → 5 этапов анкеты (каждый ответ — вручную) → старт */
+const passQuestionnaire = async (pg, name = 'Тест') => {
+  const body = () => pg.evaluate(() => document.body.innerText);
+  const next = async () => { await pg.getByRole('button', { name: 'Далее', exact: true }).click(); await pg.waitForTimeout(400); };
+  await pg.goto(URL, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(1500);
+  assert.match(await body(), /Тренировки под твои цели\./);
+  await pg.getByText('Начать', { exact: true }).click();
+  await pg.waitForTimeout(800);
+  assert.match(await body(), /данные пока хранятся только на этом iPhone/i);
+  await pg.getByText('Продолжить без входа', { exact: true }).click();
+  await pg.waitForTimeout(1000);
+  assert.match(await body(), /1 из 5/);
+  await pg.getByLabel('Как тебя зовут?').fill(name);
+  await next();
+  assert.equal(await pg.getByLabel('Возраст, лет').inputValue(), '', 'возраст не подставлен');
+  assert.equal(await pg.getByLabel('Текущий вес, кг').inputValue(), '', 'вес не подставлен');
+  await pg.getByLabel(PROFILE.sex === 'female' ? 'Женщина' : 'Мужчина').click();
+  await pg.getByLabel('Возраст, лет').fill('17');
+  await pg.waitForTimeout(200);
+  assert.match(await body(), /с 18 лет/);
+  await pg.getByLabel('Возраст, лет').fill(String(PROFILE.age));
+  await pg.getByLabel('Рост, см').fill(String(PROFILE.heightCm));
+  await pg.getByLabel('Текущий вес, кг').fill(String(PROFILE.weightKg).replace('.', ','));
+  await next();
+  assert.match(await body(), /Набор массы[\s\S]*Сушка[\s\S]*Рекомпозиция[\s\S]*Поддержание/);
+  assert.doesNotMatch(await body(), /Целевой вес|срок/i, 'целевой вес и срок не спрашиваем');
+  await pg.getByLabel(PROFILE.goal === 'cut' ? 'Сушка' : PROFILE.goal === 'recomp' ? 'Рекомпозиция' : PROFILE.goal === 'maintain' ? 'Поддержание' : 'Набор массы').click();
+  await next();
+  await pg.getByLabel('Средний', { exact: true }).click();
+  for (const d of ['Пн', 'Ср', 'Пт']) await pg.getByLabel(`${d}: отдых`).click();
+  await pg.getByText('60 мин', { exact: true }).click();
+  await pg.getByText('Зал', { exact: true }).click();
+  await next();
+  await pg.getByLabel('Сидячая', { exact: true }).click();
+  await pg.getByText('5–9 тыс', { exact: true }).click();
+  await pg.getByText('7–8 ч', { exact: true }).click();
+  await pg.getByText('Нет', { exact: true }).click();
+  await next();
+  assert.match(await body(), /вот твой старт/);
+  await pg.getByText('Начать с RYNJI').click();
+  await pg.waitForTimeout(1500);
+};
+
 const closeSheet = async (pg) => {
   await pg.getByLabel('Закрыть').last().click();
   await pg.waitForTimeout(600);
@@ -62,19 +106,13 @@ const closeSheet = async (pg) => {
     const octx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
     const op = await octx.newPage();
     pages.push(op);
-    await check('0. Короткий онбординг (5 шагов) → «Дополни профиль: здоровье» в ленте → ограничения сразу превращаются в правила', async () => {
-      await op.goto(`${URL}/onboarding`, { waitUntil: 'networkidle' });
-      await op.waitForTimeout(1500);
-      await op.getByLabel('Как тебя зовут?').fill('Тест');
-      assert.match(await op.evaluate(() => document.body.innerText), /1 из 5/);
-      for (let i = 0; i < 4; i++) { await op.getByText('Далее', { exact: true }).click(); await op.waitForTimeout(350); }
-      assert.match(await op.evaluate(() => document.body.innerText), /вот твой старт/);
-      await op.getByText('Начать с RYNJI').click();
-      await op.waitForTimeout(1500);
-      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('coach-feed').isVisible()), 'после онбординга — главная');
-      // Остальное — позже: лента предлагает заполнить здоровье (строка тренера → лист со всеми сигналами)
-      assert.match(await openFeed(op), /Дополни профиль: здоровье/);
-      await op.getByLabel('Заполнить: Дополни профиль: здоровье и ограничения').click();
+    await check('0. Приветствие → вход (без Apple ID в браузере) → анкета 5 этапов без подставленных значений → главная; здоровье — правила', async () => {
+      await passQuestionnaire(op);
+      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('coach-feed').isVisible()), 'после анкеты — главная');
+      // Остальное — позже: лента предлагает рассказать о еде (строка тренера → лист со всеми сигналами)
+      assert.match(await openFeed(op), /Дополни профиль: что любишь есть/);
+      await closeSheet(op);
+      await op.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
       assert.ok(await op.getByText('Здоровье и особенности').last().isVisible(), 'открыт раздел здоровья');
       await op.getByLabel('Хронические ограничения', { exact: true }).fill('протрузия L5, гипертония');
@@ -159,7 +197,7 @@ const closeSheet = async (pg) => {
   await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
   // План и КБЖУ создаёт само приложение: Профиль → Тренировки → «Сохранить и пересчитать»
-  await page.getByText('Тренировки', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await page.getByText('Сохранить и пересчитать').click();
   await page.waitForTimeout(1200);
   // Демо-история — в Профиль → Данные и конфиденциальность → Дополнительно

@@ -30,15 +30,15 @@ export function categoryForScore(score: number): ReadinessCategory {
   return score >= 85 ? 'high' : score >= 75 ? 'normal' : score >= 45 ? 'reduced' : 'low';
 }
 
-/** Личная норма сна: медиана за 14 дней до даты (чек-ины и Apple Health), нужно ≥5 ночей */
-export function sleepBaseline(date: ISODate, checkins: Record<string, DailyCheckIn>, health?: Record<string, HealthDay>): number | undefined {
+/** Личная норма сна: медиана за 14 дней до даты (чек-ины и Apple Health), нужно ≥5 ночей; до этого — обычный сон из анкеты */
+export function sleepBaseline(date: ISODate, checkins: Record<string, DailyCheckIn>, health?: Record<string, HealthDay>, usual?: number): number | undefined {
   const vals: number[] = [];
   for (let i = 1; i <= 14; i++) {
     const d = addDays(date, -i);
     const h = checkins[d]?.sleepHours ?? health?.[d]?.sleepHours;
     if (h && h > 2) vals.push(h);
   }
-  return vals.length >= 5 ? Math.round(median(vals) * 100) / 100 : undefined;
+  return vals.length >= 5 ? Math.round(median(vals) * 100) / 100 : usual;
 }
 
 /** Сон в минутах из чек-ина: новое поле или пересчёт из старого sleepHours (миграция «на чтении») */

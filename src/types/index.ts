@@ -60,6 +60,8 @@ export interface UserProfile {
   activity: ActivityLevel;
   stepsPerDay: number;
   workStyle: WorkStyle;
+  /** Обычный сон, часов (из анкеты). Норма сна, пока не набралось ≥5 ночей чек-инов или Apple Health */
+  sleepHours?: number;
   preferredTime: TrainingTime;
   /** Предпочтительные дни тренировок, 0 = Пн … 6 = Вс */
   preferredDays: number[];
