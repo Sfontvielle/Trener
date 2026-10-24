@@ -3,7 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Header, Screen } from '@/components/Screen';
+import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Appear } from '@/components/motion';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
@@ -71,15 +71,18 @@ export default function Profile() {
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
-  // Переход с главной («Дополни профиль»): сразу открыть нужный раздел
+  // Переход с главной («Дополни профиль»): сразу открыть нужный раздел. Профиль — вкладка и не размонтируется,
+  // поэтому помним последний обработанный раздел, а не «уже открывали»
   const { edit } = useLocalSearchParams<{ edit?: string }>();
-  const opened = useRef(false);
+  const handled = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (opened.current || !profile || !edit || !(edit in TITLES)) return;
-    opened.current = true;
+    if (!profile || !edit || !(edit in TITLES) || handled.current === edit) return;
+    handled.current = edit;
     const t = setTimeout(() => {
       setDraft({ ...profile });
       setSection(edit as Exclude<Section, null>);
+      router.setParams({ edit: undefined });
+      handled.current = undefined;
     }, 300);
     return () => clearTimeout(t);
   }, [edit, profile]);
@@ -111,8 +114,10 @@ export default function Profile() {
   const set = (patch: Partial<UserProfile>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
   return (
-    <Screen keyboard>
-      <Header title="Профиль" />
+    <Screen keyboard tabBar>
+      <T v="h1" style={{ marginBottom: space.sm }}>
+        Профиль
+      </T>
       {/* Кто ты — крупно, без карточки; дальше — короткие строки разделов (значения — внутри) */}
       <Appear i={0} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: space.sm }}>
         <View style={styles.avatar}>

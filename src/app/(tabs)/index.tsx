@@ -177,7 +177,6 @@ export default function Home() {
   if (!profile) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   const now = new Date();
   const mode = dayMode(now.getHours(), !!doneToday);
-  const firstName = profile.name.split(' ')[0] || 'атлет';
   const target = nut.target;
   const checkin = checkins[d];
   const sleep = checkin?.sleepHours ?? health?.sleepHours;
@@ -215,18 +214,13 @@ export default function Home() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Ambient tone={tone} />
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl }} showsVerticalScrollIndicator={false}>
-        {/* Шапка: дата (открывает дневник дня и календарь) и профиль */}
+        {/* Шапка: дата (открывает дневник дня и календарь). Профиль — нижняя вкладка */}
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setJournalOpen(true)} hitSlop={10} style={{ flex: 1 }}>
             <T v="caption" numberOfLines={1}>
               {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
             </T>
           </Pressable>
-          <Tap accessibilityRole="button" accessibilityLabel="Профиль" onPress={() => router.push('/profile')} style={styles.headBtn} scaleTo={0.9} hitSlop={4}>
-            <T v="body" style={{ fontWeight: '700' }} color={colors.text}>
-              {firstName.charAt(0).toUpperCase()}
-            </T>
-          </Tap>
         </View>
 
         <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => setAddFood(true)} />

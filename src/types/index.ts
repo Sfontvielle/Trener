@@ -554,7 +554,11 @@ export interface WorkoutSession {
   status: 'active' | 'completed' | 'discarded';
   /** Активная тренировка: какое упражнение открыто (сохраняется — восстанавливается после перезапуска) */
   currentIndex?: number;
+  /** Цвет, выбранный пользователем для своей тренировки (ключ WORKOUT_COLORS); нет — цвет по типу тренировки */
+  color?: WorkoutColor;
 }
+
+export type WorkoutColor = 'lime' | 'blue' | 'orange' | 'violet' | 'pink' | 'cyan';
 
 /** Сгенерированная/собранная, но ещё не начатая тренировка */
 export interface WorkoutDraft {
@@ -565,6 +569,8 @@ export interface WorkoutDraft {
   templateId?: ID;
   exercises: PlannedExercise[];
   createdAt: number;
+  /** Цвет своей тренировки */
+  color?: WorkoutColor;
 }
 
 // ─── Nutrition ──────────────────────────────────────────────────────────────

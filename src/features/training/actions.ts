@@ -78,7 +78,7 @@ export function startDraft(draft: WorkoutDraft) {
       ctx: { sessions: ws.sessions, customs: ws.customExercises, band: readiness?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() },
       readinessScore: readiness?.score,
     });
-    useWorkouts.getState().start(s);
+    useWorkouts.getState().start(draft.color ? { ...s, color: draft.color } : s);
     useWorkouts.getState().setDraft(null);
     haptic.success();
     askRestPermission();
@@ -93,7 +93,7 @@ export function startDraft(draft: WorkoutDraft) {
 export function repeatSession(s: WorkoutSession) {
   const planned = repeatPlanned(s);
   if (!planned.length) return;
-  startDraft({ id: uid('d_'), name: s.name, focus: s.focus, source: 'custom', exercises: planned, createdAt: Date.now() });
+  startDraft({ id: uid('d_'), name: s.name, focus: s.focus, source: 'custom', exercises: planned, createdAt: Date.now(), color: s.color });
 }
 
 /** Тренировка из выбранных упражнений (от тренера или «Тренировать сейчас» на карточке упражнения) */
@@ -129,7 +129,7 @@ export function openGenerated(minutes: number, focus: GenFocus, quick = false) {
 }
 
 export function openCustomBuilder() {
-  useWorkouts.getState().setDraft({ id: uid('d_'), name: 'Своя тренировка', focus: '', source: 'custom', exercises: [], createdAt: Date.now() });
+  useWorkouts.getState().setDraft({ id: uid('d_'), name: 'Своя тренировка', focus: '', source: 'custom', exercises: [], createdAt: Date.now(), color: 'lime' });
   router.push('/workout/builder');
 }
 

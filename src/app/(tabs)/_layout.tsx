@@ -6,7 +6,6 @@ import { colors, themed } from '@/theme';
 import { Icon, T, type IconName } from '@/components/ui';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { TrainingHub } from '@/features/training/TrainingHub';
-import { useUi } from '@/stores/ui';
 import { useWorkouts } from '@/stores/workouts';
 import { haptic } from '@/services/haptics';
 import { GlassSurface } from '@/components/Glass';
@@ -16,6 +15,7 @@ const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName
   training: { label: 'Тренировки', icon: 'barbell-outline', iconActive: 'barbell' },
   nutrition: { label: 'Питание', icon: 'nutrition-outline', iconActive: 'nutrition' },
   progress: { label: 'Прогресс', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
+  profile: { label: 'Профиль', icon: 'person-circle-outline', iconActive: 'person-circle' },
 };
 
 /**
@@ -24,7 +24,6 @@ const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName
  */
 function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const openHub = useUi((s) => s.openHub);
   const hasActive = useWorkouts((s) => !!s.active);
   const focusedKey = state.routes[state.index]?.key;
   // Порядок — как объявлены вкладки ниже (TABS); маршрут без описания в TABS не показываем
@@ -39,7 +38,7 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         key={r.key}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
-        accessibilityLabel={meta.label}
+        accessibilityLabel={r.name === 'training' && hasActive ? `${meta.label}, идёт тренировка` : meta.label}
         onPress={() => {
           const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
           if (!focused && !ev.defaultPrevented) {
@@ -49,7 +48,11 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         }}
         style={styles.item}
       >
-        <Icon name={focused ? meta.iconActive : meta.icon} size={23} color={focused ? colors.text : colors.muted} />
+        <View>
+          <Icon name={focused ? meta.iconActive : meta.icon} size={23} color={focused ? colors.text : colors.muted} />
+          {/* Идёт тренировка — точка на вкладке «Тренировки» */}
+          {r.name === 'training' && hasActive ? <View style={styles.dot} testID="active-workout-dot" /> : null}
+        </View>
         <T v="small" style={{ fontSize: 10.5, fontWeight: '700', color: focused ? colors.text : colors.muted }} numberOfLines={1}>
           {meta.label}
         </T>
@@ -57,24 +60,10 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
     );
   };
   return (
-    // iOS 26 — «жидкое стекло», иначе полупрозрачная панель в цветах темы
+    // iOS 26 — «жидкое стекло», иначе полупрозрачная панель в цветах темы. Пять равных вкладок, без «+» по центру:
+    // начать или запланировать тренировку — «+» в правом верхнем углу вкладки «Тренировки»
     <GlassSurface style={[styles.bar, { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]} fallback={colors.tabBar} testID="tab-bar">
-      {routes.slice(0, 2).map((r) => item(r))}
-      <View style={styles.centerWrap}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Тренировка: начать, сгенерировать или собрать"
-          onPress={() => {
-            haptic.light();
-            openHub();
-          }}
-          style={({ pressed }) => [styles.plus, pressed && { transform: [{ scale: 0.94 }] }]}
-        >
-          <Icon name="add" size={30} color={colors.text} />
-          {hasActive ? <View style={styles.dot} /> : null}
-        </Pressable>
-      </View>
-      {routes.slice(2).map((r) => item(r))}
+      {routes.map((r) => item(r))}
     </GlassSurface>
   );
 }
@@ -87,6 +76,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="training" />
         <Tabs.Screen name="nutrition" />
         <Tabs.Screen name="progress" />
+        <Tabs.Screen name="profile" />
       </Tabs>
       <TrainingHub />
     </>
@@ -104,16 +94,5 @@ const styles = themed({
     borderTopColor: colors.borderStrong,
   },
   item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 6 },
-  centerWrap: { width: 76, alignItems: 'center' },
-  // «+» — спокойная кнопка: лайм на экране принадлежит главному действию, а не меню
-  plus: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.surface3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  dot: { position: 'absolute', top: 4, right: 4, width: 11, height: 11, borderRadius: 6, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.surface3 },
+  dot: { position: 'absolute', top: -2, right: -6, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg },
 });
