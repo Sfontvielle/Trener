@@ -133,14 +133,31 @@ export function cameraGate(perm: { granted: boolean; canAskAgain: boolean } | nu
  * Какую камеру выбрать. На iPhone 13 Pro и новее основная широкоугольная камера (её expo-camera
  * берёт по умолчанию) не фокусируется ближе ~20 см, а штрихкод держат на 8–15 см — отсюда «мыло».
  * Виртуальные камеры (Triple / Dual Wide) сами переключаются на сверхширик с макро-фокусом вблизи —
- * так работает и системная Камера iPhone. Имена — localizedName устройств AVFoundation.
+ * так работает и системная Камера iPhone. С SDK 58 expo-camera отдаёт объективы объектами: выбираем по
+ * устойчивому deviceType (AVCaptureDevice.DeviceType), локализованное имя — только запасной вариант.
  */
-const LENS_PRIORITY = ['Back Triple Camera', 'Back Dual Wide Camera', 'Back Dual Camera', 'Back Camera'];
+export interface LensLike {
+  deviceType: string;
+  localizedName?: string;
+}
 
-export function pickScanLens(available: string[]): string | undefined {
-  for (const name of LENS_PRIORITY) if (available.includes(name)) return name;
+const LENS_PRIORITY: [deviceType: string, name: string][] = [
+  ['AVCaptureDeviceTypeBuiltInTripleCamera', 'Back Triple Camera'],
+  ['AVCaptureDeviceTypeBuiltInDualWideCamera', 'Back Dual Wide Camera'],
+  ['AVCaptureDeviceTypeBuiltInDualCamera', 'Back Dual Camera'],
+  ['AVCaptureDeviceTypeBuiltInWideAngleCamera', 'Back Camera'],
+];
+
+/** Возвращает deviceType для selectedLens */
+export function pickScanLens(available: LensLike[]): string | undefined {
+  for (const [type, name] of LENS_PRIORITY) {
+    const hit = available.find((l) => l.deviceType === type && !/front/i.test(l.localizedName ?? '')) ?? available.find((l) => l.localizedName === name);
+    if (hit) return hit.deviceType;
+  }
   return undefined;
 }
+
+const VIRTUAL = new Set(['AVCaptureDeviceTypeBuiltInTripleCamera', 'AVCaptureDeviceTypeBuiltInDualWideCamera']);
 
 /**
  * Начальный zoom (0..1 в API expo-camera, фактор = max^zoom). Виртуальная камера на factor 1 показывает
@@ -148,6 +165,6 @@ export function pickScanLens(available: string[]): string | undefined {
  * Для одиночной широкоугольной камеры — лёгкое приближение, чтобы телефон держали дальше мин. дистанции.
  */
 export function scanZoom(lens: string | undefined): number {
-  if (lens === 'Back Triple Camera' || lens === 'Back Dual Wide Camera') return 0.14;
+  if (lens && VIRTUAL.has(lens)) return 0.14;
   return 0.06;
 }

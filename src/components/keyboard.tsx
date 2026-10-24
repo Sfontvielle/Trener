@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, TextInput, type KeyboardEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollView, type View } from 'react-native';
+import { Keyboard, Platform, TextInput, type KeyboardEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance, type ViewInstance } from 'react-native';
 
 /**
  * Поле ввода всегда над клавиатурой — без нативных зависимостей (работает в Expo Go, iOS и Android edge-to-edge).
@@ -33,8 +33,8 @@ function focusedInput(): Focusable {
 }
 
 export function useKeyboardAwareScroll() {
-  const scrollRef = useRef<ScrollView>(null);
-  const rootRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const rootRef = useRef<ViewInstance>(null);
   const offset = useRef(0);
   const kbTop = useRef<number | null>(null);
   const [pad, setPad] = useState(0);

@@ -1,6 +1,6 @@
 # RYNJI — персональный тренер, питание и восстановление
 
-Нативное iPhone-приложение на **React Native + Expo SDK 57 + TypeScript** (Expo Router). Local-first: все данные
+Нативное iPhone-приложение на **React Native 0.88 + Expo SDK 58 + TypeScript** (Expo Router). Local-first: все данные
 пользователя хранятся на устройстве, тренер работает на телефоне без сервера и настроек.
 
 Название приложения задаётся в одном месте — `src/config/brand.ts` (и `"name"` в `app.json` для иконки).
@@ -14,8 +14,8 @@
 ## Быстрый старт (Windows)
 
 ```bash
-npm install
-npx expo start            # QR-код → открыть в Expo Go на iPhone
+git pull && npm install   # после обновления SDK — обязательно, чтобы версии пакетов совпали с Expo Go
+npx expo start --go       # QR-код → Expo Go на iPhone (без --go откроется режим dev-сборки)
 npx expo start --web      # web-превью в браузере (узкое окно / режим iPhone в DevTools)
 ```
 
@@ -97,6 +97,11 @@ npx eas-cli@latest build --platform ios --profile production  # TestFlight / App
 ```
 
 Mac не нужен — сборка идёт в облаке EAS.
+
+Expo Go из App Store поддерживает только последнюю версию SDK (сейчас 58). Если Expo Go пишет «Project is
+incompatible with this version of Expo Go», проект отстал от SDK — обновите его (`npx expo install expo@latest`,
+затем `npx expo install --fix`) или пользуйтесь dev-сборкой (ниже): она не зависит от версии Expo Go.
+В Expo Go недоступен HealthKit — приложение работает без него.
 
 ### Apple Health (development build)
 

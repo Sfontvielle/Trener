@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, Platform, View } from 'react-native';
 import { Stack, router, useNavigationContainerRef, useSegments } from 'expo-router';
+import { CommonActions, type NavigationState } from 'expo-router/react-navigation';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureRoot } from '@/components/gestures';
@@ -57,7 +58,8 @@ function Gate() {
     const restore = () => {
       if (!nav.isReady() && tries++ < 20) return void setTimeout(restore, 30);
       try {
-        nav.resetRoot(state as never);
+        // SDK 58: resetRoot удалён — сбрасываем корень полным сохранённым состоянием (stale: false обязателен)
+        nav.dispatch(CommonActions.reset({ ...(state as NavigationState), stale: false }));
       } catch {
         /* остаёмся на главной */
       }

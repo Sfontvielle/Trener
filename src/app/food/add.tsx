@@ -171,7 +171,7 @@ export default function AddFood() {
               </T>
               <Button title="Добавить вручную" size="sm" variant="secondary" onPress={() => setCustomOpen(true)} />
             </View>
-          ) : null
+          ) : undefined
         }
       />
       <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal || undefined} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />

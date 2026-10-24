@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from 'react-native';
 import { colors, radius, themed } from '@/theme';
 import { T } from './ui';
 import { haptic } from '@/services/haptics';
@@ -13,7 +13,7 @@ const VISIBLE = 5;
  * при переходе через деление — лёгкий тактильный отклик. Поддерживает VoiceOver (adjustable).
  */
 export function Wheel({ values, value, onChange, format = String, width = 84, label, testID }: { values: number[]; value: number; onChange: (v: number) => void; format?: (v: number) => string; width?: number; label: string; testID?: string }) {
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   const live = useRef({ idx: Math.max(0, values.indexOf(value)), timer: 0 as unknown as ReturnType<typeof setTimeout>, dragging: false });
   const [shown, setShown] = useState(Math.max(0, values.indexOf(value)));
 
