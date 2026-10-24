@@ -12,6 +12,7 @@ import {
   TextStyle,
   View,
   ViewStyle,
+  type ScrollViewInstance,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, space, type, TOUCH, themed } from '@/theme';
@@ -51,7 +52,7 @@ export function T({ v = 'body', color, style, children, ...rest }: TextProps & {
   const max = MAX_SCALE[v] ?? 1.4;
   const st: StyleProp<TextStyle> = [type[v] as TextStyle, color ? { color } : null, style];
   return (
-    <Text {...rest} style={SIM_SCALE > 1 ? simulate(StyleSheet.flatten(st), Math.min(SIM_SCALE, max)) : st} maxFontSizeMultiplier={max}>
+    <Text {...rest} style={SIM_SCALE > 1 ? simulate(StyleSheet.flatten(st) ?? {}, Math.min(SIM_SCALE, max)) : st} maxFontSizeMultiplier={max}>
       {children}
     </Text>
   );
@@ -239,7 +240,7 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
   // Подложка выбранной «пилюли» плавно переезжает к новой (пружина), а не перескакивает
   const [ind] = useState(() => ({ x: new Animated.Value(0), w: new Animated.Value(0), o: new Animated.Value(0) }));
   // Прокручиваемый ряд держит выбранную «пилюлю» в поле зрения (переход по ссылке, смена вкладки)
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   const geo = useRef({ view: 0, content: 0, shown: '', placed: '', items: {} as Record<string, { x: number; w: number }> });
   const place = () => {
     const g = geo.current;

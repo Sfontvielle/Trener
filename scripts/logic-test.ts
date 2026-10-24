@@ -16,7 +16,7 @@ import { checkAllowed, progressStatus, scoreExercise } from '../src/features/tra
 import { analyzeWorkout, suggestOrder } from '../src/features/training/engine/order';
 import { estimateMinutes } from '../src/features/training/engine/time';
 import { actionKey, applyToExercises, validateAction } from '../src/features/coach/actions';
-import { barcodeCandidates, cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate } from '../src/features/food/scanner';
+import { barcodeCandidates, cameraGate, isValidGtin, normalizeBarcode, pickScanLens, ScanGate, scanZoom } from '../src/features/food/scanner';
 import { currentIndexOf, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, workoutProgress , isExerciseDone } from '../src/features/training/workoutNav';
 import { chooseSplit, compareSplits } from '../src/features/training/engine/split';
 import { estimateRecovery } from '../src/features/training/engine/recovery';
@@ -503,9 +503,15 @@ test('Т2. Камера: нет разрешения → понятный фол
   assert.equal(cameraGate({ granted: false, canAskAgain: true }), 'ask');
   assert.equal(cameraGate({ granted: false, canAskAgain: false }), 'settings');
   assert.equal(cameraGate({ granted: true, canAskAgain: true }), 'ready');
-  assert.equal(pickScanLens(['Back Camera', 'Back Dual Wide Camera', 'Back Triple Camera']), 'Back Triple Camera', 'виртуальная камера с макро-фокусом');
-  assert.equal(pickScanLens(['Back Camera']), 'Back Camera');
+  const L = (deviceType: string, localizedName: string) => ({ deviceType, localizedName });
+  const wide = L('AVCaptureDeviceTypeBuiltInWideAngleCamera', 'Back Camera');
+  const triple = L('AVCaptureDeviceTypeBuiltInTripleCamera', 'Back Triple Camera');
+  assert.equal(pickScanLens([wide, L('AVCaptureDeviceTypeBuiltInDualWideCamera', 'Back Dual Wide Camera'), triple]), triple.deviceType, 'виртуальная камера с макро-фокусом');
+  assert.equal(pickScanLens([wide]), wide.deviceType, 'selectedLens — deviceType, а не локализованное имя');
+  assert.equal(pickScanLens([L('custom.id', 'Back Triple Camera')]), 'custom.id', 'неизвестный тип — по имени');
   assert.equal(pickScanLens([]), undefined);
+  assert.equal(scanZoom(triple.deviceType), 0.14);
+  assert.equal(scanZoom(wide.deviceType), 0.06);
 });
 
 const wex = (id: string, done: number, total = 3): WorkoutExercise => ({

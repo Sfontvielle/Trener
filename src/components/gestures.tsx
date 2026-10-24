@@ -60,6 +60,8 @@ export class SafeDetector extends React.Component<DetectorProps, { failed: boole
   render() {
     const { gesture, children } = this.props;
     if (!GH || !gesture || this.state.failed) return children;
-    return <GH.GestureDetector gesture={gesture as Parameters<RNGH['GestureDetector']>[0]['gesture']}>{children}</GH.GestureDetector>;
+    // gesture-handler 3: пропсы детектора — объединение старого и нового API; жест передаём как есть
+    const props = { gesture, children } as unknown as React.ComponentProps<RNGH['GestureDetector']>;
+    return <GH.GestureDetector {...props} />;
   }
 }

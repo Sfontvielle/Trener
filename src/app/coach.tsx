@@ -72,7 +72,7 @@ export default function Coach() {
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={<Intro />}
           renderItem={({ item }) => <Bubble m={item} />}
-          ListFooterComponent={busy ? <Typing /> : null}
+          ListFooterComponent={busy ? <Typing /> : undefined}
           onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
         />
         <View style={[styles.composer, { paddingBottom: pad ? 8 : insets.bottom + 8 }]}>

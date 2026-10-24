@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Tabs } from 'expo-router/js-tabs';
+import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, themed } from '@/theme';
 import { Icon, T, type IconName } from '@/components/ui';
@@ -18,15 +18,22 @@ const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName
   progress: { label: 'Прогресс', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
 };
 
-function TabBar({ state, navigation }: any) {
+/**
+ * Своя нижняя панель: две вкладки, «+» по центру, две вкладки. SDK 58: панель получает состояние вкладок,
+ * emitter (событие tabPress) и navigateToTab — без объекта navigation.
+ */
+function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const openHub = useUi((s) => s.openHub);
   const hasActive = useWorkouts((s) => !!s.active);
-  const routes = state.routes as { key: string; name: string }[];
-  const item = (r: { key: string; name: string }, idx: number) => {
+  const focusedKey = state.routes[state.index]?.key;
+  // Порядок — как объявлены вкладки ниже (TABS); маршрут без описания в TABS не показываем
+  const routes = Object.keys(TABS)
+    .map((name) => state.routes.find((r) => r.name === name))
+    .filter((r): r is (typeof state.routes)[number] => !!r);
+  const item = (r: (typeof state.routes)[number]) => {
     const meta = TABS[r.name];
-    if (!meta) return null;
-    const focused = state.index === idx;
+    const focused = focusedKey === r.key;
     return (
       <Pressable
         key={r.key}
@@ -34,10 +41,10 @@ function TabBar({ state, navigation }: any) {
         accessibilityState={{ selected: focused }}
         accessibilityLabel={meta.label}
         onPress={() => {
-          const ev = navigation.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
+          const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });
           if (!focused && !ev.defaultPrevented) {
             haptic.tap();
-            navigation.navigate(r.name);
+            navigateToTab(r.key);
           }
         }}
         style={styles.item}
@@ -52,7 +59,7 @@ function TabBar({ state, navigation }: any) {
   return (
     // iOS 26 — «жидкое стекло», иначе полупрозрачная панель в цветах темы
     <GlassSurface style={[styles.bar, { height: TAB_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }]} fallback={colors.tabBar} testID="tab-bar">
-      {routes.slice(0, 2).map((r, i) => item(r, i))}
+      {routes.slice(0, 2).map((r) => item(r))}
       <View style={styles.centerWrap}>
         <Pressable
           accessibilityRole="button"
@@ -67,7 +74,7 @@ function TabBar({ state, navigation }: any) {
           {hasActive ? <View style={styles.dot} /> : null}
         </Pressable>
       </View>
-      {routes.slice(2).map((r, i) => item(r, i + 2))}
+      {routes.slice(2).map((r) => item(r))}
     </GlassSurface>
   );
 }
@@ -75,7 +82,7 @@ function TabBar({ state, navigation }: any) {
 export default function TabsLayout() {
   return (
     <>
-      <Tabs tabBar={(p: any) => <TabBar {...p} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } } as any}>
+      <Tabs tabBar={(p: BottomTabBarProps) => <TabBar {...p} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } } as any}>
         <Tabs.Screen name="index" />
         <Tabs.Screen name="training" />
         <Tabs.Screen name="nutrition" />

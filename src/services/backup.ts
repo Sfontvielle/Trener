@@ -93,7 +93,7 @@ export async function exportBackup(): Promise<'shared' | 'downloaded'> {
   const file = new File(Paths.cache, name);
   if (file.exists) file.delete();
   file.create();
-  file.write(json);
+  await file.write(json); // SDK 58: write() асинхронный — дожидаемся записи до «Поделиться»
   if (!(await Sharing.isAvailableAsync())) throw new Error('Шаринг недоступен на этом устройстве');
   await Sharing.shareAsync(file.uri, { mimeType: 'application/json', UTI: 'public.json', dialogTitle: `Резервная копия ${BRAND}` });
   return 'shared';
@@ -125,7 +125,7 @@ export async function exportWorkoutsCsv(): Promise<'shared' | 'downloaded'> {
   const file = new File(Paths.cache, name);
   if (file.exists) file.delete();
   file.create();
-  file.write(csv);
+  await file.write(csv);
   if (!(await Sharing.isAvailableAsync())) throw new Error('Шаринг недоступен на этом устройстве');
   await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text', dialogTitle: 'Тренировки (CSV)' });
   return 'shared';
@@ -153,7 +153,7 @@ export function maybeAutoBackup(force = false): boolean {
     const f = new File(Paths.document, AUTO_NAME);
     if (f.exists) f.delete();
     f.create();
-    f.write(JSON.stringify(buildBackup()));
+    f.writeSync(JSON.stringify(buildBackup()));
     st.updateSettings({ lastAutoBackupAt: Date.now() });
     return true;
   } catch {
