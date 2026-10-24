@@ -287,7 +287,7 @@ export default function Profile() {
 /** Строка раздела в стиле iOS: название; текущее значение — в VoiceOver и внутри раздела, на экране не шумит */
 function Row({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
       <T v="body" style={{ flex: 1, fontWeight: '600' }}>
         {label}
       </T>

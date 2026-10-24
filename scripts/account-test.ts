@@ -99,3 +99,29 @@ test('Сон из анкеты — норма, пока не набралось 
   const five = Object.fromEntries(['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19'].map((d) => [d, c(d, 6)]));
   assert.equal(sleepBaseline('2026-10-20', five, undefined, 7.5), 6, 'свои данные важнее анкеты');
 });
+
+import { deltaText, sleepCard, weightCard, weightOnTrack } from '../src/features/home/today';
+
+test('Главная: вес и динамика — только из записей', () => {
+  assert.equal(weightCard([], '2026-10-24'), null, 'нет взвешиваний — пустое состояние, без примерных цифр');
+  const w = (date: string, kg: number) => ({ id: date, date, kg, createdAt: 0 });
+  const one = weightCard([w('2026-10-24', 80)], '2026-10-24')!;
+  assert.equal(one.kg, 80);
+  assert.equal(one.week, null, 'динамика — когда есть неделя данных');
+  const many = weightCard([w('2026-10-10', 80), w('2026-10-14', 80.2), w('2026-10-17', 80.4), w('2026-10-24', 80.8)], '2026-10-24')!;
+  assert.ok(many.week! > 0);
+  assert.equal(many.stale, false);
+  assert.equal(weightCard([w('2026-10-01', 80)], '2026-10-24')!.stale, true, 'давно не взвешивался');
+  assert.equal(deltaText(-0.3), '−0,3 кг');
+  assert.equal(deltaText(0.2), '+0,2 кг');
+  assert.equal(deltaText(0.01), '±0 кг');
+  assert.equal(weightOnTrack('bulk', 0.2), true);
+  assert.equal(weightOnTrack('cut', 0.2), false);
+  assert.equal(weightOnTrack('maintain', -0.2), true);
+});
+
+test('Главная: сон — чек-ин важнее Apple Health, без данных — null', () => {
+  assert.deepEqual(sleepCard(450, 7), { minutes: 450, source: 'checkin' });
+  assert.deepEqual(sleepCard(undefined, 6.5), { minutes: 390, source: 'health' });
+  assert.equal(sleepCard(undefined, undefined), null);
+});

@@ -50,7 +50,7 @@ const openFeed = async (pg) => {
 /** Первый запуск: приветствие → «Продолжить без входа» → 5 этапов анкеты (каждый ответ — вручную) → старт */
 const passQuestionnaire = async (pg, name = 'Тест') => {
   const body = () => pg.evaluate(() => document.body.innerText);
-  const next = async () => { await pg.getByRole('button', { name: 'Далее', exact: true }).click(); await pg.waitForTimeout(400); };
+  const next = async () => { await pg.getByRole('button', { name: 'Далее', exact: true }).press('Enter'); await pg.waitForTimeout(400); };
   await pg.goto(URL, { waitUntil: 'networkidle' });
   await pg.waitForTimeout(1500);
   assert.match(await body(), /Тренировки под твои цели\./);
@@ -350,20 +350,30 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. Главная «Сегодня»: главное действие и метрики дня на первом экране', async () => {
+  await check('17. Главная: крупный блок тренировки, калории и БЖУ, шаги, вес с динамикой, сон и восстановление, RYNJI Coach', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    assert.ok(await page.getByLabel('Профиль').first().isVisible(), 'профиль в шапке');
-    // «Сегодня»: одно главное действие, три кольца дня и одна строка тренера — на первом экране
+    assert.equal(await page.getByRole('button', { name: 'Профиль', exact: true }).count(), 0, 'профиля в шапке нет');
+    assert.ok(await page.getByRole('tab', { name: 'Профиль' }).isVisible(), 'профиль — нижняя вкладка');
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    for (const l of ['Калории, открыть питание', 'Шаги, как рассчитана цель', 'Сон, чек-ин', 'Вода: добавить или уменьшить']) {
-      const b = await page.getByLabel(l).first().boundingBox();
-      assert.ok(b && b.y + b.height < 956 - 80, `${l} на первом экране`);
-    }
-    const coachLine = await page.getByTestId('coach-feed').boundingBox();
-    assert.ok(coachLine && coachLine.y + coachLine.height < 956 - 80, 'строка тренера на первом экране');
+    const kcal = await page.getByLabel(/^Калории, открыть питание/).first().boundingBox();
+    assert.ok(kcal && kcal.y < 956 - 80, 'калории на первом экране');
+    assert.match(await page.getByTestId('home-nutrition').innerText(), /Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'БЖУ');
+    assert.match(await page.getByTestId('home-weight').innerText(), /кг/, 'вес');
+    assert.match(await page.getByTestId('home-weight').innerText(), /за неделю|через неделю|Давно/, 'динамика веса');
+    assert.match(await page.getByTestId('home-steps').innerText(), /Шаги/);
+    assert.match(await page.getByTestId('home-recovery').innerText(), /Сон и восстановление/);
+    for (const l of [/^Шаги, как рассчитана цель/, /Сон, чек-ин$/, /^Вода: добавить или уменьшить/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
+    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'строка тренера');
+    // RYNJI Coach — с главной: «Спросить»
+    await page.getByTestId('coach-ask').click();
+    await page.waitForTimeout(900);
+    assert.match(page.url(), /\/coach/);
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
     // Вода — компактной строкой: +250 в один тап
     await page.getByLabel('Плюс 250 мл воды').first().click();
     await page.waitForTimeout(300);

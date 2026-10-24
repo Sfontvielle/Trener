@@ -160,7 +160,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       // Приветствие → без входа → 5 этапов анкеты
       await p2.getByText('Начать', { exact: true }).click(); await p2.waitForTimeout(600);
       await p2.getByText('Продолжить без входа', { exact: true }).click(); await p2.waitForTimeout(800);
-      const next = async () => { await p2.getByRole('button', { name: 'Далее', exact: true }).click(); await p2.waitForTimeout(300); };
+      const next = async () => { await p2.getByRole('button', { name: 'Далее', exact: true }).press('Enter'); await p2.waitForTimeout(300); };
       await p2.getByLabel('Как тебя зовут?').fill('Тест'); await next();
       await p2.getByLabel('Мужчина').click();
       await p2.getByLabel('Возраст, лет').fill('29'); await p2.getByLabel('Рост, см').fill('180'); await p2.getByLabel('Текущий вес, кг').fill('80'); await next();
