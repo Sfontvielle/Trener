@@ -86,6 +86,7 @@ export interface HealthProfile {
 
 export interface AppSettings {
   weightUnit: WeightUnit;
+  /** @deprecated автотаймер отдыха убран (таймер — только вручную, кнопкой ⏱); поле остаётся для старых копий */
   restTimerAuto: boolean;
   defaultRestSec: number;
   haptics: boolean;

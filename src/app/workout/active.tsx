@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise, WorkoutSession } from '@/types';
@@ -21,12 +21,12 @@ import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { ExerciseLoop } from '@/features/exercises/ExerciseThumb';
 import { inputWidth } from '@/components/inputs';
-import { TechniqueView } from '@/features/exercises/TechniqueView';
+import { TechniquePanel } from '@/features/exercises/TechniquePanel';
 import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
 import { useBody } from '@/stores/body';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
-import { afterSetTarget, currentIndexOf, isExerciseDone, navItems, nextIndex, nextSetLabel, prevIndex, remainingInfo, supersetLabels, supersetMembers, workoutProgress } from '@/features/training/workoutNav';
+import { afterSetTarget, currentIndexOf, isExerciseDone, navItems, nextIndex, prevIndex, remainingInfo, supersetLabels, supersetMembers, workoutProgress } from '@/features/training/workoutNav';
 import { isTimed } from '@/features/training/journal';
 import { HoldTimer } from '@/features/training/HoldTimer';
 import { RestTimerBar } from '@/features/training/RestTimer';
@@ -254,7 +254,7 @@ export default function ActiveWorkout() {
     haptic.tap();
     const st = useWorkouts.getState();
     if (resting) st.stopRest();
-    else if (we) st.startRest(we.restSec || 90, nextI >= 0 && !ctaSet ? getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? '' : curEx?.name ?? '');
+    else if (we) st.startRest(we.restSec || useProfile.getState().settings.defaultRestSec || 90, nextI >= 0 && !ctaSet ? getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? '' : curEx?.name ?? '');
   };
   const nextWarm = ctaSet?.warmup;
   const ctaNo = ctaSet ? we!.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1 : 0;
@@ -512,7 +512,6 @@ function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: Workou
     haptic.record();
     onPr(`${ex.name} · ${isTimed(ex) ? `${set.weight ? `${fmtWeight(set.weight)} × ` : ''}${fmtSec(set.reps)}` : set.weight ? `${fmtWeight(set.weight)} × ${set.reps}` : `${set.reps} повт.`}`);
   }
-  const settings = useProfile.getState().settings;
   const a = useWorkouts.getState().active;
   // После последнего подхода тренировки отдых не нужен — сразу показываем «Завершить тренировку»
   const workoutComplete = !!a && a.exercises.every((x) => x.sets.every((y) => y.done));
@@ -521,22 +520,8 @@ function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: Workou
   // Суперсет: после рабочего подхода — к следующему участнику без отдыха; отдых — после круга
   const nav = set.warmup ? { index, rest: true } : afterSetTarget(a, index);
   if (nav.index !== index) onNavigate?.(nav.index);
-  if (!nav.rest) {
-    st.stopRest();
-    return;
-  }
-  if (settings.restTimerAuto) {
-    const timedId = (id: string) => isTimed(getExercise(id, customs));
-    const members = supersetMembers(a.exercises, index);
-    const nameOf = (id: string) => getExercise(id, customs)?.name ?? '';
-    const base = nextSetLabel(a, nav.index, (w) => `${fmtWeight(w, unit)}`, nameOf, timedId);
-    const label = members.length > 1 && nav.index !== index ? `${nameOf(a.exercises[nav.index].exerciseId)}: ${base}` : base;
-    // Отдых по программе: тяжёлые базовые — дольше, изоляция — короче (задано в плане); после разминки — 45 с;
-    // после круга суперсета — самый длинный отдых из участников
-    const restSec = set.warmup ? 45 : members.length > 1 ? Math.max(...members.map((m) => a.exercises[m].restSec || settings.defaultRestSec)) : we.restSec || settings.defaultRestSec;
-    st.startRest(restSec, label);
-    haptic.timerStart();
-  }
+  if (!nav.rest) st.stopRest();
+  // Таймер отдыха автоматически не запускается: только кнопкой ⏱ на панели (по желанию)
 }
 
 /** Старт удержания для подхода на время (вне рендера: время берётся в момент нажатия) */
@@ -687,8 +672,8 @@ function MenuRow({ icon, label, onPress, danger }: { icon: React.ComponentProps<
 }
 
 /**
- * Карточка упражнения — как в Fit Session: название акцентом по центру, мышцы под ним, подходы крупно «55 кг × 12».
- * Техника, рекомендация и история — не на экране: миниатюра-«гифка» и «i» внизу карточки.
+ * Карточка упражнения — как в Fit Session: название акцентом по центру, мышцы под ним, «прошлый раз» одной строкой,
+ * подходы крупно «55 кг × 12». Техника — в нижнем сворачиваемом разделе («Техника»), рекомендация и история — «i».
  */
 function ExerciseFocus({
   we,
@@ -734,6 +719,7 @@ function ExerciseFocus({
   const [infoOpen, setInfoOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [platesOpen, setPlatesOpen] = useState(false);
+  const winH = useWindowDimensions().height;
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
@@ -781,6 +767,13 @@ function ExerciseFocus({
         <T v="caption" numberOfLines={1} style={{ textAlign: 'center', letterSpacing: 0.6 }} testID="exercise-muscles">
           {primary.join(', ').toUpperCase()}
         </T>
+        {lastTxt ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="last-result">
+            <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
+              Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{lastTxt}</T> ›
+            </T>
+          </Pressable>
+        ) : null}
         {reduced ? (
           <T v="small" color={colors.warning} style={{ fontSize: 12, textAlign: 'center' }}>
             Объём {reduced}% по готовности · веса без повышения
@@ -816,12 +809,33 @@ function ExerciseFocus({
         ) : null}
       </ScrollView>
 
-      {/* Низ карточки: список упражнений · «гифка» упражнения (техника) · «i» (рекомендация и история) */}
+      {/* Нижний сворачиваемый раздел: техника и (позже) 3D-анимация. Подходы над ним остаются на экране */}
+      {techOpen ? (
+        <View style={[styles.techPanel, { maxHeight: Math.round(winH * 0.42) }]} testID="technique-inline">
+          <ScrollView nestedScrollEnabled contentContainerStyle={{ padding: space.md }} showsVerticalScrollIndicator={false}>
+            <TechniquePanel ex={ex} sex={sex} />
+          </ScrollView>
+        </View>
+      ) : null}
+      {/* Низ карточки: список упражнений · «Техника» (раскрывает раздел) · «i» (рекомендация и история) */}
       <View style={styles.cardFoot}>
         <IconButton name="list-outline" label="Список упражнений" bg="transparent" onPress={onList} />
         <View style={{ flex: 1 }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => { haptic.tap(); setTechOpen(true); }} hitSlop={6} style={({ pressed }) => [pressed && { transform: [{ scale: 0.94 }] }]}>
-          <ExerciseLoop ex={ex} size={46} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Техника выполнения"
+          accessibilityState={{ expanded: techOpen }}
+          aria-expanded={techOpen}
+          onPress={() => { haptic.tap(); setTechOpen(!techOpen); }}
+          hitSlop={6}
+          style={({ pressed }) => [styles.techToggle, techOpen && styles.techToggleOn, pressed && { transform: [{ scale: 0.96 }] }]}
+          testID="technique-toggle"
+        >
+          <ExerciseLoop ex={ex} size={34} />
+          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
+            Техника
+          </T>
+          <Icon name={techOpen ? 'chevron-down' : 'chevron-up'} size={14} color={colors.textDim} />
         </Pressable>
         <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" onPress={() => { haptic.tap(); setInfoOpen(true); }} />
       </View>
@@ -844,7 +858,7 @@ function ExerciseFocus({
           {layout ? (
             <MenuRow icon="disc-outline" label="Раскладка блинов" onPress={() => { setInfoOpen(false); afterModalClose(() => setPlatesOpen(true)); }} />
           ) : null}
-          <MenuRow icon="play-circle-outline" label="Как выполнять" onPress={() => { setInfoOpen(false); afterModalClose(() => setTechOpen(true)); }} />
+          <MenuRow icon="play-circle-outline" label="Как выполнять" onPress={() => { setInfoOpen(false); setTechOpen(true); }} />
         </View>
       </Sheet>
 
@@ -867,9 +881,6 @@ function ExerciseFocus({
         ) : null}
       </Sheet>
 
-      <Sheet visible={techOpen} onClose={() => setTechOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
-        <TechniqueView ex={ex} sex={sex} />
-      </Sheet>
     </View>
   );
 }
@@ -884,7 +895,7 @@ function BarBtn({ icon, label, onPress, disabled, active }: { icon: React.Compon
 }
 
 /**
- * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймер отдыха уже идёт.
+ * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймер отдыха — только вручную (⏱).
  * RIR сохраняется в подход и маппится в «ощущение» для старых экранов (0 → до отказа, 1 → тяжело, 2 → нормально, 3+ → легко).
  */
 const RIR_OPTS = [0, 1, 2, 3, 4] as const;
@@ -1100,6 +1111,9 @@ const styles = themed({
   card: { flex: 1, backgroundColor: colors.surface, borderRadius: 28, overflow: 'hidden' },
   cardHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingTop: 6 },
   cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 8 },
+  techToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4, paddingRight: 10, height: 42, borderRadius: 21, backgroundColor: colors.surface2 },
+  techToggleOn: { backgroundColor: colors.surface3 },
+  techPanel: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
   setLine: { borderBottomWidth: 1, borderBottomColor: colors.border },
   setNo: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   setNoCurrent: { borderWidth: 1.5, borderColor: colors.accentLine },

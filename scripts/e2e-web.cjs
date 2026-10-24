@@ -280,10 +280,11 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(500);
   });
 
-  await check('15. Экран подхода как в Fit Session: название, мышцы, подходы; техника — «гифка» внизу карточки, не на экране', async () => {
+  await check('15. Экран подхода: одно упражнение — название, мышцы, прошлый раз, подходы; техника — свёрнутый раздел внизу', async () => {
     await page.goto(`${URL}/workout/active`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     const tech = await page.getByLabel('Техника выполнения').boundingBox();
+    assert.equal(await page.getByLabel('Техника выполнения').getAttribute('aria-expanded'), 'false', 'раздел техники свёрнут');
     const cta = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
     assert.ok(tech && cta && tech.y < cta.y, `миниатюра техники — в карточке над панелью: ${tech && tech.y} < ${cta && cta.y}`);
     assert.ok(cta.y + cta.height <= 956, `главная кнопка на экране: y=${cta.y}`);
@@ -310,29 +311,18 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'панель закрыта');
   });
 
-  await check('16б. Шторка техники во время тренировки: следует за пальцем и закрывается свайпом, не прыгает вверх', async () => {
+  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, место под 3D, сворачивается', async () => {
     await page.getByLabel('Техника выполнения').click();
-    await page.waitForTimeout(900);
-    const head = await page.getByText('Положение тела').first().boundingBox();
-    assert.ok(head, 'техника открыта: положение тела');
-    assert.ok(await page.getByText('Дыхание', { exact: true }).first().isVisible().catch(() => false) || true);
-    const grab = await page.getByLabel('Закрыть', { exact: true }).last().boundingBox();
-    const cdp = await ctx.newCDPSession(page);
-    const x = 220, y0 = grab.y + 10;
-    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: ty }] });
-    // Короткий свайп — возврат на место (без перелёта вверх)
-    await touch('touchStart', y0);
-    for (let i = 1; i <= 3; i++) { await touch('touchMove', y0 + i * 15); await page.waitForTimeout(30); }
-    await touch('touchEnd', 0);
     await page.waitForTimeout(700);
-    const back = await page.getByLabel('Закрыть', { exact: true }).last().boundingBox();
-    assert.ok(back && Math.abs(back.y - grab.y) < 3, `вернулась: ${grab.y} → ${back && back.y}`);
-    // Длинный свайп при тикающем таймере — закрывается
-    await touch('touchStart', y0);
-    for (let i = 1; i <= 14; i++) { await touch('touchMove', y0 + i * 30); await page.waitForTimeout(40); }
-    await touch('touchEnd', 0);
-    await page.waitForTimeout(900);
-    assert.equal(await page.getByText('Положение тела').count(), 0, 'шторка закрыта свайпом');
+    assert.ok(await page.getByTestId('technique-inline').isVisible(), 'раздел раскрыт');
+    assert.ok(await page.getByTestId('technique-3d-slot').isVisible(), 'место под 3D-анимацию');
+    assert.match(await page.getByTestId('technique-inline').innerText(), /Положение тела/);
+    const panel = await page.getByTestId('technique-inline').boundingBox();
+    const sets = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
+    assert.ok(panel && sets, 'подходы и раздел на одном экране');
+    await page.getByLabel('Техника выполнения').click();
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByTestId('technique-inline').count(), 0, 'раздел свёрнут');
   });
 
   await check('22. Тренировки: неделя сверху, объём — шторкой', async () => {
@@ -733,7 +723,7 @@ const closeSheet = async (pg) => {
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: подход → RIR одним тапом → таймер отдыха сам; замена с причинами; блины; разминка', async () => {
+  await check('36. Тренировка: подход → RIR одним тапом → без автотаймера отдыха (только ⏱ вручную); замена с причинами; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -771,11 +761,17 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Завершить подход» → таймер запускается сам → RIR одним тапом
+    // Рабочий подход: один тап «Завершить подход» → таймер НЕ запускается сам → RIR одним тапом
     await page.getByLabel(/^Завершить подход 1$/).first().click();
     await page.waitForTimeout(500);
-    assert.ok(await page.getByText('Пропустить').first().isVisible(), 'таймер отдыха запущен автоматически');
+    assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
+    // Таймер — только вручную, кнопкой ⏱
+    await page.getByLabel('Таймер отдыха', { exact: true }).click();
+    await page.waitForTimeout(400);
+    assert.ok(await page.getByText('Пропустить').first().isVisible(), 'таймер запущен вручную');
     assert.ok(await page.getByText('+30', { exact: true }).isVisible(), '+30 сек');
+    await page.getByLabel('Остановить отдых', { exact: true }).click();
+    await page.waitForTimeout(300);
     assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
     await page.getByLabel('Запас 2', { exact: true }).click();
     await page.waitForTimeout(300);
