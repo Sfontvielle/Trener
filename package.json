@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~58.0.15",
+    "@expo/ui": "~58.0.23",
     "@expo/vector-icons": "^15.0.2",
     "@kingstinct/react-native-healthkit": "^16.0.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -25,6 +26,7 @@
     "expo-splash-screen": "~58.0.11",
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.6",
+    "expo-widgets": "~58.0.23",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
@@ -53,7 +55,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts scripts/profiles-test.ts scripts/journal-test.ts scripts/body-test.ts scripts/account-test.ts",
+    "test": "tsx --tsconfig tsconfig.test.json --test scripts/logic-test.ts scripts/coach-test.ts scripts/profiles-test.ts scripts/journal-test.ts scripts/body-test.ts scripts/account-test.ts scripts/live-activity-test.ts",
     "server": "node --env-file-if-exists=server/.env server/index.mjs",
     "server:install": "npm --prefix server install",
     "lint": "expo lint"

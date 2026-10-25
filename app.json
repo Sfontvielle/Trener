@@ -70,7 +70,14 @@
           "microphonePermission": false
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-widgets",
+        {
+          "enablePushNotifications": false,
+          "frequentUpdates": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

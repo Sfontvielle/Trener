@@ -21,6 +21,7 @@ import { maybeAutoBackup } from '@/services/backup';
 import { useAccount } from '@/stores/account';
 import { PRE_PROFILE_ROUTES, entryRoute, type EntryRoute } from '@/features/account/route';
 import { appleCredentialState } from '@/services/appleAuth';
+import { startWorkoutActivitySync } from '@/services/liveActivity';
 
 export { ErrorBoundaryView as ErrorBoundary };
 
@@ -89,6 +90,12 @@ function Gate() {
   useEffect(() => {
     if (!hydrated) return;
     return onNotificationOpen((url) => router.push(url as never));
+  }, [hydrated]);
+
+  // Live Activity активной тренировки (экран блокировки, Dynamic Island): одна на тренировку,
+  // согласуется с хранилищем сразу после загрузки данных (в том числе после перезапуска приложения)
+  useEffect(() => {
+    if (hydrated) startWorkoutActivitySync();
   }, [hydrated]);
 
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)
