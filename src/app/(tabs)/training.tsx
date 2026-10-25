@@ -72,7 +72,8 @@ export default function Training() {
       <Ambient height={360} />
       <View style={{ paddingHorizontal: space.lg, gap: space.md, marginBottom: space.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <T v="h1" style={{ flex: 1 }}>
+          {/* Крупный системный шрифт: заголовок ужимается, а кнопки справа остаются на экране */}
+          <T v="h1" style={{ flex: 1, minWidth: 0 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
             Тренировки
           </T>
           {seg === 'mine' ? (
