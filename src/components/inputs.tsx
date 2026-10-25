@@ -193,7 +193,7 @@ export function NumberField({ label, unit, value, onChange, decimals = 0, error,
             accessibilityLabel={unit ? `${label}, ${unit}` : label}
             maxLength={decimals ? 5 : 3}
             maxFontSizeMultiplier={INPUT_MAX_SCALE}
-            style={[styles.stepInput, styles.numField, { fontSize, minWidth: inputWidth(text || placeholder, fontSize) + 12 }, !!error && { borderColor: colors.danger }]}
+            style={[styles.stepInput, styles.numField, { fontSize, width: Math.max(64, inputWidth(text || placeholder, fontSize) + 20) }, !!error && { borderColor: colors.danger }]}
           />
           {unit ? (
             <T v="small" numberOfLines={1} style={{ minWidth: 26 }}>
