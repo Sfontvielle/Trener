@@ -11,7 +11,7 @@ import { haptic } from '@/services/haptics';
 import { GlassSurface } from '@/components/Glass';
 
 const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName }> = {
-  index: { label: 'Сегодня', icon: 'home-outline', iconActive: 'home' },
+  index: { label: 'Главная', icon: 'home-outline', iconActive: 'home' },
   training: { label: 'Тренировки', icon: 'barbell-outline', iconActive: 'barbell' },
   nutrition: { label: 'Питание', icon: 'nutrition-outline', iconActive: 'nutrition' },
   progress: { label: 'Прогресс', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
@@ -38,6 +38,7 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         key={r.key}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
+        aria-selected={focused}
         accessibilityLabel={r.name === 'training' && hasActive ? `${meta.label}, идёт тренировка` : meta.label}
         onPress={() => {
           const ev = emitter.emit({ type: 'tabPress', target: r.key, canPreventDefault: true });

@@ -356,6 +356,8 @@ const closeSheet = async (pg) => {
     await dismiss();
     assert.equal(await page.getByRole('button', { name: 'Профиль', exact: true }).count(), 0, 'профиля в шапке нет');
     assert.ok(await page.getByRole('tab', { name: 'Профиль' }).isVisible(), 'профиль — нижняя вкладка');
+    const tabs = await page.getByRole('tab').evaluateAll((els) => els.map((e) => (e.getAttribute('aria-label') || '').split(',')[0]));
+    assert.deepEqual(tabs, ['Главная', 'Тренировки', 'Питание', 'Прогресс', 'Профиль'], 'пять вкладок, без центрального «+»');
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
     const kcal = await page.getByLabel(/^Калории, открыть питание/).first().boundingBox();
