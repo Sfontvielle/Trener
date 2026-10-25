@@ -151,6 +151,66 @@ export function NumberStepper({
   );
 }
 
+/**
+ * Число без значения по умолчанию (анкета): пусто, пока человек сам не ввёл. Строкой — подпись слева, поле справа.
+ * onChange(undefined) — поле очищено или введено не число.
+ */
+export function NumberField({ label, unit, value, onChange, decimals = 0, error, placeholder = '—', testID }: { label: string; unit?: string; value: number | undefined; onChange: (v: number | undefined) => void; decimals?: number; error?: string; placeholder?: string; testID?: string }) {
+  const fmt = (v: number | undefined) => (v === undefined ? '' : decimals ? String(v).replace('.', ',') : String(Math.round(v)));
+  const [text, setText] = useState(fmt(value));
+  const [prev, setPrev] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const ensure = useEnsureVisible();
+  if (value !== prev) {
+    setPrev(value);
+    if (!focused) setText(fmt(value));
+  }
+  const fontSize = 24;
+  return (
+    <View testID={testID}>
+      <View style={styles.inlineRow}>
+        <T v="body" color={colors.textDim} style={{ flex: 1 }}>
+          {label}
+        </T>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+          <TextInput
+            value={text}
+            onChangeText={(t) => {
+              const clean = t.replace(/[^\d.,]/g, '');
+              setText(clean);
+              const n = parseDecimal(clean);
+              onChange(clean && Number.isFinite(n) ? (decimals ? Math.round(n * 10 ** decimals) / 10 ** decimals : Math.round(n)) : undefined);
+            }}
+            onFocus={() => {
+              setFocused(true);
+              ensure();
+            }}
+            onBlur={() => setFocused(false)}
+            placeholder={placeholder}
+            placeholderTextColor={colors.muted}
+            keyboardType={decimals ? 'decimal-pad' : 'number-pad'}
+            selectionColor={colors.accent}
+            accessibilityLabel={unit ? `${label}, ${unit}` : label}
+            maxLength={decimals ? 5 : 3}
+            maxFontSizeMultiplier={INPUT_MAX_SCALE}
+            style={[styles.stepInput, styles.numField, { fontSize, width: Math.max(64, inputWidth(text || placeholder, fontSize) + 20) }, !!error && { borderColor: colors.danger }]}
+          />
+          {unit ? (
+            <T v="small" numberOfLines={1} style={{ minWidth: 26 }}>
+              {unit}
+            </T>
+          ) : null}
+        </View>
+      </View>
+      {error ? (
+        <T v="small" color={colors.danger} style={{ marginTop: -6, marginBottom: 8 }}>
+          {error}
+        </T>
+      ) : null}
+    </View>
+  );
+}
+
 /** Шкала 1–5 с подписями крайних значений */
 export function Scale5({ value, onChange, low, high, invert }: { value: number; onChange: (v: 1 | 2 | 3 | 4 | 5) => void; low: string; high: string; invert?: boolean }) {
   return (
@@ -237,6 +297,7 @@ const styles = themed({
   stepBtnRound: { borderRadius: 24, backgroundColor: colors.surface2 },
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
+  numField: { minHeight: 44, borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: 'transparent' },
   stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },

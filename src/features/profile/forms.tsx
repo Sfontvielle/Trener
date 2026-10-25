@@ -9,7 +9,8 @@ import { EQUIPMENT_LABEL } from '@/data/exercises';
 import { GOAL_LABEL, GOAL_SHORT, defaultRate } from '@/features/nutrition/targets';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
-import { EMPTY_HEALTH, healthOf, healthTraining } from './health';
+import { healthOf, healthTraining } from './health';
+import { SLEEP_OPTIONS, STEP_BUCKETS, stepBucketOf } from './questionnaire';
 import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
 import { BRAND } from '@/config/brand';
 import { CategoryPicker, joinItems, splitItems, type PickerCategory } from './CategoryPicker';
@@ -30,37 +31,6 @@ export const DEFAULT_DAYS: Record<number, number[]> = { 2: [0, 3], 3: [0, 2, 4],
 export const GYM_EQUIPMENT: Equipment[] = ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'pullupbar', 'ezbar', 'smith', 'kettlebell', 'band'];
 export const HOME_DEFAULT: Equipment[] = ['dumbbell', 'bench', 'pullupbar', 'band'];
 
-export function defaultProfile(): UserProfile {
-  return {
-    name: '',
-    sex: 'male',
-    age: 30,
-    heightCm: 180,
-    weightKg: 80,
-    goal: 'bulk',
-    ratePctPerWeek: 0.35,
-    level: 'intermediate',
-    trainingYears: 2,
-    daysPerWeek: 4,
-    sessionMinutes: 70,
-    location: 'gym',
-    equipment: GYM_EQUIPMENT,
-    limitations: '',
-    health: { ...EMPTY_HEALTH },
-    avoidExerciseIds: [],
-    likedFoods: [],
-    dislikedFoods: [],
-    dietRestrictions: [],
-    activity: 'moderate',
-    stepsPerDay: 7000,
-    workStyle: 'desk',
-    preferredTime: 'evening',
-    preferredDays: [0, 1, 3, 4],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-}
-
 type Setter = (patch: Partial<UserProfile>) => void;
 
 function Opt<V extends string | number>({ items, value, onChange }: { items: { v: V; label: string }[]; value: V; onChange: (v: V) => void }) {
@@ -73,7 +43,7 @@ function Opt<V extends string | number>({ items, value, onChange }: { items: { v
   );
 }
 
-const GOAL_ICON: Record<GoalType, React.ComponentProps<typeof MaterialCommunityIcons>['name']> = { bulk: 'arm-flex', cut: 'fire', recomp: 'swap-horizontal', maintain: 'scale-balance' };
+export const GOAL_ICON: Record<GoalType, React.ComponentProps<typeof MaterialCommunityIcons>['name']> = { bulk: 'arm-flex', cut: 'fire', recomp: 'swap-horizontal', maintain: 'scale-balance' };
 
 /** Цель — четыре варианта крупно, без лишнего текста. Темп выбирается отдельно (RatePresets) */
 export function GoalPicker({ p, set, withRate }: { p: UserProfile; set: Setter; withRate?: boolean }) {
@@ -196,7 +166,7 @@ export function RatePresets({ p, set }: { p: UserProfile; set: Setter }) {
 }
 
 /** Пол — две карточки с иконками */
-export function SexPicker({ value, onChange }: { value: UserProfile['sex']; onChange: (v: UserProfile['sex']) => void }) {
+export function SexPicker({ value, onChange }: { value: UserProfile['sex'] | undefined; onChange: (v: UserProfile['sex']) => void }) {
   return (
     <View style={{ flexDirection: 'row', gap: 12 }}>
       {(['male', 'female'] as const).map((sx) => {
@@ -240,18 +210,7 @@ export function BodySection({ p, set, activity }: { p: UserProfile; set: Setter;
   );
 }
 
-/**
- * Шаги в день — главный множитель бытового расхода (±200–400 ккал). Без вопроса расчёт брал 7000 шагов и сидячую
- * работу — для активных людей калории занижались. Корзины → типичное значение внутри диапазона.
- */
-export const STEP_BUCKETS: { key: string; label: string; steps: number; min: number }[] = [
-  { key: 'low', label: 'до 5 тыс', steps: 4000, min: 0 },
-  { key: 'mid', label: '5–9 тыс', steps: 7000, min: 5000 },
-  { key: 'high', label: '9–12 тыс', steps: 10500, min: 9000 },
-  { key: 'top', label: '12 тыс+', steps: 13000, min: 12000 },
-];
-
-export const stepBucketOf = (steps: number) => [...STEP_BUCKETS].reverse().find((b) => steps >= b.min)!.key;
+export { STEP_BUCKETS, stepBucketOf };
 
 export function ActivityPicker({ p, set }: { p: UserProfile; set: Setter }) {
   return (
@@ -283,15 +242,20 @@ export function ActivityPicker({ p, set }: { p: UserProfile; set: Setter }) {
  */
 export function DayPicker({ p, set }: { p: UserProfile; set: Setter }) {
   const days = p.preferredDays.length === p.daysPerWeek && p.preferredDays.length ? p.preferredDays : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
+  return <WeekdayChips days={days} onChange={(next) => set({ preferredDays: next, daysPerWeek: next.length })} min={2} />;
+}
+
+/** Дни недели чипами. В анкете начинаем с пустого выбора (min 0), но больше 6 дней не даём — нужен отдых */
+export function WeekdayChips({ days, onChange, min = 0 }: { days: number[]; onChange: (days: number[]) => void; min?: number }) {
   const toggle = (d: number) => {
     const on = days.includes(d);
     const next = on ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b);
-    if (next.length < 2 || next.length > 6) {
+    if (next.length < min || next.length > 6) {
       haptic.warning?.();
       return;
     }
     haptic.tap();
-    set({ preferredDays: next, daysPerWeek: next.length });
+    onChange(next);
   };
   return (
     <View style={{ gap: 10 }} testID="day-picker">
@@ -308,8 +272,58 @@ export function DayPicker({ p, set }: { p: UserProfile; set: Setter }) {
         })}
       </View>
       <T v="small">
-        {days.length} {days.length < 5 ? 'тренировки' : 'тренировок'} в неделю · {days.map((d) => WEEKDAYS_SHORT[d]).join(', ')}
+        {days.length ? `${days.length} ${days.length === 1 ? 'тренировка' : days.length < 5 ? 'тренировки' : 'тренировок'} в неделю · ${days.map((d) => WEEKDAYS_SHORT[d]).join(', ')}` : 'Выбери от 2 до 6 дней'}
       </T>
+    </View>
+  );
+}
+
+/** Вариант крупной карточкой с радио-кнопкой — как выбор цели. Ничего не выбрано, пока человек не нажмёт */
+export function ChoiceCards<V extends string | number>({ items, value, onChange, compact }: { items: { v: V; label: string; sub?: string; icon?: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[]; value: V | undefined; onChange: (v: V) => void; compact?: boolean }) {
+  return (
+    <View style={{ gap: compact ? 8 : 10 }}>
+      {items.map((it) => {
+        const active = it.v === value;
+        return (
+          <Pressable
+            key={String(it.v)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active, checked: active }}
+            aria-checked={active}
+            accessibilityLabel={it.label}
+            accessibilityHint={it.sub}
+            onPress={() => {
+              haptic.tap();
+              onChange(it.v);
+            }}
+            style={({ pressed }) => [styles.goal, compact && { paddingVertical: 12 }, active && styles.goalOn, pressed && { opacity: 0.8 }]}
+          >
+            {it.icon ? <MaterialCommunityIcons name={it.icon} size={24} color={active ? colors.accent : colors.textDim} /> : null}
+            <View style={{ flex: 1 }}>
+              <T v={compact ? 'body' : 'h3'} style={compact ? { fontWeight: '700' } : undefined}>
+                {it.label}
+              </T>
+              {it.sub ? (
+                <T v="small" style={{ fontSize: 13 }}>
+                  {it.sub}
+                </T>
+              ) : null}
+            </View>
+            <View style={[styles.radio, active && { borderColor: colors.accent }]}>{active ? <View style={styles.radioDot} /> : null}</View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Короткие варианты чипами (длительность, шаги, сон) — без выбора по умолчанию */
+export function ChipChoice<V extends string | number>({ items, value, onChange }: { items: { v: V; label: string }[]; value: V | undefined; onChange: (v: V) => void }) {
+  return (
+    <View style={styles.wrap} accessibilityRole="radiogroup">
+      {items.map((it) => (
+        <Chip key={String(it.v)} label={it.label} active={it.v === value} onPress={() => onChange(it.v)} />
+      ))}
     </View>
   );
 }
@@ -385,6 +399,10 @@ export function LifestyleSection({ p, set }: { p: UserProfile; set: Setter }) {
           value={p.workStyle}
           onChange={(v) => set({ workStyle: v })}
         />
+      </View>
+      <View style={{ gap: 6 }}>
+        <T v="caption">Сон, обычно</T>
+        <ChipChoice items={SLEEP_OPTIONS.map((b) => ({ v: b.hours, label: b.label }))} value={p.sleepHours} onChange={(v) => set({ sleepHours: v })} />
       </View>
       <View style={{ gap: 6 }}>
         <T v="caption">Когда удобнее тренироваться</T>

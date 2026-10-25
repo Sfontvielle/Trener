@@ -18,7 +18,10 @@ import { useThemeKey } from '@/hooks/useThemeKey';
 import { consumePendingNavState } from '@/features/settings/themeNav';
 import { maybeAutoSync } from '@/features/health/sync';
 import { maybeAutoBackup } from '@/services/backup';
-import { IntroSplash } from '@/components/IntroSplash';
+import { useAccount } from '@/stores/account';
+import { PRE_PROFILE_ROUTES, entryRoute, type EntryRoute } from '@/features/account/route';
+import { appleCredentialState } from '@/services/appleAuth';
+import { startWorkoutActivitySync } from '@/services/liveActivity';
 
 export { ErrorBoundaryView as ErrorBoundary };
 
@@ -41,12 +44,29 @@ function Gate() {
     if (hydrated && hasProfile) void syncReminders(useProfile.getState().settings, usePlan.getState().plan);
   }, [hydrated, hasProfile, reminderKey]);
 
+  // Первый запуск: приветствие (один раз) → вход через Apple ID или «без входа» → анкета.
+  // У кого локальный профиль уже есть, тот сразу в приложении — ничего не блокируем.
+  const welcomeSeen = useAccount((s) => s.welcomeSeen);
+  const linked = useAccount((s) => !!s.apple);
+  const authSkipped = useAccount((s) => s.authSkipped);
   useEffect(() => {
     if (!hydrated) return;
-    const inOnboarding = segments[0] === 'onboarding';
-    if (!profile && !inOnboarding) router.replace('/onboarding');
-    if (profile && inOnboarding) router.replace('/');
-  }, [hydrated, profile, segments]);
+    const here = segments[0] as string | undefined;
+    const pre = PRE_PROFILE_ROUTES.includes(here as EntryRoute);
+    const want = entryRoute({ hasProfile: !!profile, welcomeSeen, linked, authSkipped });
+    if (want === 'app') {
+      if (pre) router.replace('/');
+    } else if (!pre) router.replace(`/${want}`);
+  }, [hydrated, profile, segments, welcomeSeen, linked, authSkipped]);
+
+  // Apple ID отозван в настройках iPhone — снимаем привязку (локальные данные остаются)
+  const appleId = useAccount((s) => s.apple?.userId);
+  useEffect(() => {
+    if (!hydrated || !appleId) return;
+    void appleCredentialState(appleId).then((st) => {
+      if (st === 'revoked' && useAccount.getState().apple?.userId === appleId) useAccount.getState().unlinkApple();
+    });
+  }, [hydrated, appleId]);
 
   // После смены темы навигатор перемонтируется — восстанавливаем весь стек экранов как был
   const nav = useNavigationContainerRef();
@@ -70,6 +90,12 @@ function Gate() {
   useEffect(() => {
     if (!hydrated) return;
     return onNotificationOpen((url) => router.push(url as never));
+  }, [hydrated]);
+
+  // Live Activity активной тренировки (экран блокировки, Dynamic Island): одна на тренировку,
+  // согласуется с хранилищем сразу после загрузки данных (в том числе после перезапуска приложения)
+  useEffect(() => {
+    if (hydrated) startWorkoutActivitySync();
   }, [hydrated]);
 
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)
@@ -113,6 +139,8 @@ function Gate() {
       }}
     >
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="welcome" options={{ gestureEnabled: false, animation: 'fade' }} />
+      <Stack.Screen name="auth" options={{ gestureEnabled: false, animation: 'fade' }} />
       <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
       <Stack.Screen name="checkin" options={{ presentation: 'modal' }} />
       <Stack.Screen name="weight" options={{ presentation: 'modal' }} />
@@ -127,7 +155,6 @@ function Gate() {
 
 export default function RootLayout() {
   const theme = useThemeKey();
-  const hydrated = useHydrated();
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
   }, [theme.key]);
@@ -139,7 +166,6 @@ export default function RootLayout() {
         <DialogHost />
       </SafeAreaProvider>
       <ThemeFade themeKey={theme.key} />
-      <IntroSplash ready={hydrated} />
     </GestureRoot>
   );
 }

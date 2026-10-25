@@ -13,7 +13,7 @@ interface ProfileState {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   weightUnit: 'kg',
-  restTimerAuto: true,
+  restTimerAuto: false,
   defaultRestSec: 120,
   haptics: true,
   coachApiUrl: '',

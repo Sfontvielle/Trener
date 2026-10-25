@@ -24,6 +24,7 @@ import { normalizeSupersets, supersetLabels, toggleLinkAfter } from '@/features/
 import { isTimed } from '@/features/training/journal';
 import { fmtSec } from '@/utils/format';
 import { haptic } from '@/services/haptics';
+import { WORKOUT_COLORS, WORKOUT_COLOR_KEYS, WORKOUT_COLOR_LABEL } from '@/features/training/colors';
 
 /**
  * Конструктор тренировки. Два режима:
@@ -118,7 +119,7 @@ export default function Builder() {
   return (
     <Screen keyboard>
       <Header
-        title={isTemplate ? `Шаблон: ${template!.name}` : draft!.source === 'custom' ? 'Своя тренировка' : draft!.name}
+        title={isTemplate ? `Шаблон: ${template!.name}` : draft!.source === 'custom' ? (draft!.name === 'Своя тренировка' ? 'Новая тренировка' : draft!.name) : draft!.name}
         subtitle={`~${minutes} мин · ${exercises.length} упр · ${exercises.reduce((a, e) => a + e.sets, 0)} подходов`}
         right={
           !isTemplate ? (
@@ -131,7 +132,29 @@ export default function Builder() {
         }
       />
       {!isTemplate && draft!.source === 'custom' ? (
-        <Field placeholder="Название (необязательно)" value={draft!.name === 'Своя тренировка' ? '' : draft!.name} onChangeText={(t) => setDraft({ ...draft!, name: t || 'Своя тренировка' })} style={{ marginBottom: space.md }} />
+        <View style={{ gap: space.sm, marginBottom: space.md }}>
+          <Field placeholder="Название (необязательно)" accessibilityLabel="Название тренировки" value={draft!.name === 'Своя тренировка' ? '' : draft!.name} onChangeText={(t) => setDraft({ ...draft!, name: t || 'Своя тренировка' })} />
+          {/* Цвет своей тренировки — в дневнике, календаре и Live Activity */}
+          <View style={{ flexDirection: 'row', gap: 10 }} testID="workout-color">
+            {WORKOUT_COLOR_KEYS.map((c) => {
+              const on = (draft!.color ?? 'lime') === c;
+              return (
+                <Pressable
+                  key={c}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  aria-checked={on}
+                  accessibilityLabel={`Цвет: ${WORKOUT_COLOR_LABEL[c]}`}
+                  onPress={() => { haptic.tap(); setDraft({ ...draft!, color: c }); }}
+                  hitSlop={4}
+                  style={[styles.swatch, { backgroundColor: WORKOUT_COLORS[c] }, on && styles.swatchOn]}
+                >
+                  {on ? <Icon name="checkmark" size={16} color="#0A0B0D" /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
       ) : null}
       {order?.changed && keptOrder !== orderSig ? (
         <View style={styles.suggest}>
@@ -277,6 +300,8 @@ export default function Builder() {
 }
 
 const styles = themed({
+  swatch: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  swatchOn: { borderWidth: 3, borderColor: colors.text },
   item: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: 12 },
   itemHead: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
   suggest: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: colors.surface, marginBottom: space.md },

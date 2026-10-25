@@ -19,8 +19,9 @@ function baseline(checkins: Record<string, DailyCheckIn>, date: ISODate, key: 'h
  * Готовность на дату. Источники по приоритету:
  *  1) чек-ин (субъективное) + HRV/пульс покоя из Apple Health с ПЕРСОНАЛЬНОЙ базовой линией;
  *  2) нет чек-ина, но есть сон из Health — расчёт по объективным данным, субъективные пункты нейтральны.
+ * usualSleep — обычный сон из анкеты: норма сна, пока не набралось 5 ночей данных.
  */
-export function readinessFor(date: ISODate, checkins: Record<string, DailyCheckIn>, sessions: WorkoutSession[], health?: Record<string, HealthDay>): ReadinessResult | undefined {
+export function readinessFor(date: ISODate, checkins: Record<string, DailyCheckIn>, sessions: WorkoutSession[], health?: Record<string, HealthDay>, usualSleep?: number): ReadinessResult | undefined {
   const c = checkins[date];
   const h = health ? healthContext(health, date) : undefined;
   if (c) {
@@ -29,13 +30,13 @@ export function readinessFor(date: ISODate, checkins: Record<string, DailyCheckI
       sessions,
       hrvBaseline: h?.hrvBaseline ?? baseline(checkins, date, 'hrvMs'),
       rhrBaseline: h?.rhrBaseline ?? baseline(checkins, date, 'restingHr'),
-      sleepBaseline: sleepBaseline(date, checkins, health),
+      sleepBaseline: sleepBaseline(date, checkins, health, usualSleep),
     });
   }
   if (h?.sleepHours) {
     // Нейтральные значения = точка «без влияния» в формуле (энергия 4/5, стресс 2/5 …)
     const synthetic: DailyCheckIn = { date, sleepHours: h.sleepHours, sleepQuality: 4, energy: 4, stress: 2, soreness: 2, pain: false, hrvMs: h.hrvMs, restingHr: h.restingHr, createdAt: 0 };
-    return { ...computeReadiness(synthetic, { sessions, hrvBaseline: h.hrvBaseline, rhrBaseline: h.rhrBaseline, objectiveOnly: true, sleepBaseline: sleepBaseline(date, checkins, health) }), source: 'health' };
+    return { ...computeReadiness(synthetic, { sessions, hrvBaseline: h.hrvBaseline, rhrBaseline: h.rhrBaseline, objectiveOnly: true, sleepBaseline: sleepBaseline(date, checkins, health, usualSleep) }), source: 'health' };
   }
   return undefined;
 }

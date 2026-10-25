@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "net.fontvielle.form",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов и фотографировать бланки анализов.",
         "ITSAppUsesNonExemptEncryption": false,
@@ -67,6 +68,14 @@
           "photosPermission": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве.",
           "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов, фото прогресса и бланков анализов.",
           "microphonePermission": false
+        }
+      ],
+      "expo-apple-authentication",
+      [
+        "expo-widgets",
+        {
+          "enablePushNotifications": false,
+          "frequentUpdates": false
         }
       ]
     ],

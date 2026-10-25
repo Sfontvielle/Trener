@@ -27,7 +27,7 @@ const PROFILE = {
   await page.evaluate((p) => localStorage.setItem('form.profile', JSON.stringify({ state: { profile: p, settings: {} }, version: 1 })), PROFILE);
   await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
-  await page.getByText('Тренировки', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Тренировки', exact: true }).click();
   await page.getByText('Сохранить и пересчитать').click();
   await page.waitForTimeout(1200);
   await page.goto(`${URL}/data`, { waitUntil: 'networkidle' });
@@ -64,8 +64,8 @@ const PROFILE = {
   await page.getByText('Тренировать сейчас').click();
   await page.waitForTimeout(1200);
   routes.push('/workout/active');
-  const audit = async (r) => {
-    const res = await page.evaluate(() => {
+  const audit = async (r, pg = page) => {
+    const res = await pg.evaluate(() => {
       const W = window.innerWidth;
       const out = { overflow: [], unnamed: [] };
       const inHScroll = (el) => {
@@ -122,6 +122,37 @@ const PROFILE = {
   await page.waitForTimeout(800);
   await audit('/workout/active (таймер удержания)');
   routes.push('/workout/active (суперсет, таймер)');
+  // Техника — нижний раздел экрана тренировки
+  await page.getByLabel('Техника выполнения').click();
+  await page.waitForTimeout(800);
+  await audit('/workout/active (раздел техники)');
+  routes.push('/workout/active (техника)');
+  // Первый запуск на чистом устройстве: приветствие → вход → анкета (5 этапов) → старт
+  const fctx = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+  await fctx.addInitScript((k) => {
+    localStorage.setItem('rynji.fontScale', k);
+    localStorage.setItem('rynji.noGH', '1');
+  }, SCALE);
+  const fp = await fctx.newPage();
+  fp.on('pageerror', (e) => problems.push(`[pageerror @ первый запуск] ${e.message}`));
+  const step = async (name, fn) => { await fn(); await fp.waitForTimeout(500); await audit(name, fp); routes.push(name); };
+  const next = () => fp.getByRole('button', { name: 'Далее', exact: true }).press('Enter');
+  // Нажатие с клавиатуры: у нижнего края окна Playwright иногда «не попадает» в элемент
+  const tap = (loc) => loc.press('Enter');
+  await fp.goto(URL, { waitUntil: 'networkidle' });
+  await fp.waitForTimeout(1500);
+  await audit('/welcome', fp);
+  routes.push('/welcome');
+  await step('/auth', () => tap(fp.getByRole('button', { name: 'Начать', exact: true })));
+  await step('/onboarding · имя', () => tap(fp.getByRole('button', { name: 'Продолжить без входа', exact: true })));
+  await step('/onboarding · о тебе', async () => { await fp.getByLabel('Как тебя зовут?').fill('Анна'); await next(); });
+  await step('/onboarding · цель', async () => { await tap(fp.getByLabel('Женщина')); await fp.getByLabel('Возраст, лет').fill('27'); await fp.getByLabel('Рост, см').fill('166'); await fp.getByLabel('Текущий вес, кг').fill('58'); await next(); });
+  await step('/onboarding · тренировки', async () => { await tap(fp.getByLabel('Набор массы')); await next(); });
+  await step('/onboarding · тренировки (выбрано)', async () => { await tap(fp.getByLabel('Средний', { exact: true })); for (const d of ['Пн', 'Ср', 'Пт']) await tap(fp.getByLabel(`${d}: отдых`)); await tap(fp.getByRole('button', { name: '60 мин', exact: true })); await tap(fp.getByRole('button', { name: 'Зал', exact: true })); });
+  await step('/onboarding · образ жизни', () => next());
+  await step('/onboarding · образ жизни (ограничения)', async () => { await tap(fp.getByLabel('Сидячая', { exact: true })); await tap(fp.getByRole('button', { name: '5–9 тыс', exact: true })); await tap(fp.getByRole('button', { name: '7–8 ч', exact: true })); await tap(fp.getByRole('button', { name: 'Есть', exact: true })); await fp.getByRole('textbox', { name: 'Что учесть' }).fill('колено'); });
+  await step('/onboarding · старт', () => next());
+  await fctx.close();
   console.log(`экранов: ${routes.length}, шрифт ×${SCALE}`);
   console.log(problems.length ? `ПРОБЛЕМЫ (${problems.length}):\n${problems.join('\n')}` : 'Ошибок не найдено');
   await browser.close();

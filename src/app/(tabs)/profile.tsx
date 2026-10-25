@@ -3,7 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Header, Screen } from '@/components/Screen';
+import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Appear } from '@/components/motion';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
@@ -27,6 +27,8 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { GymSheet } from '@/features/training/GymSheet';
 import { BRAND } from '@/config/brand';
+import { useAccount } from '@/stores/account';
+import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -53,7 +55,7 @@ const TRAINING_TIMES = [[7, 0], [12, 0], [17, 0], [18, 0], [19, 0]] as const;
 const hm = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`;
 
 type Section = 'goal' | 'body' | 'training' | 'health' | 'life' | 'food' | null;
-const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', health: 'Здоровье и особенности', life: 'Активность', food: 'Питание и предпочтения' };
+const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body: 'Параметры тела', training: 'Тренировки', health: 'Здоровье и особенности', life: 'Образ жизни и сон', food: 'Питание и предпочтения' };
 
 export default function Profile() {
   const profile = useProfile((s) => s.profile);
@@ -67,19 +69,24 @@ export default function Profile() {
   const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
   const [section, setSection] = useState<Section>(null);
   const [gymOpen, setGymOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const apple = useAccount((s) => s.apple);
   const [draft, setDraft] = useState<UserProfile | null>(null);
   const [fact, setFact] = useState('');
   const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
-  // Переход с главной («Дополни профиль»): сразу открыть нужный раздел
+  // Переход с главной («Дополни профиль»): сразу открыть нужный раздел. Профиль — вкладка и не размонтируется,
+  // поэтому помним последний обработанный раздел, а не «уже открывали»
   const { edit } = useLocalSearchParams<{ edit?: string }>();
-  const opened = useRef(false);
+  const handled = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (opened.current || !profile || !edit || !(edit in TITLES)) return;
-    opened.current = true;
+    if (!profile || !edit || !(edit in TITLES) || handled.current === edit) return;
+    handled.current = edit;
     const t = setTimeout(() => {
       setDraft({ ...profile });
       setSection(edit as Exclude<Section, null>);
+      router.setParams({ edit: undefined });
+      handled.current = undefined;
     }, 300);
     return () => clearTimeout(t);
   }, [edit, profile]);
@@ -111,8 +118,10 @@ export default function Profile() {
   const set = (patch: Partial<UserProfile>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
   return (
-    <Screen keyboard>
-      <Header title="Профиль" />
+    <Screen keyboard tabBar>
+      <T v="h1" style={{ marginBottom: space.sm }}>
+        Профиль
+      </T>
       {/* Кто ты — крупно, без карточки; дальше — короткие строки разделов (значения — внутри) */}
       <Appear i={0} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: space.sm }}>
         <View style={styles.avatar}>
@@ -142,7 +151,7 @@ export default function Profile() {
         <Divider />
         <Row label="Предпочтения и ограничения" value={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
         <Divider />
-        <Row label="Активность" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа`} onPress={() => open('life')} />
+        <Row label="Образ жизни и сон" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа${profile.sleepHours ? ` · сон ~${String(profile.sleepHours).replace('.', ',')} ч` : ''}`} onPress={() => open('life')} />
         <Divider />
         <Row label="Питание" value={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
       </Card>
@@ -157,6 +166,8 @@ export default function Profile() {
 
       <SectionTitle title="Настройки" />
       <Card style={{ paddingVertical: 4, marginBottom: space.md }}>
+        <Row label="Аккаунт" value={accountSummary(apple)} onPress={() => setAccountOpen(true)} />
+        <Divider />
         <Row label="Оформление" value={`${settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Системная' : 'Тёмная'} тема`} onPress={() => router.push('/appearance')} />
         <Divider />
         <Row label="Apple Health" value={healthSummary} onPress={() => router.push('/health')} />
@@ -174,8 +185,7 @@ export default function Profile() {
           </View>
         </View>
         <Row label="Оборудование зала" value={settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — настроить диски и шаги'} onPress={() => setGymOpen(true)} />
-        <Toggle value={settings.restTimerAuto} onChange={(v) => updateSettings({ restTimerAuto: v })} label="Авто-таймер отдыха" sub="Запускается после отметки подхода" />
-        <NumberStepper label="Отдых по умолчанию, сек" value={settings.defaultRestSec} onChange={(v) => updateSettings({ defaultRestSec: Math.round(v) })} step={15} min={30} max={600} compact />
+        <NumberStepper label="Отдых для таймера ⏱, сек" value={settings.defaultRestSec} onChange={(v) => updateSettings({ defaultRestSec: Math.round(v) })} step={15} min={30} max={600} compact />
         <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, таймер, рекорды (на iPhone)" />
       </Card>
 
@@ -245,7 +255,7 @@ export default function Profile() {
           confirm('Удалить все данные?', 'Профиль, план, тренировки, питание, замеры и память тренера будут удалены с устройства без возможности восстановления (кроме ранее экспортированного файла).', 'Удалить всё', async () => {
             await resetAllStores();
             await clearAllData();
-            router.replace('/onboarding');
+            router.replace('/welcome');
           }, true)
         }
       />
@@ -255,6 +265,7 @@ export default function Profile() {
       </T>
 
       <GymSheet visible={gymOpen} onClose={() => setGymOpen(false)} />
+      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
       <Sheet visible={!!section} onClose={() => setSection(null)} title={section ? TITLES[section] : ''} footer={<Button title="Сохранить и пересчитать" icon="checkmark" size="lg" onPress={save} />}>
         {draft && section === 'goal' ? <GoalPicker p={draft} set={set} withRate /> : null}
         {draft && section === 'body' ? <BodySection p={draft} set={set} /> : null}
@@ -275,7 +286,7 @@ export default function Profile() {
 /** Строка раздела в стиле iOS: название; текущее значение — в VoiceOver и внутри раздела, на экране не шумит */
 function Row({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
       <T v="body" style={{ flex: 1, fontWeight: '600' }}>
         {label}
       </T>

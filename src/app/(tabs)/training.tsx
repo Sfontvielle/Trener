@@ -13,6 +13,7 @@ import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useUi } from '@/stores/ui';
+import { WORKOUT_COLORS } from '@/features/training/colors';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { scaleSets } from '@/features/training/scale';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
@@ -58,6 +59,7 @@ export default function Training() {
   }
   const bottom = insets.bottom + TAB_BAR_HEIGHT + space.lg;
   const [calOpen, setCalOpen] = useState(false);
+  const openHub = useUi((s) => s.openHub);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
@@ -72,6 +74,10 @@ export default function Training() {
               <Icon name="calendar-outline" size={19} color={colors.text} />
             </Tap>
           ) : null}
+          {/* «+» — запланировать или начать тренировку (новая / повтор) */}
+          <Tap accessibilityRole="button" accessibilityLabel="Тренировка: запланировать или начать" onPress={() => { haptic.light(); openHub(); }} style={[styles.calBtn, styles.plusBtn]} scaleTo={0.9} testID="training-plus">
+            <Icon name="add" size={24} color={colors.text} />
+          </Tap>
         </View>
         <Segmented
           items={[
@@ -675,7 +681,8 @@ const JournalCard = React.memo(function JournalCard({ s, stats, customs }: { s: 
   const parts = [journalDay(s.date, today()), `${stats.minutes} мин`, stats.tonnage ? fmtTonnage(stats.tonnage) : '', stats.prs ? `🏆 ${stats.prs}` : ''].filter(Boolean);
   return (
     <Tap accessibilityRole="button" onPress={() => { haptic.tap(); router.push({ pathname: '/workout/[id]', params: { id: s.id } }); }} accessibilityLabel={`${s.name}, ${journalDay(s.date, today())}, ${KIND_LABEL[kind]}`} scaleTo={0.985} style={styles.jRow}>
-      <View style={[styles.kindDot, { backgroundColor: colors[KIND_COLOR[kind]] }]} />
+      {/* Свой цвет тренировки (выбран при создании) — иначе цвет по типу */}
+      <View style={[styles.kindDot, { backgroundColor: s.color ? WORKOUT_COLORS[s.color] : colors[KIND_COLOR[kind]] }]} />
       <View style={{ flex: 1, gap: 3 }}>
         <T v="body" style={{ fontWeight: '700', fontSize: 17 }} numberOfLines={1}>
           {s.name}
@@ -718,4 +725,5 @@ const styles = themed({
   kindDot: { width: 8, height: 8, borderRadius: 4, marginTop: 8, alignSelf: 'flex-start' },
   jRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
   calBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  plusBtn: { marginLeft: 8 },
 });

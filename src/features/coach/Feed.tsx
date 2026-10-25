@@ -12,7 +12,7 @@ const VISIBLE = 3;
  * Лента тренера: карточки по приоритету — заголовок, одна фраза, действие. limit — сколько видно сразу;
  * onMore — остальные открываются отдельно (лист), иначе — разворачиваются на месте. bare — без заголовка (в листе).
  */
-export function CoachFeed({ items, onAction, onDismiss, limit = VISIBLE, onMore, bare }: { items: FeedItem[]; onAction: (item: FeedItem, a: FeedAction) => void; onDismiss: (item: FeedItem) => void; limit?: number; onMore?: () => void; bare?: boolean }) {
+export function CoachFeed({ items, onAction, onDismiss, onAsk, limit = VISIBLE, onMore, bare }: { items: FeedItem[]; onAction: (item: FeedItem, a: FeedAction) => void; onDismiss: (item: FeedItem) => void; /** Обсудить рекомендацию с тренером (чат с готовым вопросом) */ onAsk?: (item: FeedItem) => void; limit?: number; onMore?: () => void; bare?: boolean }) {
   const [all, setAll] = useState(false);
   if (!items.length) return null;
   const shown = all ? items : items.slice(0, limit);
@@ -48,7 +48,7 @@ export function CoachFeed({ items, onAction, onDismiss, limit = VISIBLE, onMore,
               <T v="small" style={{ lineHeight: 20 }}>
                 {it.text}
               </T>
-              {it.actions.length || it.dismissible ? (
+              {it.actions.length || it.dismissible || onAsk ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, rowGap: 6, marginTop: 4 }}>
                   {it.actions.map((a, k) => (
                     <Pressable key={a.label} accessibilityRole="button" accessibilityLabel={`${a.label}: ${it.title}`} hitSlop={8} onPress={() => onAction(it, a)} style={styles.btn}>
@@ -57,6 +57,13 @@ export function CoachFeed({ items, onAction, onDismiss, limit = VISIBLE, onMore,
                       </T>
                     </Pressable>
                   ))}
+                  {onAsk && !it.id.startsWith('setup_') ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Спросить тренера: ${it.title}`} hitSlop={8} onPress={() => onAsk(it)} style={styles.btn}>
+                      <T v="body" color={it.actions.length ? colors.text : colors.accent} style={{ fontWeight: '600', fontSize: 15 }}>
+                        Спросить тренера
+                      </T>
+                    </Pressable>
+                  ) : null}
                   {it.dismissible ? (
                     <Pressable accessibilityRole="button" accessibilityLabel={`Скрыть: ${it.title}`} hitSlop={8} onPress={() => onDismiss(it)} style={styles.btn}>
                       <T v="body" color={colors.textDim} style={{ fontSize: 15 }}>

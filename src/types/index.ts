@@ -60,6 +60,8 @@ export interface UserProfile {
   activity: ActivityLevel;
   stepsPerDay: number;
   workStyle: WorkStyle;
+  /** Обычный сон, часов (из анкеты). Норма сна, пока не набралось ≥5 ночей чек-инов или Apple Health */
+  sleepHours?: number;
   preferredTime: TrainingTime;
   /** Предпочтительные дни тренировок, 0 = Пн … 6 = Вс */
   preferredDays: number[];
@@ -84,6 +86,7 @@ export interface HealthProfile {
 
 export interface AppSettings {
   weightUnit: WeightUnit;
+  /** @deprecated автотаймер отдыха убран (таймер — только вручную, кнопкой ⏱); поле остаётся для старых копий */
   restTimerAuto: boolean;
   defaultRestSec: number;
   haptics: boolean;
@@ -554,7 +557,11 @@ export interface WorkoutSession {
   status: 'active' | 'completed' | 'discarded';
   /** Активная тренировка: какое упражнение открыто (сохраняется — восстанавливается после перезапуска) */
   currentIndex?: number;
+  /** Цвет, выбранный пользователем для своей тренировки (ключ WORKOUT_COLORS); нет — цвет по типу тренировки */
+  color?: WorkoutColor;
 }
+
+export type WorkoutColor = 'lime' | 'blue' | 'orange' | 'violet' | 'pink' | 'cyan';
 
 /** Сгенерированная/собранная, но ещё не начатая тренировка */
 export interface WorkoutDraft {
@@ -565,6 +572,8 @@ export interface WorkoutDraft {
   templateId?: ID;
   exercises: PlannedExercise[];
   createdAt: number;
+  /** Цвет своей тренировки */
+  color?: WorkoutColor;
 }
 
 // ─── Nutrition ──────────────────────────────────────────────────────────────
