@@ -208,6 +208,6 @@ export function restoreBackup(b: BackupFile): void {
   useJournal.setState({ notes: arr(d.journal?.notes) });
   useLabs.setState({ reports: arr(d.labs?.reports) });
   useEnhanced.setState({ enabled: !!d.enhanced?.enabled, aas: arr(d.enhanced?.aas), bp: arr(d.enhanced?.bp) });
-  useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null, rest: null });
+  useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null });
   useCoach.setState({ messages: arr(d.coach?.messages), summary: d.coach?.summary ?? '', summarizedUntil: d.coach?.summarizedUntil ?? 0, memory: arr(d.coach?.memory), advice: arr(d.coach?.advice), knowledge: obj(d.coach?.knowledge), insight: null });
 }

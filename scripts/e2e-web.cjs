@@ -322,11 +322,11 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'панель закрыта');
   });
 
-  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, место под 3D, сворачивается', async () => {
+  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, без заглушек, сворачивается', async () => {
     await page.getByLabel('Техника выполнения').click();
     await page.waitForTimeout(700);
     assert.ok(await page.getByTestId('technique-inline').isVisible(), 'раздел раскрыт');
-    assert.ok(await page.getByTestId('technique-3d-slot').isVisible(), 'место под 3D-анимацию');
+    assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек «появится позже»');
     assert.match(await page.getByTestId('technique-inline').innerText(), /Положение тела/);
     const panel = await page.getByTestId('technique-inline').boundingBox();
     const sets = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
@@ -743,7 +743,7 @@ const closeSheet = async (pg) => {
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: подход → RIR одним тапом → без автотаймера отдыха (только ⏱ вручную); замена с причинами; блины; разминка', async () => {
+  await check('36. Тренировка: подход → RIR одним тапом → таймера отдыха нет; заметка к упражнению; замена с причинами; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -781,21 +781,22 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Завершить подход» → таймер НЕ запускается сам → RIR одним тапом
+    // Рабочий подход: один тап «Завершить подход» → таймера отдыха нет совсем → RIR одним тапом
     await page.getByLabel(/^Завершить подход 1$/).first().click();
     await page.waitForTimeout(500);
     assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
-    // Таймер — только вручную, кнопкой ⏱
-    await page.getByLabel('Таймер отдыха', { exact: true }).click();
-    await page.waitForTimeout(400);
-    assert.ok(await page.getByText('Пропустить').first().isVisible(), 'таймер запущен вручную');
-    assert.ok(await page.getByText('+30', { exact: true }).isVisible(), '+30 сек');
-    await page.getByLabel('Остановить отдых', { exact: true }).click();
-    await page.waitForTimeout(300);
+    assert.equal(await page.getByLabel('Таймер отдыха', { exact: true }).count(), 0, 'и кнопки таймера отдыха нет');
     assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
     await page.getByLabel('Запас 2', { exact: true }).click();
     await page.waitForTimeout(300);
     assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
+    // Заметка к упражнению (вместо кнопки таймера): сохраняется и видна под названием
+    await page.getByLabel('Заметка к упражнению', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByPlaceholder(/сиденье на 4/).fill('Сиденье на 4');
+    await page.getByText('Сохранить', { exact: true }).last().click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('exercise-note').innerText(), /Сиденье на 4/, 'заметка видна на экране упражнения');
     // Замена: «•••» → причины → альтернативы
     await page.getByLabel('Действия с упражнением').first().click();
     await page.waitForTimeout(600);
@@ -1163,7 +1164,7 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByTestId('superset-chip').isVisible(), 'на экране — «Суперсет A1»');
   });
 
-  await check('47. Суперсет: подход A → сразу B → снова A (отдых — только вручную); меню «Убрать / Суперсет со следующим»', async () => {
+  await check('47. Суперсет: подход A → сразу B → снова A (без таймера отдыха); меню «Убрать / Суперсет со следующим»', async () => {
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/);
     await page.getByLabel(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
@@ -1173,12 +1174,6 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1000);
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'после круга отдых сам не запускается');
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/, 'и снова A');
-    // Отдых после круга — вручную (⏱), подпись — следующее упражнение
-    await page.getByLabel('Таймер отдыха', { exact: true }).click();
-    await page.waitForTimeout(400);
-    assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'таймер запущен вручную');
-    await page.getByLabel('Пропустить отдых').click();
-    await page.waitForTimeout(400);
     await page.getByLabel('Действия с упражнением').click();
     await page.waitForTimeout(700);
     await page.getByText('Убрать из суперсета', { exact: true }).click();
@@ -1274,6 +1269,39 @@ const closeSheet = async (pg) => {
     const after = await bars.innerText();
     assert.notEqual(after.split('\n')[0], before.split('\n')[0], 'показан выбранный день');
     await shot('exercise-bars');
+  });
+
+  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, легенда подсвеченных мышц, пауза, во весь экран', async () => {
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const box = page.getByTestId('technique-3d');
+    await box.scrollIntoViewIfNeeded();
+    assert.ok(await box.isVisible(), '3D-блок на месте');
+    const src = async () => (await page.getByTestId('technique-3d-media').locator('img').first().getAttribute('src')) || '';
+    const legend = await box.innerText();
+    assert.match(legend, /Основные мышцы[\s\S]*Большая грудная/);
+    assert.match(legend, /Дополнительные[\s\S]*Трицепс, Дельтовидные/);
+    assert.match(legend, /3D/);
+    // В автотесте (как при «Уменьшении движения») петля стоит на стоп-кадре, пуск — касанием
+    assert.match(await src(), /posters.*bench_press\.jpg/, 'стоп-кадр до пуска');
+    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Воспроизвести$/).click();
+    await page.waitForTimeout(500);
+    assert.match(await src(), /anim.*bench_press\.webp/, 'играет WebP-петля жима');
+    assert.ok(await page.getByText('Повторение по кругу').isVisible());
+    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Пауза$/).click();
+    await page.waitForTimeout(400);
+    assert.match(await src(), /posters.*bench_press\.jpg/, 'на паузе — стоп-кадр');
+    await page.getByTestId('technique-3d-full').click();
+    await page.waitForTimeout(700);
+    assert.ok(await page.getByTestId('technique-3d-close').isVisible(), 'полноэкранный просмотр');
+    await page.getByTestId('technique-3d-close').click();
+    await page.waitForTimeout(500);
+    // Упражнение без 3D-сцены: без заглушек «появится позже»
+    await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByTestId('technique-3d').count(), 0);
+    assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
   });
 
   await check('52. Неделя: «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {

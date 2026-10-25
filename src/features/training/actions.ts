@@ -14,15 +14,9 @@ import { today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { getExercise } from '@/data/exercises';
 import { haptic } from '@/services/haptics';
-import { ensurePermission } from '@/services/notifications';
 import { healthTraining } from '@/features/profile/health';
 import { noIncreaseReason } from '@/features/health/current';
 import { repeatPlanned } from './journal';
-
-/** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
-function askRestPermission() {
-  if (useProfile.getState().settings.restNotify) void ensurePermission();
-}
 
 function ctxBase() {
   const ws = useWorkouts.getState();
@@ -59,7 +53,6 @@ export function startTodayPlanned(templateOverride?: WorkoutTemplate) {
     });
     useWorkouts.getState().start(s);
     haptic.success();
-    askRestPermission();
     router.push('/workout/active');
   });
 }
@@ -81,7 +74,6 @@ export function startDraft(draft: WorkoutDraft) {
     useWorkouts.getState().start(draft.color ? { ...s, color: draft.color } : s);
     useWorkouts.getState().setDraft(null);
     haptic.success();
-    askRestPermission();
     router.replace('/workout/active');
   });
 }

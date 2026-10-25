@@ -6,7 +6,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
 import { Appear } from '@/components/motion';
-import { Field, NumberStepper, Toggle } from '@/components/inputs';
+import { Field, Toggle } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
 import { resetAllStores } from '@/stores/hydration';
@@ -185,7 +185,6 @@ export default function Profile() {
           </View>
         </View>
         <Row label="Оборудование зала" value={settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — настроить диски и шаги'} onPress={() => setGymOpen(true)} />
-        <NumberStepper label="Отдых для таймера ⏱, сек" value={settings.defaultRestSec} onChange={(v) => updateSettings({ defaultRestSec: Math.round(v) })} step={15} min={30} max={600} compact />
         <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, таймер, рекорды (на iPhone)" />
       </Card>
 
@@ -193,7 +192,6 @@ export default function Profile() {
       <Card style={{ gap: 6 }}>
         {Platform.OS === 'web' ? <Banner text="Уведомления работают на iPhone (в web-превью недоступны)." /> : null}
         {notifDenied ? <Banner tone="warning" icon="notifications-off-outline" text={`Уведомления запрещены. Разреши их в Настройках iPhone → ${BRAND}.`} /> : null}
-        <Toggle value={settings.restNotify} onChange={(v) => toggleReminder('restNotify', v)} label="Конец отдыха" sub="Уведомление, если приложение свёрнуто во время отдыха" />
         <Toggle value={settings.morningReminder} onChange={(v) => toggleReminder('morningReminder', v)} label="Утренний чек-ин" sub="Каждый день: самочувствие + вес" />
         {settings.morningReminder ? (
           <View style={styles.times}>

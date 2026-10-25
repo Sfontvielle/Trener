@@ -53,33 +53,7 @@ async function cancel(id: string) {
   }
 }
 
-/** Уведомление об окончании отдыха (приходит, только если приложение свёрнуто — иначе срабатывает экранный таймер) */
-export async function scheduleRestEnd(seconds: number, label: string) {
-  if (!native) return;
-  await cancel(REST_ID);
-  await cancel(REST_WARN_ID);
-  if (seconds < 5) return;
-  try {
-    const perm = await Notifications.getPermissionsAsync();
-    if (!perm.granted) return;
-    await Notifications.scheduleNotificationAsync({
-      identifier: REST_ID,
-      content: { title: 'Отдых закончен', body: `Следующий подход: ${label}`, sound: true },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.round(seconds) },
-    });
-    // Предупреждение за ~10 с до конца (если отдых длиннее 25 с), без звука
-    if (seconds > 25) {
-      await Notifications.scheduleNotificationAsync({
-        identifier: REST_WARN_ID,
-        content: { title: 'Через 10 секунд — подход', body: label, sound: false },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.round(seconds - 10) },
-      });
-    }
-  } catch {
-    /* уведомления недоступны — таймер на экране всё равно работает */
-  }
-}
-
+/** Снять уведомления об отдыхе, запланированные прошлыми версиями (таймера отдыха больше нет) */
 export async function cancelRestEnd() {
   if (native) {
     await cancel(REST_ID);

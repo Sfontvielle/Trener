@@ -17,3 +17,6 @@ server/node_modules/
 server/.env
 npm-debug.*
 .DS_Store
+
+# кадры рендера 3D (пересобираются tools/anim/render.cjs)
+tools/anim/out/

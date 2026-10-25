@@ -9,7 +9,7 @@ const set = (weight: number, reps: number, done = false, extra: Partial<Exercise
 const we = (exerciseId: string, sets: ExerciseSet[], extra: Partial<WorkoutExercise> = {}): WorkoutExercise => ({ id: `we${n++}`, exerciseId, plannedSets: sets.length, repMin: 6, repMax: 10, targetRir: 2, restSec: 90, sets, ...extra });
 const session = (exercises: WorkoutExercise[], extra: Partial<WorkoutSession> = {}): WorkoutSession => ({ id: 'w1', date: '2026-10-24', name: 'Верх А', focus: '', source: 'plan', startedAt: 1_000, volumeFactor: 1, status: 'active', exercises, ...extra }) as WorkoutSession;
 const NAMES: Record<string, string> = { bench_press: 'Жим лёжа', lat_pulldown: 'Тяга верхнего блока', plank: 'Планка', push_up: 'Отжимания' };
-const deps: ActivityDeps = { nameOf: (id) => NAMES[id] ?? id, isTimed: (id) => id === 'plank', isBodyweight: (id) => id === 'push_up', unit: 'kg', rest: null };
+const deps: ActivityDeps = { nameOf: (id) => NAMES[id] ?? id, isTimed: (id) => id === 'plank', isBodyweight: (id) => id === 'push_up', unit: 'kg' };
 
 test('Live Activity: текущее упражнение, подход N из M, запланированные вес и повторы', () => {
   const s = session([we('bench_press', [set(60, 8, true), set(62.5, 8), set(62.5, 8)]), we('lat_pulldown', [set(50, 10)])]);
@@ -58,14 +58,13 @@ test('Live Activity: суперсет — фактически выбранно�
   assert.equal(p.setText, 'Подход 1 из 2');
 });
 
-test('Live Activity: отдых только если запущен вручную; всё выполнено → подсказка завершить', () => {
+test('Live Activity: таймера отдыха нет; всё выполнено → подсказка завершить', () => {
   const s = session([we('bench_press', [set(60, 8, true)])]);
-  const p = workoutActivityProps(s, { ...deps, rest: { startedAt: 5_000, endsAt: 95_000 } });
-  assert.deepEqual([p.restFrom, p.restTo], [5_000, 95_000]);
+  const p = workoutActivityProps(s, deps);
+  assert.equal('restFrom' in p || 'restTo' in p, false);
   assert.equal(p.allDone, true);
   assert.match(p.next, /заверши/);
-  assert.deepEqual([workoutActivityProps(s, deps).restFrom, workoutActivityProps(s, deps).restTo], [0, 0]);
-  assert.notEqual(activityKey(p), activityKey(workoutActivityProps(s, deps)), 'изменение отдыха — новое обновление');
+  assert.equal(activityKey(p), activityKey(workoutActivityProps(s, deps)), 'одинаковое состояние — без лишнего обновления');
 });
 
 test('Live Activity: ровно одна на тренировку — старт, обновление, закрытие лишних, прошлых и при завершении/отмене', () => {

@@ -43,7 +43,7 @@ function load(): Mod | null {
 }
 
 function currentProps(): WorkoutActivityProps | null {
-  const { active, rest, customExercises } = useWorkouts.getState();
+  const { active, customExercises } = useWorkouts.getState();
   if (!active) return null;
   const accent = useProfile.getState().settings.accent ?? 'lime';
   return workoutActivityProps(active, {
@@ -51,7 +51,6 @@ function currentProps(): WorkoutActivityProps | null {
     isTimed: (id) => isTimed(getExercise(id, customExercises)),
     isBodyweight: (id) => !!getExercise(id, customExercises)?.bodyweight,
     unit: useProfile.getState().settings.weightUnit,
-    rest: rest ? { startedAt: rest.startedAt, endsAt: rest.endsAt } : null,
     accent: { dark: paletteFor('dark', accent).accent, light: paletteFor('light', accent).accent },
   });
 }
@@ -77,7 +76,7 @@ export function startWorkoutActivitySync(): void {
   // После перезапуска: активная тренировка — обновить (или запустить) одну активность; нет тренировки — закрыть «висящие»
   queue();
   useWorkouts.subscribe((s, prev) => {
-    if (s.active !== prev.active || s.rest !== prev.rest) queue();
+    if (s.active !== prev.active) queue();
   });
   useProfile.subscribe((s, prev) => {
     if (s.settings.weightUnit !== prev.settings.weightUnit || s.settings.accent !== prev.settings.accent) queue();

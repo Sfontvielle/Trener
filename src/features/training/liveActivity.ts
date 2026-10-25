@@ -4,7 +4,7 @@ import { fmtSec, fmtWeight, unitLabel } from '@/utils/format';
 
 /**
  * Live Activity активной тренировки (экран блокировки и Dynamic Island) — чистое отображение
- * существующего состояния тренировки (useWorkouts.active + rest). Своей истории подходов у неё нет:
+ * существующего состояния тренировки (useWorkouts.active). Своей истории подходов у неё нет:
  * всё считается из active на каждое изменение. Без сервера и push — обновляет само приложение.
  */
 export interface WorkoutActivityProps {
@@ -33,9 +33,6 @@ export interface WorkoutActivityProps {
   progress: number;
   /** Начало тренировки, мс — секундомер считает сам виджет */
   startedAt: number;
-  /** Отдых (если запущен вручную): начало и конец, мс; 0 — нет */
-  restFrom: number;
-  restTo: number;
   /** Все подходы выполнены — осталось завершить */
   allDone: boolean;
   /** Акцент пользователя: для тёмного фона (Dynamic Island, тёмный экран блокировки) и для светлого */
@@ -48,7 +45,6 @@ export interface ActivityDeps {
   isTimed: (exerciseId: string) => boolean;
   isBodyweight: (exerciseId: string) => boolean;
   unit: WeightUnit;
-  rest: { startedAt: number; endsAt: number } | null;
   /** Акцент из настроек оформления; по умолчанию — фирменный лайм */
   accent?: { dark: string; light: string };
 }
@@ -68,8 +64,6 @@ export function workoutActivityProps(s: WorkoutSession, d: ActivityDeps): Workou
     exerciseTotal: total,
     progress: allSets ? Math.round((doneSets / allSets) * 100) / 100 : 0,
     startedAt: s.startedAt,
-    restFrom: d.rest ? d.rest.startedAt : 0,
-    restTo: d.rest ? d.rest.endsAt : 0,
     allDone,
     accentDark: d.accent?.dark ?? '#C8F53C',
     accentLight: d.accent?.light ?? '#4C8A00',
