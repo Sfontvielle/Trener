@@ -172,8 +172,8 @@ const closeSheet = async (pg) => {
       await op.goto(URL, { waitUntil: 'networkidle' });
       await op.waitForTimeout(1500);
       const feed = await openFeed(op);
-      assert.ok(!/Дополни профиль: здоровье/.test(feed), 'здоровье больше не предлагается');
-      assert.match(feed, /Дополни профиль: оборудование/);
+      assert.ok(!/Дополни профиль: здоровье|Дополни профиль: оборудование/.test(feed), 'здоровье и оборудование уже спрошены анкетой');
+      assert.match(feed, /Дополни профиль: что любишь есть/);
       await closeSheet(op);
       // Питание: пикеры любимых и нелюбимых продуктов
       await op.goto(`${URL}/profile?edit=food`, { waitUntil: 'networkidle' });
@@ -234,9 +234,19 @@ const closeSheet = async (pg) => {
     const main = page.getByText(/^Начать тренировку$|^Продолжить тренировку$/);
     if (await main.count()) await main.first().click();
     else {
-      await page.getByLabel('Тренировка: начать, сгенерировать или собрать').click();
+      // День отдыха: «Тренировки» → «+» справа вверху → «Начать тренировку» → «Повторить тренировку»
+      await page.getByRole('tab', { name: /^Тренировки/ }).click();
+      await page.waitForTimeout(900);
+      await page.getByTestId('training-plus').click();
       await page.waitForTimeout(700);
-      await page.getByText(/^Сделать .* сегодня$|^Начать тренировку$/).first().click();
+      await page.getByTestId('hub-start').click();
+      await page.waitForTimeout(500);
+      await page.getByTestId('hub-repeat').click();
+      await page.waitForTimeout(500);
+      await page.getByTestId('hub-repeat-list').getByRole('button').first().click();
+      await page.waitForTimeout(1500);
+      const go = page.getByText(/^Начать тренировку$/);
+      if (!/workout\/active/.test(page.url()) && (await go.count())) await go.first().click();
     }
     await page.waitForTimeout(1500);
     const text = await page.evaluate(() => document.body.innerText);
@@ -437,21 +447,27 @@ const closeSheet = async (pg) => {
     await shot('coach-target');
   });
 
-  await check('24. Шторка «+» закрывается свайпом за содержимое; «Тренировать сейчас» на карточке', async () => {
+  await check('24. «Тренировки»: «+» справа вверху — запланировать / начать (новая, повтор); шторка закрывается свайпом; «Тренировать сейчас» на карточке', async () => {
     await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
-    await page.getByLabel('Тренировка: начать, сгенерировать или собрать').click();
+    assert.equal(await page.getByLabel('Тренировка: начать, сгенерировать или собрать').count(), 0, 'центрального «+» нет');
+    const plus = await page.getByTestId('training-plus').boundingBox();
+    assert.ok(plus && plus.x > 300 && plus.y < 160, `«+» справа вверху: ${plus && plus.x},${plus && plus.y}`);
+    await page.getByTestId('training-plus').click();
     await page.waitForTimeout(800);
-    const card = await page.getByText('Сегодня по плану').boundingBox();
-    assert.ok(card, 'шторка открыта');
+    assert.match(await page.getByTestId('hub-root').innerText(), /Запланировать тренировку[\s\S]*Начать тренировку/);
+    await page.getByTestId('hub-start').click();
+    await page.waitForTimeout(500);
+    assert.match(await page.getByTestId('hub-start').innerText(), /Новая тренировка[\s\S]*Повторить тренировку/);
+    const card = await page.getByTestId('hub-new').boundingBox();
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
     await touch('touchStart', card.y + 10);
     for (let i = 1; i <= 12; i++) { await touch('touchMove', card.y + 10 + i * 25); await page.waitForTimeout(16); }
     await touch('touchEnd', 0);
     await page.waitForTimeout(900);
-    assert.equal(await page.getByText('Сегодня по плану').count(), 0, 'шторка закрыта свайпом');
+    assert.equal(await page.getByTestId('hub-new').count(), 0, 'шторка закрыта свайпом');
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     assert.ok(await page.getByText('Тренировать сейчас').isVisible());
@@ -461,7 +477,7 @@ const closeSheet = async (pg) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
-    await page.getByLabel('Профиль').first().click();
+    await page.getByRole('tab', { name: 'Профиль' }).click();
     await page.waitForTimeout(800);
     await page.getByText('Оформление', { exact: true }).first().click();
     await page.waitForTimeout(800);
@@ -473,9 +489,10 @@ const closeSheet = async (pg) => {
     const visible = async (txt) => { for (const el of await page.getByText(txt).all()) if (await el.isVisible()) return true; return false; };
     assert.ok(!(await visible('Выбор сохраняется на устройстве')), 'один «Назад» уходит с «Оформления»');
     assert.ok(await visible('Оформление'), 'вернулись в профиль');
-    await page.getByLabel('Назад').last().click();
+    assert.equal(await page.getByRole('tab', { name: 'Профиль' }).getAttribute('aria-selected'), 'true', 'профиль — вкладка');
+    await page.getByRole('tab', { name: 'Главная' }).click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'второй «Назад» — главная');
+    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'вкладка «Главная»');
   });
 
   await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
@@ -1143,7 +1160,7 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByTestId('superset-chip').isVisible(), 'на экране — «Суперсет A1»');
   });
 
-  await check('47. Суперсет: подход A → сразу B без отдыха → отдых → снова A; меню «Убрать / Суперсет со следующим»', async () => {
+  await check('47. Суперсет: подход A → сразу B → снова A (отдых — только вручную); меню «Убрать / Суперсет со следующим»', async () => {
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/);
     await page.getByLabel(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
@@ -1151,9 +1168,12 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'без отдыха между участниками');
     await page.getByLabel(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
-    assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'после круга — отдых');
+    assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'после круга отдых сам не запускается');
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/, 'и снова A');
-    assert.match(await page.evaluate(() => document.body.innerText), /Следующий: Жим штанги лёжа/i);
+    // Отдых после круга — вручную (⏱), подпись — следующее упражнение
+    await page.getByLabel('Таймер отдыха', { exact: true }).click();
+    await page.waitForTimeout(400);
+    assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'таймер запущен вручную');
     await page.getByLabel('Пропустить отдых').click();
     await page.waitForTimeout(400);
     await page.getByLabel('Действия с упражнением').click();
