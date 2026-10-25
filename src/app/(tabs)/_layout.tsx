@@ -3,19 +3,21 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, themed } from '@/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Icon, T, type IconName } from '@/components/ui';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
-import { TrainingHub } from '@/features/training/TrainingHub';
 import { useWorkouts } from '@/stores/workouts';
 import { haptic } from '@/services/haptics';
 import { GlassSurface } from '@/components/Glass';
 
-const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName }> = {
-  index: { label: 'Главная', icon: 'home-outline', iconActive: 'home' },
-  training: { label: 'Тренировки', icon: 'barbell-outline', iconActive: 'barbell' },
-  nutrition: { label: 'Питание', icon: 'nutrition-outline', iconActive: 'nutrition' },
-  progress: { label: 'Прогресс', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
-  profile: { label: 'Профиль', icon: 'person-circle-outline', iconActive: 'person-circle' },
+type MciName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+/** Значки — как на эталоне 01_home: контурные, у выбранной вкладки — лаймовые с полоской под подписью */
+const TABS: Record<string, { label: string; icon: IconName | MciName; mci?: boolean }> = {
+  index: { label: 'Главная', icon: 'home-outline' },
+  training: { label: 'Тренировки', icon: 'barbell-outline' },
+  nutrition: { label: 'Питание', icon: 'silverware-fork-knife', mci: true },
+  progress: { label: 'Прогресс', icon: 'stats-chart-outline' },
+  profile: { label: 'Профиль', icon: 'person-outline' },
 };
 
 /**
@@ -50,13 +52,14 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         style={styles.item}
       >
         <View>
-          <Icon name={focused ? meta.iconActive : meta.icon} size={23} color={focused ? colors.text : colors.muted} />
+          {meta.mci ? <MaterialCommunityIcons name={meta.icon as MciName} size={24} color={focused ? colors.accent : colors.textDim} /> : <Icon name={meta.icon as IconName} size={23} color={focused ? colors.accent : colors.textDim} />}
           {/* Идёт тренировка — точка на вкладке «Тренировки» */}
           {r.name === 'training' && hasActive ? <View style={styles.dot} testID="active-workout-dot" /> : null}
         </View>
-        <T v="small" style={{ fontSize: 10.5, fontWeight: '700', color: focused ? colors.text : colors.muted }} numberOfLines={1}>
+        <T v="small" style={{ fontSize: 10.5, fontWeight: '700', color: focused ? colors.accent : colors.textDim }} numberOfLines={1}>
           {meta.label}
         </T>
+        <View style={[styles.underline, focused && { backgroundColor: colors.accent }]} />
       </Pressable>
     );
   };
@@ -79,7 +82,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="progress" />
         <Tabs.Screen name="profile" />
       </Tabs>
-      <TrainingHub />
     </>
   );
 }
@@ -94,6 +96,7 @@ const styles = themed({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderStrong,
   },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 6 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 8 },
+  underline: { width: 26, height: 3, borderRadius: 2, marginTop: 2, backgroundColor: 'transparent' },
   dot: { position: 'absolute', top: -2, right: -6, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg },
 });

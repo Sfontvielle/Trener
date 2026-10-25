@@ -3,7 +3,7 @@ import { guardExercise } from '@/features/training/prefActions';
 import { DEFAULT_SETS } from '@/features/training/session';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { Exercise, PlannedExercise } from '@/types';
+import type { Exercise, PlannedExercise, WorkoutColor } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
@@ -20,6 +20,10 @@ import { getPrefs } from '@/features/training/engine/prefs';
 import { analyzeWorkout, suggestOrder } from '@/features/training/engine/order';
 import { weeklyTargets } from '@/features/training/engine/volume';
 import { startDraft } from '@/features/training/actions';
+import { planDraft } from '@/features/training/planning';
+import { planningDayLabel } from '@/features/training/hub';
+import { useSchedule } from '@/stores/schedule';
+import { today } from '@/utils/date';
 import { normalizeSupersets, supersetLabels, toggleLinkAfter } from '@/features/training/workoutNav';
 import { isTimed } from '@/features/training/journal';
 import { fmtSec } from '@/utils/format';
@@ -27,18 +31,23 @@ import { haptic } from '@/services/haptics';
 import { WORKOUT_COLORS, WORKOUT_COLOR_KEYS, WORKOUT_COLOR_LABEL } from '@/features/training/colors';
 
 /**
- * Конструктор тренировки. Два режима:
- *  - черновик (сгенерированная / своя тренировка) → «Начать»;
- *  - templateId — редактирование шаблона плана («Мой план») → «Сохранить».
+ * Конструктор тренировки. Режимы:
+ *  - черновик (сгенерированная / своя тренировка) → «Начать» и «Сохранить как шаблон»;
+ *  - planDate — своя тренировка, которую планируют на день → «Запланировать»;
+ *  - templateId — редактирование шаблона программы → «Сохранить»;
+ *  - userTemplateId — редактирование своего шаблона (название, цвет, упражнения) → «Сохранить».
  */
 export default function Builder() {
-  const params = useLocalSearchParams<{ templateId?: string }>();
+  const params = useLocalSearchParams<{ templateId?: string; userTemplateId?: string; planDate?: string }>();
   const draft = useWorkouts((s) => s.draft);
   const setDraft = useWorkouts((s) => s.setDraft);
   const customs = useWorkouts((s) => s.customExercises);
   const plan = usePlan((s) => s.plan);
+  const userTemplates = useSchedule((s) => s.templates);
   const template = params.templateId ? plan?.templates.find((t) => t.id === params.templateId) : undefined;
-  const [tplExercises, setTplExercises] = useState<PlannedExercise[]>(() => template?.exercises.map((e) => ({ ...e })) ?? []);
+  const userTpl = params.userTemplateId ? userTemplates.find((t) => t.id === params.userTemplateId) : undefined;
+  const [tplExercises, setTplExercises] = useState<PlannedExercise[]>(() => (template ?? userTpl)?.exercises.map((e) => ({ ...e })) ?? []);
+  const [tplMeta, setTplMeta] = useState<{ name: string; color?: WorkoutColor }>(() => ({ name: userTpl?.name ?? '', color: userTpl?.color }));
   const [picker, setPicker] = useState<{ swapIdx?: number } | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [keptOrder, setKeptOrder] = useState<string | null>(null);
@@ -47,7 +56,8 @@ export default function Builder() {
   const profile = useProfile((s) => s.profile);
   const sessions = useWorkouts((s) => s.sessions);
 
-  const isTemplate = !!template;
+  const isTemplate = !!template || !!userTpl;
+  const planDate = !isTemplate && params.planDate && params.planDate >= today() ? params.planDate : undefined;
   const draftExercises = draft?.exercises;
   const exercises = useMemo(() => (isTemplate ? tplExercises : draftExercises ?? []), [isTemplate, tplExercises, draftExercises]);
   // Суперсеты держатся только у соседних упражнений: после любой перестановки ключи нормализуются
@@ -108,6 +118,12 @@ export default function Builder() {
   };
 
   const saveTemplate = () => {
+    if (userTpl) {
+      useSchedule.getState().updateTemplate(userTpl.id, { name: tplMeta.name, color: tplMeta.color, exercises: tplExercises });
+      toast('Шаблон сохранён');
+      router.back();
+      return;
+    }
     if (!template) return;
     const t = { ...template, exercises: tplExercises, estMinutes: estimateMinutes(tplExercises, customs) };
     usePlan.getState().updateTemplate(t);
@@ -115,11 +131,34 @@ export default function Builder() {
     toast('Шаблон сохранён');
     router.back();
   };
+  // Своя тренировка → свой шаблон: состав, название и цвет; сама тренировка остаётся черновиком
+  const saveAsTemplate = () => {
+    if (!draft || !draft.exercises.length) return;
+    const name = draft.name === 'Своя тренировка' ? 'Мой шаблон' : draft.name;
+    useSchedule.getState().saveTemplate({ name, exercises: draft.exercises, color: draft.color });
+    haptic.success();
+    toast(`Шаблон «${name}» сохранён`, 'bookmark');
+  };
+  const planIt = () => {
+    if (!draft || !planDate) return;
+    const p = planDraft(planDate, draft);
+    if (!p) return;
+    setDraft(null);
+    haptic.success();
+    toast(`«${p.name}» — ${planningDayLabel(planDate, today()).toLowerCase()}`, 'calendar');
+    router.back();
+  };
+  // Название и цвет: у своей тренировки — в черновике, у своего шаблона — локально до «Сохранить»
+  const meta = userTpl ? tplMeta : draft && !isTemplate && draft.source === 'custom' ? { name: draft.name === 'Своя тренировка' ? '' : draft.name, color: draft.color } : null;
+  const setMeta = (m: { name?: string; color?: WorkoutColor }) => {
+    if (userTpl) setTplMeta({ ...tplMeta, ...m });
+    else if (draft) setDraft({ ...draft, ...(m.name !== undefined ? { name: m.name || 'Своя тренировка' } : null), ...(m.color ? { color: m.color } : null) });
+  };
 
   return (
     <Screen keyboard>
       <Header
-        title={isTemplate ? `Шаблон: ${template!.name}` : draft!.source === 'custom' ? (draft!.name === 'Своя тренировка' ? 'Новая тренировка' : draft!.name) : draft!.name}
+        title={userTpl ? 'Мой шаблон' : isTemplate ? `Шаблон: ${template!.name}` : draft!.source === 'custom' ? (draft!.name === 'Своя тренировка' ? (planDate ? `Тренировка: ${planningDayLabel(planDate, today()).toLowerCase()}` : 'Новая тренировка') : draft!.name) : draft!.name}
         subtitle={`~${minutes} мин · ${exercises.length} упр · ${exercises.reduce((a, e) => a + e.sets, 0)} подходов`}
         right={
           !isTemplate ? (
@@ -131,13 +170,13 @@ export default function Builder() {
           ) : undefined
         }
       />
-      {!isTemplate && draft!.source === 'custom' ? (
+      {meta ? (
         <View style={{ gap: space.sm, marginBottom: space.md }}>
-          <Field placeholder="Название (необязательно)" accessibilityLabel="Название тренировки" value={draft!.name === 'Своя тренировка' ? '' : draft!.name} onChangeText={(t) => setDraft({ ...draft!, name: t || 'Своя тренировка' })} />
+          <Field placeholder={userTpl ? 'Название шаблона' : 'Название (необязательно)'} accessibilityLabel={userTpl ? 'Название шаблона' : 'Название тренировки'} value={meta.name} onChangeText={(t) => setMeta({ name: t })} />
           {/* Цвет своей тренировки — в дневнике, календаре и Live Activity */}
           <View style={{ flexDirection: 'row', gap: 10 }} testID="workout-color">
             {WORKOUT_COLOR_KEYS.map((c) => {
-              const on = (draft!.color ?? 'lime') === c;
+              const on = (meta.color ?? 'lime') === c;
               return (
                 <Pressable
                   key={c}
@@ -145,7 +184,7 @@ export default function Builder() {
                   accessibilityState={{ checked: on }}
                   aria-checked={on}
                   accessibilityLabel={`Цвет: ${WORKOUT_COLOR_LABEL[c]}`}
-                  onPress={() => { haptic.tap(); setDraft({ ...draft!, color: c }); }}
+                  onPress={() => { haptic.tap(); setMeta({ color: c }); }}
                   hitSlop={4}
                   style={[styles.swatch, { backgroundColor: WORKOUT_COLORS[c] }, on && styles.swatchOn]}
                 >
@@ -289,10 +328,13 @@ export default function Builder() {
       {exercises.length === 0 ? <EmptyState icon="add-circle-outline" title="Добавь упражнения" text="Выбери из библиотеки — подходы и повторы можно настроить." /> : null}
       <Button title="Добавить упражнение" icon="add" variant="secondary" onPress={() => setPicker({})} style={{ marginTop: space.md }} />
       {isTemplate ? (
-        <Button title="Сохранить шаблон" icon="checkmark" size="lg" onPress={saveTemplate} disabled={!exercises.length} style={{ marginTop: space.lg }} />
+        <Button title="Сохранить шаблон" icon="checkmark" size="lg" onPress={saveTemplate} disabled={!exercises.length || (!!userTpl && !tplMeta.name.trim())} style={{ marginTop: space.lg }} />
+      ) : planDate ? (
+        <Button title={`Запланировать: ${planningDayLabel(planDate, today()).toLowerCase()}`} icon="calendar" size="lg" onPress={planIt} disabled={!exercises.length} style={{ marginTop: space.lg }} testID="builder-plan" />
       ) : (
         <Button title="Начать тренировку" icon="play" size="lg" onPress={() => draft && startDraft(draft)} disabled={!exercises.length} style={{ marginTop: space.lg }} />
       )}
+      {!isTemplate && exercises.length ? <Button title="Сохранить как шаблон" icon="bookmark-outline" variant="secondary" onPress={saveAsTemplate} style={{ marginTop: space.sm }} testID="builder-save-template" /> : null}
 
       <ExercisePickerSheet visible={!!picker} onClose={() => setPicker(null)} onPick={onPick} title={picker?.swapIdx !== undefined ? 'Заменить на…' : 'Добавить упражнение'} excludeIds={exercises.map((e) => e.exerciseId)} />
     </Screen>

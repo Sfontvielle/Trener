@@ -302,13 +302,14 @@ test('неделя одним списком: сделано / сегодня / 
   assert.deepEqual(prev.map((d) => d.status), ['done', 'done', 'missed']);
 });
 
-test('Меню «+»: повтор — последние выполненные по одной на название; планирование дня — DayOverride', async () => {
-  const { recentRepeatable, planningDays, planningDayLabel, scheduleOverride } = await import('../src/features/training/hub');
+test('Меню «+»: повтор — все выполненные без склейки названий; планирование дня — DayOverride', async () => {
+  const { repeatableSessions, planningDays, planningDayLabel, scheduleOverride } = await import('../src/features/training/hub');
   const mk = (id: string, name: string, startedAt: number, status: WorkoutSession['status'] = 'completed', n = 1) =>
     ({ id, date: '2026-10-01', name, focus: '', source: 'custom', startedAt, exercises: Array.from({ length: n }, () => ({})), volumeFactor: 1, status }) as unknown as WorkoutSession;
-  const list = recentRepeatable([mk('a', 'Верх А', 1), mk('b', 'Ноги', 3), mk('c', 'верх а', 5), mk('d', 'Пустая', 6, 'completed', 0), mk('e', 'Идёт', 7, 'active')]);
-  assert.deepEqual(list.map((x) => x.id), ['c', 'b'], 'новые первыми, без повторов названия, без пустых и незавершённых');
-  assert.equal(recentRepeatable([mk('a', 'A', 1), mk('b', 'B', 2), mk('c', 'C', 3)], 2).length, 2);
+  const list = repeatableSessions([mk('a', 'Верх А', 1), mk('b', 'Ноги', 3), mk('c', 'верх а', 5), mk('d', 'Пустая', 6, 'completed', 0), mk('e', 'Идёт', 7, 'active')]);
+  assert.deepEqual(list.map((x) => x.id), ['c', 'b', 'a'], 'новые первыми, одинаковые названия — отдельно, без пустых и незавершённых');
+  const many = Array.from({ length: 240 }, (_, i) => mk(`s${i}`, 'Верх А', i));
+  assert.equal(repeatableSessions(many).length, 240, 'без обрезки');
   const days = planningDays('2026-10-27', 3);
   assert.deepEqual(days, ['2026-10-27', '2026-10-28', '2026-10-29']);
   assert.equal(planningDayLabel('2026-10-27', '2026-10-27'), 'Сегодня');

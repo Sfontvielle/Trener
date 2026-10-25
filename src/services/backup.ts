@@ -12,6 +12,7 @@ import { useNutrition } from '@/stores/nutrition';
 import { useWorkouts } from '@/stores/workouts';
 import { useCoach } from '@/stores/coach';
 import { useJournal } from '@/stores/journal';
+import { useSchedule } from '@/stores/schedule';
 import { today } from '@/utils/date';
 import { BRAND } from '@/config/brand';
 import { workoutsCsv } from '@/features/training/csv';
@@ -39,6 +40,8 @@ export interface BackupFile {
     /** Анализы и режим Enhanced — в копиях с этой версии; старые копии восстанавливаются без них */
     labs?: { reports: unknown };
     enhanced?: { enabled: unknown; aas: unknown; bp: unknown };
+    /** Запланированные тренировки и свои шаблоны — с этапа 3; старые копии восстанавливаются без них */
+    schedule?: { planned: unknown; templates: unknown };
   };
 }
 
@@ -65,6 +68,7 @@ export function buildBackup(): BackupFile {
       journal: { notes: useJournal.getState().notes },
       labs: { reports: useLabs.getState().reports },
       enhanced: { enabled: useEnhanced.getState().enabled, aas: useEnhanced.getState().aas, bp: useEnhanced.getState().bp },
+      schedule: { planned: useSchedule.getState().planned, templates: useSchedule.getState().templates },
     },
   };
 }
@@ -208,6 +212,7 @@ export function restoreBackup(b: BackupFile): void {
   useJournal.setState({ notes: arr(d.journal?.notes) });
   useLabs.setState({ reports: arr(d.labs?.reports) });
   useEnhanced.setState({ enabled: !!d.enhanced?.enabled, aas: arr(d.enhanced?.aas), bp: arr(d.enhanced?.bp) });
-  useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null, rest: null });
+  useWorkouts.setState({ sessions: arr(d.workouts?.sessions), draft: d.workouts?.draft ?? null, customExercises: arr(d.workouts?.customExercises), active: null });
+  useSchedule.setState({ planned: arr(d.schedule?.planned), templates: arr(d.schedule?.templates) });
   useCoach.setState({ messages: arr(d.coach?.messages), summary: d.coach?.summary ?? '', summarizedUntil: d.coach?.summarizedUntil ?? 0, memory: arr(d.coach?.memory), advice: arr(d.coach?.advice), knowledge: obj(d.coach?.knowledge), insight: null });
 }

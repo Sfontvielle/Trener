@@ -21,7 +21,7 @@ interface AccountState {
   /** Приветствие уже показано (больше не показываем при обычных запусках) */
   welcomeSeen: boolean;
   apple: AppleLink | null;
-  /** «Продолжить без входа» — анкету можно пройти и без Apple ID, привязать аккаунт позже в Профиле */
+  /** Вход пропущен: старые установки (раньше была кнопка «Продолжить без входа») и dev-сборки без Apple ID; привязать — в Профиле */
   authSkipped: boolean;
   setWelcomeSeen: () => void;
   linkApple: (a: AppleLink) => void;

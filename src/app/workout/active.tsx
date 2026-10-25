@@ -20,7 +20,7 @@ import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { ExerciseLoop } from '@/features/exercises/ExerciseThumb';
-import { inputWidth } from '@/components/inputs';
+import { Field, inputWidth } from '@/components/inputs';
 import { TechniquePanel } from '@/features/exercises/TechniquePanel';
 import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
@@ -28,8 +28,8 @@ import { useBody } from '@/stores/body';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { afterSetTarget, currentIndexOf, isExerciseDone, navItems, nextIndex, prevIndex, remainingInfo, supersetLabels, supersetMembers, workoutProgress } from '@/features/training/workoutNav';
 import { isTimed } from '@/features/training/journal';
+import { finishWorkout } from '@/features/training/planning';
 import { HoldTimer } from '@/features/training/HoldTimer';
-import { RestTimerBar } from '@/features/training/RestTimer';
 import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, prefFavorite } from '@/features/training/prefActions';
 import { warmupPlan } from '@/features/training/warmup';
 import { DEFAULT_GYM, equipmentStep, loadKind, plateLayout } from '@/features/training/equipment';
@@ -63,7 +63,6 @@ export default function ActiveWorkout() {
   const active = useWorkouts((s) => s.active);
   const sessions = useWorkouts((s) => s.sessions);
   const customs = useWorkouts((s) => s.customExercises);
-  const rest = useWorkouts((s) => s.rest);
   const unit = useProfile((s) => s.settings.weightUnit);
   const profileW = useProfile((s) => s.profile?.weightKg ?? 75);
   const weights = useBody((s) => s.weights);
@@ -79,6 +78,7 @@ export default function ActiveWorkout() {
   const [pr, setPr] = useState<{ text: string; n: number } | null>(null);
   // Подход на время: идёт таймер удержания (планка и т. п.)
   const [hold, setHold] = useState<{ weId: string; setId: string; startedAt: number } | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [slide] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(1));
@@ -99,12 +99,6 @@ export default function ActiveWorkout() {
     const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-  const restEnd = rest?.endsAt;
-  useEffect(() => {
-    if (!restEnd) return;
-    const id = setTimeout(() => setNow(Date.now()), Math.max(0, restEnd + 1600 - Date.now()));
-    return () => clearTimeout(id);
-  }, [restEnd]);
   useEffect(() => {
     active?.exercises.forEach((we) => {
       const ex = getExercise(we.exerciseId, customs);
@@ -157,8 +151,6 @@ export default function ActiveWorkout() {
   const nextI = nextIndex(active, idx);
   const ctaSet = we?.sets.find((x) => !x.done);
   const allDone = active.exercises.length > 0 && active.exercises.every((x) => isExerciseDone(x));
-  // Во время отдыха нижняя зона — таймер (с «Пропустить»), после — снова главная кнопка
-  const resting = !!rest && rest.endsAt + 1500 > now;
   const prevI = prevIndex(active, idx);
   const ssLabels = supersetLabels(active.exercises);
   const curEx = we ? getExercise(we.exerciseId, customs) : undefined;
@@ -227,7 +219,7 @@ export default function ActiveWorkout() {
     if (!hasProgress(a)) return setDiscardOpen(true);
     const finish = () => {
       const e = sessionEnergy(a, bodyW, useHealth.getState().days, customs);
-      const s = useWorkouts.getState().finish({ energy: { kcal: e.kcal, source: e.source } });
+      const s = finishWorkout({ energy: { kcal: e.kcal, source: e.source } });
       haptic.success();
       if (s) router.replace({ pathname: '/workout/[id]', params: { id: s.id, fresh: '1' } });
     };
@@ -250,12 +242,6 @@ export default function ActiveWorkout() {
 
 
   const collapse = () => (router.canGoBack() ? router.back() : router.replace('/'));
-  const toggleRest = () => {
-    haptic.tap();
-    const st = useWorkouts.getState();
-    if (resting) st.stopRest();
-    else if (we) st.startRest(we.restSec || useProfile.getState().settings.defaultRestSec || 90, nextI >= 0 && !ctaSet ? getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? '' : curEx?.name ?? '');
-  };
   const nextWarm = ctaSet?.warmup;
   const ctaNo = ctaSet ? we!.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1 : 0;
   // Главная круглая кнопка внизу: подход → старт удержания → далее → завершить
@@ -320,13 +306,6 @@ export default function ActiveWorkout() {
         </Animated.View>
       </View>
 
-      {/* Отдых — над панелью, панель остаётся на месте */}
-      {we && resting && !holding ? (
-        <View style={styles.restWrap}>
-          <RestTimerBar inline />
-        </View>
-      ) : null}
-
       {we ? (
         holding && hold ? (
           <View style={[styles.holdWrap, { paddingBottom: insets.bottom + 10 }]}>
@@ -341,15 +320,15 @@ export default function ActiveWorkout() {
                 <Icon name={center.icon} size={34} color={colors.onAccent} />
               </Tap>
             ) : null}
-            <BarBtn icon="timer-outline" label={resting ? 'Остановить отдых' : 'Таймер отдыха'} active={resting} onPress={toggleRest} />
+            <BarBtn icon={we.note ? 'document-text' : 'create-outline'} label="Заметка к упражнению" active={!!we.note} onPress={() => { haptic.tap(); setNoteFor(we.id); }} />
             <BarBtn icon="chevron-forward" label="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} />
           </View>
         )
       ) : null}
 
-      {!we ? <RestTimerBar bottom={insets.bottom + 16} /> : null}
       {pr ? <PrBanner key={pr.n} text={pr.text} top={insets.top + 70} /> : null}
 
+      <ExerciseNoteSheet we={active.exercises.find((x) => x.id === noteFor)} onClose={() => setNoteFor(null)} />
       <WorkoutNavigator
         labels={ssLabels}
         visible={navOpen}
@@ -513,15 +492,13 @@ function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: Workou
     onPr(`${ex.name} · ${isTimed(ex) ? `${set.weight ? `${fmtWeight(set.weight)} × ` : ''}${fmtSec(set.reps)}` : set.weight ? `${fmtWeight(set.weight)} × ${set.reps}` : `${set.reps} повт.`}`);
   }
   const a = useWorkouts.getState().active;
-  // После последнего подхода тренировки отдых не нужен — сразу показываем «Завершить тренировку»
+  // После последнего подхода тренировки — сразу «Завершить тренировку»
   const workoutComplete = !!a && a.exercises.every((x) => x.sets.every((y) => y.done));
-  if (workoutComplete) st.stopRest?.();
   if (!a || workoutComplete) return;
-  // Суперсет: после рабочего подхода — к следующему участнику без отдыха; отдых — после круга
+  // Суперсет: после рабочего подхода — сразу к следующему участнику, после круга — снова к первому
   const nav = set.warmup ? { index, rest: true } : afterSetTarget(a, index);
   if (nav.index !== index) onNavigate?.(nav.index);
-  if (!nav.rest) st.stopRest();
-  // Таймер отдыха автоматически не запускается: только кнопкой ⏱ на панели (по желанию)
+  // Таймера отдыха нет (решение пользователя): отдых — в своём темпе
 }
 
 /** Старт удержания для подхода на время (вне рендера: время берётся в момент нажатия) */
@@ -742,6 +719,7 @@ function ExerciseFocus({
   const prevWarm = lastWarmupCount(ex.id, sessions);
   const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
   const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
+  const recTxt = rec ? `${rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}` : '';
   const lastTxt = last ? last.sets.map((x) => { const v = timed ? fmtSec(x.reps) : String(x.reps); return x.weight ? `${fmtWeight(x.weight, unit)}×${v}` : v; }).join(' · ') : '';
 
   return (
@@ -767,10 +745,25 @@ function ExerciseFocus({
         <T v="caption" numberOfLines={1} style={{ textAlign: 'center', letterSpacing: 0.6 }} testID="exercise-muscles">
           {primary.join(', ').toUpperCase()}
         </T>
+        {we.note ? (
+          <T v="small" numberOfLines={2} style={{ fontSize: 12, textAlign: 'center' }} color={colors.text} testID="exercise-note">
+            {we.note}
+          </T>
+        ) : null}
         {lastTxt ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="last-result">
             <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
               Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{lastTxt}</T> ›
+            </T>
+          </Pressable>
+        ) : null}
+        {/* Предложение RYNJI на сегодня — одной строкой; подходы уже заполнены им: отметка подхода — подтвердить, поле — исправить */}
+        {rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight) ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Предложение ${BRAND}: ${recTxt}${rec.delta ? `, ${rec.delta}` : ''}. Почему`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="rynji-suggestion">
+            <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
+              <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '800' }}>{`${BRAND}: `}</T>
+              <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{recTxt}</T>
+              {rec.delta ? <T v="small" style={{ fontSize: 12 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' || rec.action === 'deload' ? colors.warning : colors.textDim}>{`  ${rec.delta}`}</T> : null}
             </T>
           </Pressable>
         ) : null}
@@ -885,6 +878,31 @@ function ExerciseFocus({
   );
 }
 
+/** Заметка к упражнению этой тренировки (сохраняется в истории вместе с подходами) */
+function ExerciseNoteSheet({ we, onClose }: { we: WorkoutExercise | undefined; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const [forId, setForId] = useState<string | null>(null);
+  if (we && forId !== we.id) {
+    setForId(we.id);
+    setText(we.note ?? '');
+  }
+  const save = () => {
+    if (!we) return;
+    const note = text.trim();
+    useWorkouts.getState().patchActive((s) => ({ ...s, exercises: s.exercises.map((x) => (x.id === we.id ? { ...x, note: note || undefined } : x)) }));
+    haptic.success();
+    onClose();
+  };
+  return (
+    <Sheet visible={!!we} onClose={onClose} title="Заметка к упражнению" subtitle={we ? getExercise(we.exerciseId)?.name : undefined}>
+      <View style={{ gap: space.md }}>
+        <Field placeholder="Например: сиденье на 4, узкий хват, болело плечо" value={text} onChangeText={setText} multiline maxLength={300} autoFocus />
+        <Button title="Сохранить" icon="checkmark" size="lg" onPress={save} />
+      </View>
+    </Sheet>
+  );
+}
+
 /** Кнопка нижней панели тренировки */
 function BarBtn({ icon, label, onPress, disabled, active }: { icon: React.ComponentProps<typeof Icon>['name']; label: string; onPress: () => void; disabled?: boolean; active?: boolean }) {
   return (
@@ -895,7 +913,7 @@ function BarBtn({ icon, label, onPress, disabled, active }: { icon: React.Compon
 }
 
 /**
- * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймер отдыха — только вручную (⏱).
+ * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймера отдыха нет.
  * RIR сохраняется в подход и маппится в «ощущение» для старых экранов (0 → до отказа, 1 → тяжело, 2 → нормально, 3+ → легко).
  */
 const RIR_OPTS = [0, 1, 2, 3, 4] as const;
@@ -1124,7 +1142,6 @@ const styles = themed({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: 4 },
   barBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   main: { width: 76, height: 76, borderRadius: 38, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.bg, boxShadow: '0px 0px 24px rgba(200,245,60,0.35)' },
-  restWrap: { paddingHorizontal: space.md, paddingBottom: 6 },
   holdWrap: { paddingHorizontal: space.lg, paddingTop: 4 },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
   block: { backgroundColor: colors.surface, borderRadius: radius.xl, paddingHorizontal: 10, paddingVertical: 10 },

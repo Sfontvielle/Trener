@@ -101,6 +101,7 @@ export function Button({
   full,
   accessibilityLabel,
   live,
+  testID,
 }: {
   title: string;
   onPress?: () => void;
@@ -114,6 +115,7 @@ export function Button({
   accessibilityLabel?: string;
   /** Главное действие экрана: мягкое свечение под кнопкой и редкий блик */
   live?: boolean;
+  testID?: string;
 }) {
   // Одна главная кнопка — лаймовая; остальные — спокойная заливка без рамок («outline» выглядит как «secondary»)
   const bg = variant === 'primary' ? colors.accent : variant === 'secondary' || variant === 'outline' ? colors.surface3 : variant === 'danger' ? colors.dangerDim : 'transparent';
@@ -125,6 +127,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+      testID={testID}
       disabled={disabled || loading}
       onPress={() => {
         if (glowing) haptic.light();
@@ -234,9 +237,10 @@ export function Chip({
   );
 }
 
-export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0 }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number }) {
-  // Длинные подписи — «пилюли» по ширине текста с прокруткой (как в iOS), короткие — поровну на всю ширину
-  const scroll = items.reduce((a, it) => a + it.label.length, 0) > 26;
+export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0, fit = false }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number; fit?: boolean }) {
+  // Длинные подписи — «пилюли» по ширине текста с прокруткой (как в iOS), короткие — поровну на всю ширину;
+  // fit — все пилюли в одну строку без прокрутки, ширина пропорциональна подписи (три раздела вкладки)
+  const scroll = !fit && items.reduce((a, it) => a + it.label.length, 0) > 26;
   // Подложка выбранной «пилюли» плавно переезжает к новой (пружина), а не перескакивает
   const [ind] = useState(() => ({ x: new Animated.Value(0), w: new Animated.Value(0), o: new Animated.Value(0) }));
   // Прокручиваемый ряд держит выбранную «пилюлю» в поле зрения (переход по ссылке, смена вкладки)
@@ -285,7 +289,7 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
           if (!active) haptic.tap();
           onChange(it.key);
         }}
-        style={({ pressed }) => [styles.segItem, scroll ? { paddingHorizontal: 16 } : { flex: 1 }, pressed && !active && { opacity: 0.6 }]}
+        style={({ pressed }) => [styles.segItem, scroll ? { paddingHorizontal: 16 } : fit ? { flexGrow: it.label.length + 4, flexBasis: 0, paddingHorizontal: 4 } : { flex: 1 }, pressed && !active && { opacity: 0.6 }]}
       >
         <Text numberOfLines={1} style={[styles.segText, active && { color: colors.text }]}>
           {it.label}

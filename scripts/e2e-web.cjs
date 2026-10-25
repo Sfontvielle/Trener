@@ -47,47 +47,94 @@ const openFeed = async (pg) => {
   await pg.waitForTimeout(800);
   return pg.getByTestId('coach-feed-list').innerText();
 };
-/** Первый запуск: приветствие → «Продолжить без входа» → 5 этапов анкеты (каждый ответ — вручную) → старт */
+/** Первый запуск: приветствие → вход (в браузере Apple ID нет — dev-обход) → 5 этапов анкеты по эталонам (каждый ответ — вручную) → «Твой план готов!» */
 const passQuestionnaire = async (pg, name = 'Тест') => {
   const body = () => pg.evaluate(() => document.body.innerText);
-  const next = async () => { await pg.getByRole('button', { name: 'Далее', exact: true }).press('Enter'); await pg.waitForTimeout(400); };
+  const next = async (title = 'Продолжить') => { await pg.getByRole('button', { name: title, exact: true }).press('Enter'); await pg.waitForTimeout(450); };
+  const disabled = async () => (await pg.getByRole('button', { name: 'Продолжить', exact: true }).getAttribute('aria-disabled')) === 'true';
   await pg.goto(URL, { waitUntil: 'networkidle' });
   await pg.waitForTimeout(1500);
   assert.match(await body(), /Тренировки под твои цели\./);
+  assert.match(await body(), /Персональная программа, питание и восстановление — в одной системе\./);
   await pg.getByText('Начать', { exact: true }).click();
   await pg.waitForTimeout(800);
-  assert.match(await body(), /данные пока хранятся только на этом iPhone/i);
-  await pg.getByText('Продолжить без входа', { exact: true }).click();
+  assert.match(await body(), /Вход/);
+  assert.equal(await pg.getByText('Продолжить без входа', { exact: true }).count(), 0, 'входа «без Apple ID» для пользователей нет');
+  await pg.getByText('Без входа (только разработка)', { exact: true }).click();
   await pg.waitForTimeout(1000);
-  assert.match(await body(), /1 из 5/);
+  // 1 из 5 — имя
+  assert.match(await body(), /1 из 5[\s\S]*Как тебя зовут\?[\s\S]*Так я буду к тебе обращаться/);
+  assert.ok(await disabled(), 'без имени дальше нельзя');
   await pg.getByLabel('Как тебя зовут?').fill(name);
   await next();
-  assert.equal(await pg.getByLabel('Возраст, лет').inputValue(), '', 'возраст не подставлен');
-  assert.equal(await pg.getByLabel('Текущий вес, кг').inputValue(), '', 'вес не подставлен');
+  // 2 из 5 — пол → возраст → рост → вес, ничего не подставлено
+  assert.match(await body(), /2 из 5[\s\S]*Твой пол\?/);
+  assert.ok(await disabled());
   await pg.getByLabel(PROFILE.sex === 'female' ? 'Женщина' : 'Мужчина').click();
+  await next();
+  assert.match(await body(), /Сколько тебе лет\?[\s\S]*Только для пользователей 18\+/);
+  assert.equal(await pg.getByLabel('Возраст, лет').inputValue(), '', 'возраст не подставлен');
+  assert.ok(await disabled());
   await pg.getByLabel('Возраст, лет').fill('17');
   await pg.waitForTimeout(200);
   assert.match(await body(), /с 18 лет/);
+  assert.ok(await disabled(), 'до 18 — нельзя');
   await pg.getByLabel('Возраст, лет').fill(String(PROFILE.age));
-  await pg.getByLabel('Рост, см').fill(String(PROFILE.heightCm));
-  await pg.getByLabel('Текущий вес, кг').fill(String(PROFILE.weightKg).replace('.', ','));
   await next();
-  assert.match(await body(), /Набор массы[\s\S]*Сушка[\s\S]*Рекомпозиция[\s\S]*Поддержание/);
-  assert.doesNotMatch(await body(), /Целевой вес|срок/i, 'целевой вес и срок не спрашиваем');
+  assert.match(await body(), /Какой у тебя рост\?/);
+  assert.equal(await pg.getByLabel('Рост, см').inputValue(), '', 'рост не подставлен');
+  // линейка: «+» с пустого значения ставит отметку шкалы, затем точное значение с клавиатуры
+  await pg.getByLabel('Рост: больше', { exact: true }).click();
+  assert.ok(!(await disabled()), 'после выбора на линейке — можно дальше');
+  await pg.getByLabel('Рост, см').fill(String(PROFILE.heightCm));
+  await next();
+  assert.match(await body(), /Сколько ты весишь\?/);
+  assert.equal(await pg.getByLabel('Текущий вес, кг').inputValue(), '', 'вес не подставлен');
+  await pg.getByLabel('Текущий вес, кг').fill(String(PROFILE.weightKg).replace('.', ','));
+  await pg.getByLabel('Текущий вес: больше', { exact: true }).click();
+  await pg.getByLabel('Текущий вес: меньше', { exact: true }).click();
+  await next();
+  // 3 из 5 — цель: четыре иллюстрированные карточки, без целевого веса и сроков
+  assert.match(await body(), /3 из 5[\s\S]*Твоя цель\?[\s\S]*Набор массы[\s\S]*Увеличить мышечную массу[\s\S]*Сушка[\s\S]*Рекомпозиция[\s\S]*Поддержание/);
+  assert.doesNotMatch(await body(), /Целевой вес|срок|темп/i, 'целевой вес, срок и темп не спрашиваем');
+  assert.equal(await pg.locator('img').count() >= 4, true, 'у карточек целей есть изображения');
   await pg.getByLabel(PROFILE.goal === 'cut' ? 'Сушка' : PROFILE.goal === 'recomp' ? 'Рекомпозиция' : PROFILE.goal === 'maintain' ? 'Поддержание' : 'Набор массы').click();
   await next();
+  // 4 из 5 — опыт → раз в неделю → длительность → место
+  assert.match(await body(), /4 из 5[\s\S]*Опыт тренировок\?[\s\S]*Новичок[\s\S]*Нет опыта или до 6 месяцев[\s\S]*Опытный/);
   await pg.getByLabel('Средний', { exact: true }).click();
-  for (const d of ['Пн', 'Ср', 'Пт']) await pg.getByLabel(`${d}: отдых`).click();
-  await pg.getByText('60 мин', { exact: true }).click();
-  await pg.getByText('Зал', { exact: true }).click();
   await next();
-  await pg.getByLabel('Сидячая', { exact: true }).click();
-  await pg.getByText('5–9 тыс', { exact: true }).click();
-  await pg.getByText('7–8 ч', { exact: true }).click();
-  await pg.getByText('Нет', { exact: true }).click();
+  assert.match(await body(), /Сколько раз в неделю планируешь тренироваться\?/);
+  assert.ok(await disabled(), 'частота не выбрана за человека');
+  await pg.getByLabel('4 раза в неделю', { exact: true }).click();
+  await pg.getByLabel('Реже', { exact: true }).click();
+  assert.equal((await pg.getByTestId('q-freq-value').innerText()).trim(), '3', '−/+ меняют частоту');
   await next();
-  assert.match(await body(), /вот твой старт/);
-  await pg.getByText('Начать с RYNJI').click();
+  assert.match(await body(), /30 минут[\s\S]*45 минут[\s\S]*60 минут[\s\S]*90 минут/);
+  await pg.getByLabel('60 минут', { exact: true }).click();
+  await next();
+  assert.match(await body(), /В зале[\s\S]*Дома[\s\S]*На улице[\s\S]*Комбинированно/);
+  await pg.getByLabel('В зале', { exact: true }).click();
+  await next();
+  // 5 из 5 — образ жизни: выпадающие списки, «Дополнительно» необязательно
+  assert.match(await body(), /5 из 5[\s\S]*Расскажи о своём образе жизни/);
+  const pick = async (field, option) => {
+    await pg.getByTestId(field).click();
+    await pg.waitForTimeout(600);
+    await pg.getByRole('radio', { name: option, exact: true }).last().click();
+    await pg.waitForTimeout(600);
+  };
+  await pick('q-activity', 'Умеренный');
+  await pick('q-sleep', '7–8 часов');
+  await pick('q-diet', 'Нет');
+  await next('Завершить анкету');
+  await pg.waitForTimeout(800);
+  // «Твой план готов!» — реальные калории и программа
+  assert.match(await body(), /Твой план готов!/);
+  assert.match(await pg.getByTestId('plan-kcal').innerText(), /^\d[\d\s ]*$/);
+  assert.match(await body(), /Белки[\s\S]*Жиры[\s\S]*Углеводы[\s\S]*3× в неделю/);
+  assert.match(await body(), /Программа тренировок[\s\S]*Персональное КБЖУ[\s\S]*Рекомендации по восстановлению/);
+  await pg.getByText('Открыть мой план', { exact: true }).click();
   await pg.waitForTimeout(1500);
 };
 
@@ -321,11 +368,11 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel(/, текущее$/).count(), 0, 'панель закрыта');
   });
 
-  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, место под 3D, сворачивается', async () => {
+  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, без заглушек, сворачивается', async () => {
     await page.getByLabel('Техника выполнения').click();
     await page.waitForTimeout(700);
     assert.ok(await page.getByTestId('technique-inline').isVisible(), 'раздел раскрыт');
-    assert.ok(await page.getByTestId('technique-3d-slot').isVisible(), 'место под 3D-анимацию');
+    assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек «появится позже»');
     assert.match(await page.getByTestId('technique-inline').innerText(), /Положение тела/);
     const panel = await page.getByTestId('technique-inline').boundingBox();
     const sets = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
@@ -335,8 +382,8 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByTestId('technique-inline').count(), 0, 'раздел свёрнут');
   });
 
-  await check('22. Тренировки: неделя сверху, объём — шторкой', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('22. Тренировки → «Программы»: неделя сверху, объём — шторкой', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
     const wk = await page.getByText('Эта неделя', { exact: true }).boundingBox();
@@ -350,7 +397,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. Главная: крупный блок тренировки, калории и БЖУ, шаги, вес с динамикой, сон и восстановление, RYNJI Coach', async () => {
+  await check('17. Главная (эталон 01_home): логотип и колокольчик, приветствие, карточка тренировки, плитки 2×2, совет RYNJI, КБЖУ, вес, активность', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
@@ -360,15 +407,23 @@ const closeSheet = async (pg) => {
     assert.deepEqual(tabs, ['Главная', 'Тренировки', 'Питание', 'Прогресс', 'Профиль'], 'пять вкладок, без центрального «+»');
     const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
     assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    const kcal = await page.getByLabel(/^Калории, открыть питание/).first().boundingBox();
-    assert.ok(kcal && kcal.y < 956 - 80, 'калории на первом экране');
-    assert.match(await page.getByTestId('home-nutrition').innerText(), /Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'БЖУ');
+    assert.match(await page.evaluate(() => document.body.innerText), /RYNJI[\s\S]*(Доброе утро|Добрый день|Добрый вечер|Доброй ночи), Тест/, 'логотип и приветствие по времени');
+    assert.ok(await page.getByTestId('home-bell').isVisible(), 'колокольчик — сигналы тренера');
+    for (const id of ['home-kcal', 'home-protein', 'home-steps', 'home-recovery']) {
+      const b = await page.getByTestId(id).boundingBox();
+      assert.ok(b && b.y < 956 - 80, `${id} на первом экране`);
+    }
+    assert.match(await page.getByTestId('home-kcal').innerText(), /Калории[\s\S]*ккал/);
+    assert.match(await page.getByTestId('home-protein').innerText(), /Белки[\s\S]*г/);
+    assert.match(await page.getByTestId('home-nutrition').innerText(), /КБЖУ на сегодня[\s\S]*Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'БЖУ');
+    assert.match(await page.getByTestId('home-steps-week').innerText(), /Активность за 7 дней/);
     assert.match(await page.getByTestId('home-weight').innerText(), /кг/, 'вес');
     assert.match(await page.getByTestId('home-weight').innerText(), /за неделю|через неделю|Давно/, 'динамика веса');
     assert.match(await page.getByTestId('home-steps').innerText(), /Шаги/);
-    assert.match(await page.getByTestId('home-recovery').innerText(), /Сон и восстановление/);
-    for (const l of [/^Шаги, как рассчитана цель/, /Сон, чек-ин$/, /^Вода: добавить или уменьшить/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
-    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'строка тренера');
+    assert.match(await page.getByTestId('home-recovery').innerText(), /Восстановление/);
+    for (const l of [/^Шаги, как рассчитана цель/, /^Восстановление: /, /^Вода: добавить или уменьшить/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
+    await page.getByTestId('coach-feed').scrollIntoViewIfNeeded();
+    assert.match(await page.getByTestId('coach-feed').innerText(), /Совет RYNJI/, 'совет тренера');
     // RYNJI Coach — с главной: «Спросить»
     await page.getByTestId('coach-ask').click();
     await page.waitForTimeout(900);
@@ -398,8 +453,8 @@ const closeSheet = async (pg) => {
     assert.equal(errors.length, before, errors.slice(before).join(' | '));
   });
 
-  await check('19. Тренировки → «План и сплит» (лист): выбор сплита', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('19. Тренировки → «Программы» → «План и сплит» (лист): выбор сплита; библиотека — отдельный экран', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
     await page.getByLabel('План и сплит').click();
@@ -415,8 +470,10 @@ const closeSheet = async (pg) => {
     await page.getByText('Отмена', { exact: true }).last().click();
     await page.waitForTimeout(300);
     await closeSheet(page);
-    await page.getByText('Упражнения', { exact: true }).first().click();
-    await page.waitForTimeout(800);
+    await page.getByLabel('Библиотека упражнений', { exact: true }).click();
+    await page.waitForTimeout(1200);
+    assert.match(page.url(), /\/library/);
+    assert.match(await page.evaluate(() => document.body.innerText), /Библиотека упражнений[\s\S]*114 упражнений/);
     await shot('library');
   });
 
@@ -481,7 +538,7 @@ const closeSheet = async (pg) => {
     await dismiss();
     await page.getByRole('tab', { name: 'Профиль' }).click();
     await page.waitForTimeout(800);
-    await page.getByText('Оформление', { exact: true }).first().click();
+    await page.getByText('Темы и акцентные цвета', { exact: true }).first().click();
     await page.waitForTimeout(800);
     await page.getByText('Синий', { exact: true }).last().click();
     await page.waitForTimeout(1500);
@@ -490,7 +547,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(900);
     const visible = async (txt) => { for (const el of await page.getByText(txt).all()) if (await el.isVisible()) return true; return false; };
     assert.ok(!(await visible('Выбор сохраняется на устройстве')), 'один «Назад» уходит с «Оформления»');
-    assert.ok(await visible('Оформление'), 'вернулись в профиль');
+    assert.ok(await visible('Темы и акцентные цвета'), 'вернулись в профиль');
     assert.equal(await page.getByRole('tab', { name: 'Профиль' }).getAttribute('aria-selected'), 'true', 'профиль — вкладка');
     await page.getByRole('tab', { name: 'Главная' }).click();
     await page.waitForTimeout(900);
@@ -586,7 +643,7 @@ const closeSheet = async (pg) => {
     assert.match(await page.evaluate(() => document.body.innerText), /Плечо: не назначать — жим над головой/);
     await page.getByText('Сохранить и пересчитать').click();
     await page.waitForTimeout(1200);
-    await page.getByText('Данные и конфиденциальность', { exact: true }).click();
+    await page.getByText('Данные и резервные копии', { exact: true }).click();
     await page.waitForTimeout(800);
     assert.ok(await page.getByText('Экспортировать мои данные').isVisible());
   });
@@ -703,7 +760,7 @@ const closeSheet = async (pg) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    await page.getByLabel('Калории, открыть питание').first().click();
+    await page.getByLabel(/^Калории: .*Открыть питание$/).first().click();
     await page.waitForTimeout(900);
     assert.ok(await page.getByTestId('macro-summary').isVisible(), 'питание открыто');
     await page.goto(`${URL}/progress`, { waitUntil: 'networkidle' });
@@ -735,14 +792,14 @@ const closeSheet = async (pg) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const b = await page.getByLabel(/сон, чек-ин/i).first().boundingBox();
+    const b = await page.getByLabel(/^Восстановление: /).first().boundingBox();
     assert.ok(b && b.y < 956, 'готовность на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /готовность|чек-ин|сон/i);
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: подход → RIR одним тапом → без автотаймера отдыха (только ⏱ вручную); замена с причинами; блины; разминка', async () => {
+  await check('36. Тренировка: подход → RIR одним тапом → таймера отдыха нет; заметка к упражнению; замена с причинами; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -780,21 +837,22 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Завершить подход» → таймер НЕ запускается сам → RIR одним тапом
+    // Рабочий подход: один тап «Завершить подход» → таймера отдыха нет совсем → RIR одним тапом
     await page.getByLabel(/^Завершить подход 1$/).first().click();
     await page.waitForTimeout(500);
     assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
-    // Таймер — только вручную, кнопкой ⏱
-    await page.getByLabel('Таймер отдыха', { exact: true }).click();
-    await page.waitForTimeout(400);
-    assert.ok(await page.getByText('Пропустить').first().isVisible(), 'таймер запущен вручную');
-    assert.ok(await page.getByText('+30', { exact: true }).isVisible(), '+30 сек');
-    await page.getByLabel('Остановить отдых', { exact: true }).click();
-    await page.waitForTimeout(300);
+    assert.equal(await page.getByLabel('Таймер отдыха', { exact: true }).count(), 0, 'и кнопки таймера отдыха нет');
     assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
     await page.getByLabel('Запас 2', { exact: true }).click();
     await page.waitForTimeout(300);
     assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
+    // Заметка к упражнению (вместо кнопки таймера): сохраняется и видна под названием
+    await page.getByLabel('Заметка к упражнению', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByPlaceholder(/сиденье на 4/).fill('Сиденье на 4');
+    await page.getByText('Сохранить', { exact: true }).last().click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('exercise-note').innerText(), /Сиденье на 4/, 'заметка видна на экране упражнения');
     // Замена: «•••» → причины → альтернативы
     await page.getByLabel('Действия с упражнением').first().click();
     await page.waitForTimeout(600);
@@ -1079,7 +1137,7 @@ const closeSheet = async (pg) => {
     }
   });
 
-  await check('45. Питание: «Почему такие КБЖУ?»; цель: пресеты темпа с предупреждением', async () => {
+  await check('45. Питание: «Почему такие КБЖУ?»; в профиле цель — без ручного темпа', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
@@ -1095,17 +1153,8 @@ const closeSheet = async (pg) => {
     await dismiss();
     await page.getByText('Цель', { exact: true }).first().click();
     await page.waitForTimeout(700);
-    if (PROFILE.goal !== 'bulk') { await page.getByLabel('Закрыть').last().click(); await page.waitForTimeout(400); return; }
-    const pr = await page.getByTestId('rate-presets').innerText();
-    assert.match(pr, /Консервативный/);
-    assert.match(pr, /Сбалансированный/);
-    assert.match(pr, /Более быстрый набор/);
-    assert.match(pr, /РЕКОМЕНДУЕМ/);
-    assert.ok(!/гарантир/i.test(pr));
-    await page.getByLabel(/^Более быстрый набор/).click();
-    await page.waitForTimeout(300);
-    assert.match(await page.getByTestId('rate-warning').innerText(), /риск лишнего жира/);
-    await page.getByLabel(/^Сбалансированный/).click();
+    assert.equal(await page.getByTestId('rate-presets').count(), 0, 'темп набора/сушки в профиле не показываем');
+    assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /%\/нед/, 'и в строке цели — тоже');
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(400);
   });
@@ -1162,7 +1211,7 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByTestId('superset-chip').isVisible(), 'на экране — «Суперсет A1»');
   });
 
-  await check('47. Суперсет: подход A → сразу B → снова A (отдых — только вручную); меню «Убрать / Суперсет со следующим»', async () => {
+  await check('47. Суперсет: подход A → сразу B → снова A (без таймера отдыха); меню «Убрать / Суперсет со следующим»', async () => {
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/);
     await page.getByLabel(/^Завершить подход 1$/).click();
     await page.waitForTimeout(1000);
@@ -1172,12 +1221,6 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1000);
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'после круга отдых сам не запускается');
     assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/, 'и снова A');
-    // Отдых после круга — вручную (⏱), подпись — следующее упражнение
-    await page.getByLabel('Таймер отдыха', { exact: true }).click();
-    await page.waitForTimeout(400);
-    assert.ok(await page.getByLabel('Пропустить отдых').isVisible(), 'таймер запущен вручную');
-    await page.getByLabel('Пропустить отдых').click();
-    await page.waitForTimeout(400);
     await page.getByLabel('Действия с упражнением').click();
     await page.waitForTimeout(700);
     await page.getByText('Убрать из суперсета', { exact: true }).click();
@@ -1275,8 +1318,41 @@ const closeSheet = async (pg) => {
     await shot('exercise-bars');
   });
 
-  await check('52. Неделя: «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, легенда подсвеченных мышц, пауза, во весь экран', async () => {
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const box = page.getByTestId('technique-3d');
+    await box.scrollIntoViewIfNeeded();
+    assert.ok(await box.isVisible(), '3D-блок на месте');
+    const src = async () => (await page.getByTestId('technique-3d-media').locator('img').first().getAttribute('src')) || '';
+    const legend = await box.innerText();
+    assert.match(legend, /Основные мышцы[\s\S]*Большая грудная/);
+    assert.match(legend, /Дополнительные[\s\S]*Трицепс, Дельтовидные/);
+    assert.match(legend, /3D/);
+    // В автотесте (как при «Уменьшении движения») петля стоит на стоп-кадре, пуск — касанием
+    assert.match(await src(), /posters.*bench_press\.jpg/, 'стоп-кадр до пуска');
+    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Воспроизвести$/).click();
+    await page.waitForTimeout(500);
+    assert.match(await src(), /anim.*bench_press\.webp/, 'играет WebP-петля жима');
+    assert.ok(await page.getByText('Повторение по кругу').isVisible());
+    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Пауза$/).click();
+    await page.waitForTimeout(400);
+    assert.match(await src(), /posters.*bench_press\.jpg/, 'на паузе — стоп-кадр');
+    await page.getByTestId('technique-3d-full').click();
+    await page.waitForTimeout(700);
+    assert.ok(await page.getByTestId('technique-3d-close').isVisible(), 'полноэкранный просмотр');
+    await page.getByTestId('technique-3d-close').click();
+    await page.waitForTimeout(500);
+    // Упражнение без 3D-сцены: без заглушек «появится позже»
+    await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.getByTestId('technique-3d').count(), 0);
+    assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
+  });
+
+  await check('52. Программы: неделя «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
     assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Эта неделя');
@@ -1296,6 +1372,188 @@ const closeSheet = async (pg) => {
     assert.match(tm, /Целевые мышцы/i);
     const pcts = [...tm.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
     assert.ok(pcts.length >= 2 && pcts.every((x, i) => i === 0 || x <= pcts[i - 1]), `по убыванию: ${pcts}`);
+  });
+
+  // ─── Этап 3: «Мои тренировки», планирование любой тренировки, шаблоны, фильтры ───
+  const schedule = () => page.evaluate(() => JSON.parse(localStorage.getItem('form.schedule') || '{"state":{"planned":[],"templates":[]}}').state);
+  const resetActive = () => page.evaluate(() => { const raw = JSON.parse(localStorage.getItem('form.workouts')); raw.state.active = null; raw.state.draft = null; localStorage.setItem('form.workouts', JSON.stringify(raw)); });
+  const openTraining = async (seg = '') => {
+    await page.goto(`${URL}/training${seg ? `?seg=${seg}` : ''}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+  };
+
+  await check('56. «+» → «Запланировать»: своя тренировка на завтра (конструктор) и повтор любой прошлой на сегодня; «Начать» у плана → выполнено', async () => {
+    await resetActive();
+    await openTraining();
+    assert.match(await page.evaluate(() => document.body.innerText), /Мои тренировки[\s\S]*Программы[\s\S]*Шаблоны[\s\S]*Текущая программа[\s\S]*Сегодня[\s\S]*История тренировок/);
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-plan').click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('hub-plan-form').innerText(), /Программа[\s\S]*Другое[\s\S]*Повтор прошлой тренировки[\s\S]*Своя тренировка/);
+    await page.getByTestId('plan-days').getByText('Завтра', { exact: true }).click();
+    await page.getByTestId('hub-plan-custom').click();
+    await page.waitForTimeout(1500);
+    assert.match(page.url(), /workout\/builder/);
+    await page.getByLabel('Название тренировки').fill('Руки и пресс');
+    await page.getByText('Добавить упражнение', { exact: true }).click();
+    await page.waitForTimeout(900);
+    await page.getByPlaceholder('Поиск: жим, присед, бицепс…').fill('планка');
+    await page.waitForTimeout(500);
+    await page.getByLabel('Планка', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('builder-plan').click();
+    await page.waitForTimeout(1500);
+    let st = await schedule();
+    const custom = st.planned.find((x) => x.name === 'Руки и пресс');
+    assert.ok(custom && custom.source === 'custom' && custom.status === 'planned', 'своя тренировка запланирована');
+    assert.deepEqual(custom.exercises.map((e) => e.exerciseId), ['plank']);
+    assert.ok(await page.getByLabel('Руки и пресс, Завтра, запланировано').isVisible(), 'в «Ближайших» — на завтра');
+    // Повтор любой прошлой: список полный, одинаковые названия не склеены
+    const done = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed' && x.exercises.length).sort((a, b) => b.startedAt - a.startedAt));
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-plan').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('hub-plan-repeat').click();
+    await page.waitForTimeout(600);
+    const list = page.getByTestId('hub-plan-repeat-list').getByRole('button');
+    assert.equal(await list.count(), Math.min(done.length, 20) + (done.length > 20 ? 1 : 0), 'все прошлые тренировки (страницами по 20)');
+    await list.first().click();
+    await page.waitForTimeout(1200);
+    st = await schedule();
+    const rep = st.planned.find((x) => x.source === 'repeat');
+    assert.ok(rep && rep.fromSessionId === done[0].id && rep.name === done[0].name, 'повтор привязан к исходной тренировке');
+    const original = JSON.stringify(done[0]);
+    // «Сегодня» → ▶ → активная тренировка помнит план; завершение отмечает план выполненным
+    await page.getByTestId('mine-today-planned').getByLabel(`Начать: ${rep.name}`).first().click();
+    await page.waitForTimeout(1800);
+    assert.match(page.url(), /workout\/active/);
+    const a = await activeState();
+    assert.equal(a.plannedId, rep.id, 'сессия знает свой план');
+    // Основная зона: прошлый раз и предложение RYNJI; подходы заполнены предложением
+    const r0 = a.exercises[0].recommendation;
+    if (r0 && r0.action !== 'new' && r0.weight > 0) {
+      assert.ok(await page.getByTestId('last-result').isVisible(), 'прошлый раз');
+      assert.match(await page.getByTestId('rynji-suggestion').innerText(), /RYNJI: [\d,]+ кг × \d+–\d+/);
+      assert.equal(a.exercises[0].sets.find((x) => !x.warmup).weight, r0.weight, 'подход заполнен предложением');
+    }
+    await page.getByLabel(/^Завершить подход 1$/).first().click();
+    await page.waitForTimeout(700);
+    await page.getByLabel('Тренировка: время, калории, завершение').click();
+    await page.waitForTimeout(700);
+    await page.getByText('Закончить тренировку', { exact: true }).click();
+    await page.waitForTimeout(800);
+    await page.getByText('Завершить', { exact: true }).last().click();
+    await page.waitForTimeout(1800);
+    st = await schedule();
+    const closed = st.planned.find((x) => x.id === rep.id);
+    assert.equal(closed.status, 'done', 'план выполнен');
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions);
+    assert.equal(JSON.stringify(after.find((x) => x.id === done[0].id)), original, 'исходная тренировка не изменилась');
+    assert.ok(after.some((x) => x.id === closed.doneSessionId && x.plannedId === rep.id), 'новая сессия в истории');
+    await shot('stage3-planned-done');
+  });
+
+  await check('57. Шаблоны: «Сохранить как шаблон» в конструкторе и «В шаблоны» у прошлой → «Шаблоны» → «Запланировать» на выбранный день', async () => {
+    await resetActive();
+    await openTraining();
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-start').click();
+    await page.waitForTimeout(400);
+    await page.getByTestId('hub-new').click();
+    await page.waitForTimeout(1500);
+    await page.getByLabel('Название тренировки').fill('Верх (любимый)');
+    await page.getByLabel('Цвет: Синий').click().catch(() => {});
+    await page.getByText('Добавить упражнение', { exact: true }).click();
+    await page.waitForTimeout(900);
+    await page.getByPlaceholder('Поиск: жим, присед, бицепс…').fill('планка');
+    await page.waitForTimeout(500);
+    await page.getByLabel('Планка', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('builder-save-template').click();
+    await page.waitForTimeout(900);
+    let st = await schedule();
+    const t = st.templates.find((x) => x.name === 'Верх (любимый)');
+    assert.ok(t && t.exercises.length === 1, 'шаблон сохранён');
+    // прошлая тренировка → «В шаблоны»
+    const sid = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed').sort((a, b) => b.startedAt - a.startedAt)[1].id);
+    await page.goto(`${URL}/workout/${sid}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1300);
+    await page.getByTestId('session-template').click();
+    await page.waitForTimeout(800);
+    st = await schedule();
+    assert.equal(st.templates.length >= 2, true, 'и прошлая — в шаблонах');
+    await openTraining('templates');
+    assert.match(await page.evaluate(() => document.body.innerText), /Программа от RYNJI[\s\S]*Мои шаблоны[\s\S]*Верх \(любимый\)[\s\S]*Создать с нуля[\s\S]*Библиотека упражнений/);
+    await shot('stage3-templates');
+    await page.getByLabel('Шаблон Верх (любимый)').click();
+    await page.waitForTimeout(900);
+    await page.getByTestId('template-plan').click();
+    await page.waitForTimeout(1200);
+    assert.ok(await page.getByTestId('hub-plan-confirm').isVisible(), 'остался только выбор дня');
+    const third = page.getByTestId('plan-days').getByRole('button').nth(3);
+    await third.click();
+    await page.getByTestId('hub-plan-confirm').click();
+    await page.waitForTimeout(1000);
+    st = await schedule();
+    const p = st.planned.find((x) => x.source === 'template' && x.templateId === t.id);
+    const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    assert.ok(p && p.date === iso(new Date(Date.now() + 3 * 86400000)), `запланирован на 4-й день: ${p && p.date}`);
+  });
+
+  await check('58. История: фильтры по статусу, группе мышц и периоду; пропущенная запланированная → «Перенести»', async () => {
+    // Просроченная запланированная (вчера) — в истории как «пропущено»
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('form.schedule'));
+      const dt = new Date(Date.now() - 86400000);
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      raw.state.planned.push({ id: 'e2e_missed', date: iso, name: 'Пропущенная спина', source: 'custom', exercises: [{ exerciseId: 'lat_pulldown', sets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 90 }], status: 'planned', createdAt: 1 });
+      localStorage.setItem('form.schedule', JSON.stringify(raw));
+    });
+    await openTraining('history');
+    await page.getByTestId('history-filter').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('history-filter-sheet').getByText('Пропущенные', { exact: true }).click();
+    await page.waitForTimeout(300);
+    await page.getByTestId('history-filter-apply').click();
+    await page.waitForTimeout(800);
+    assert.match(await page.getByTestId('history-filter-summary').innerText(), /пропущенные · найдено: \d+/);
+    assert.ok(await page.getByLabel(/^Пропущенная спина, Вчера, пропущено$/).isVisible(), 'просроченный план — «пропущено»');
+    assert.equal(await page.getByTestId('session-exercise').count(), 0);
+    await shot('stage3-filter-missed');
+    // группа мышц + период: только тренировки со спиной за 30 дней
+    await page.getByTestId('history-filter').click();
+    await page.waitForTimeout(700);
+    await page.getByTestId('history-filter-sheet').getByText('Все', { exact: true }).click();
+    await page.getByTestId('history-filter-sheet').getByText('Спина', { exact: true }).click();
+    await page.getByTestId('history-filter-sheet').getByText('30 дней', { exact: true }).click();
+    await page.getByTestId('history-filter-apply').click();
+    await page.waitForTimeout(800);
+    const n = Number((await page.getByTestId('history-filter-summary').innerText()).match(/найдено: (\d+)/)[1]);
+    const expect = await page.evaluate(() => {
+      const from = new Date(Date.now() - 29 * 86400000);
+      const f = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+      return { sessions: JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed' && x.date >= f).length };
+    });
+    assert.ok(n > 0 && n <= expect.sessions + 1, `спина за 30 дней: ${n} из ${expect.sessions}`);
+    await page.getByLabel('Сбросить фильтры').click();
+    await page.waitForTimeout(600);
+    assert.equal(await page.getByTestId('history-filter-summary').count(), 0, 'фильтры сброшены');
+    // пропущенная → перенести на завтра → снова в «Ближайших»
+    await page.getByLabel(/^Пропущенная спина, Вчера, пропущено$/).click();
+    await page.waitForTimeout(900);
+    assert.match(await page.getByTestId('planned-sheet').innerText(), /Выполнить сейчас[\s\S]*Перенести[\s\S]*Отметить пропущенной/);
+    await page.getByTestId('planned-move').click();
+    await page.waitForTimeout(400);
+    await page.getByTestId('planned-sheet').getByTestId('plan-days').getByText('Завтра', { exact: true }).click();
+    await page.getByTestId('planned-move-confirm').click();
+    await page.waitForTimeout(1000);
+    assert.ok(await page.getByLabel('Пропущенная спина, Завтра, запланировано').isVisible(), 'перенесена на завтра');
+    const st = await schedule();
+    assert.equal(st.planned.find((x) => x.id === 'e2e_missed').status, 'planned');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

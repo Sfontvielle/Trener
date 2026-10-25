@@ -27,14 +27,26 @@ export function Wheel({ values, value, onChange, format = String, width = 84, la
     }
   }, [value, values]);
 
-  useEffect(() => () => clearTimeout(live.current.timer), []);
+  // После размонтирования (переход на другой экран) ScrollView ещё может прислать событие прокрутки с нулевым
+  // смещением — его нельзя «досчитывать», иначе в значение запишется первый элемент колеса
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    const l = live.current;
+    return () => {
+      alive.current = false;
+      clearTimeout(l.timer);
+    };
+  }, []);
 
   const settle = (i: number) => {
+    if (!alive.current) return;
     ref.current?.scrollTo({ y: i * ITEM, animated: true });
     if (values[i] !== value) onChange(values[i]);
   };
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!alive.current) return;
     const y = e.nativeEvent.contentOffset.y;
     const i = Math.max(0, Math.min(values.length - 1, Math.round(y / ITEM)));
     if (i !== live.current.idx) {

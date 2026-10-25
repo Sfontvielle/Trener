@@ -6,6 +6,7 @@ import { T } from '@/components/ui';
 import { prefersReducedMotion } from '@/components/motion';
 import { CATEGORY_LABEL, exerciseImages } from '@/data/exercises';
 import { EXERCISE_MEDIA } from '@/data/exerciseMedia';
+import { EXERCISE_ANIMATIONS } from '@/data/exerciseAnimations';
 
 const NATIVE = Platform.OS !== 'web';
 
@@ -27,8 +28,15 @@ function Fallback({ ex, size }: { ex: Exercise; size: number }) {
   );
 }
 
-/** Миниатюра: конечная фаза движения (по ней понятнее, что за упражнение) */
+/** Постер 3D-рендера (середина амплитуды) — для упражнений, у которых уже есть 3D-петля */
+function Poster({ src, size }: { src: number; size: number }) {
+  return <Image source={src} style={[styles.thumb, styles.poster, { width: size, height: size }]} resizeMode="cover" accessibilityIgnoresInvertColors />;
+}
+
+/** Миниатюра: 3D-постер, иначе конечная фаза движения (по ней понятнее, что за упражнение) */
 export function ExerciseThumb({ ex, size = 64 }: { ex: Exercise; size?: number }) {
+  const anim = EXERCISE_ANIMATIONS[ex.id];
+  if (anim) return <Poster src={anim.poster} size={size} />;
   const f = frames(ex);
   if (!f) return <Fallback ex={ex} size={size} />;
   return <Image source={f[1] ?? f[0]} style={[styles.thumb, { width: size, height: size }]} resizeMode="cover" accessibilityIgnoresInvertColors />;
@@ -39,7 +47,8 @@ export function ExerciseThumb({ ex, size = 64 }: { ex: Exercise; size?: number }
  * Кадры встроены в приложение (офлайн). «Уменьшение движения» — статичная конечная фаза.
  */
 export function ExerciseLoop({ ex, size = 64, delay = 0 }: { ex: Exercise; size?: number; delay?: number }) {
-  const f = frames(ex);
+  const poster = EXERCISE_ANIMATIONS[ex.id]?.poster;
+  const f = poster ? null : frames(ex);
   const [t] = useState(() => new Animated.Value(0));
   const animate = !!f?.[1] && !prefersReducedMotion();
   useEffect(() => {
@@ -55,6 +64,8 @@ export function ExerciseLoop({ ex, size = 64, delay = 0 }: { ex: Exercise; size?
     loop.start();
     return () => loop.stop();
   }, [animate, t, delay]);
+  // в списках 3D — статичный постер: десятки одновременных петель тратят память и батарею
+  if (poster) return <Poster src={poster} size={size} />;
   if (!f) return <Fallback ex={ex} size={size} />;
   if (!animate) return <ExerciseThumb ex={ex} size={size} />;
   const box = [styles.thumb, { width: size, height: size }];
@@ -68,5 +79,6 @@ export function ExerciseLoop({ ex, size = 64, delay = 0 }: { ex: Exercise; size?
 
 const styles = themed({
   thumb: { borderRadius: 12, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  poster: { backgroundColor: '#0B0D0F' },
   layer: { position: 'absolute', left: 0, top: 0 },
 });

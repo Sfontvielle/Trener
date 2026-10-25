@@ -3,6 +3,7 @@ import { addDays, today } from '@/utils/date';
 import { VM_ACC, VOLUME_MUSCLES } from './muscles';
 import { weeklyTargets } from './volume';
 import type { RecoveryEstimate } from './recovery';
+import { noGym } from './scoring';
 import { BRAND } from '@/config/brand';
 
 export const SPLIT_LABEL: Record<SplitType, string> = {
@@ -170,7 +171,7 @@ function scoreSplit(split: SplitType, d: number, p: UserProfile, prefs: Training
     s -= 5;
     cons.push('ограничения сужают выбор упражнений для отдельного дня ног');
   }
-  if (p.location === 'home' && p.equipment.length <= 4 && split === 'fullbody') {
+  if (noGym(p.location) && p.equipment.length <= 4 && split === 'fullbody') {
     s += 4;
     pros.push('с ограниченным оборудованием проще повторять движения чаще');
   }

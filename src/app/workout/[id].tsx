@@ -24,9 +24,11 @@ import { formatDayLong } from '@/utils/date';
 import { fmtNum, fmtSec, fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
-import { feelIndex, isTimed, KIND_LABEL, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
+import { feelIndex, isTimed, KIND_LABEL, repeatPlanned, SESSION_FEEL, sessionKind, setsLine } from '@/features/training/journal';
 import { supersetLabels } from '@/features/training/workoutNav';
 import { repeatSession } from '@/features/training/actions';
+import { useSchedule } from '@/stores/schedule';
+import { useUi } from '@/stores/ui';
 
 
 export default function SessionDetail() {
@@ -141,7 +143,7 @@ export default function SessionDetail() {
         </T>
       </Appear>
       {!fresh ? (
-        <Appear i={1} style={{ marginTop: space.lg }}>
+        <Appear i={1} style={{ marginTop: space.lg, gap: space.sm }}>
           <Button
             title="Повторить"
             icon="repeat"
@@ -152,6 +154,26 @@ export default function SessionDetail() {
               repeatSession(s);
             }}
           />
+          {/* Повтор — новая тренировка; эта запись не меняется */}
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <Button title="Запланировать" icon="calendar-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => useUi.getState().openHub({ prefill: { kind: 'session', id: s.id } })} testID="session-plan" />
+            <Button
+              title="В шаблоны"
+              icon="bookmark-outline"
+              variant="secondary"
+              size="sm"
+              style={{ flex: 1 }}
+              accessibilityLabel="Сохранить как шаблон"
+              testID="session-template"
+              onPress={() => {
+                const exercises = repeatPlanned(s);
+                if (!exercises.length) return;
+                useSchedule.getState().saveTemplate({ name: s.name, exercises, color: s.color });
+                haptic.success();
+                toast(`Шаблон «${s.name}» сохранён`, 'bookmark');
+              }}
+            />
+          </View>
         </Appear>
       ) : null}
 
@@ -209,6 +231,12 @@ export default function SessionDetail() {
                     {ws.length && ws.length < we.plannedSets ? `  (план ${we.plannedSets})` : ''}
                     {timed && ws.length ? `  · всего ${fmtSec(ws.reduce((a, x) => a + x.reps, 0))}` : ''}
                   </T>
+                  {/* Запас повторов (RIR), если отмечали */}
+                  {!timed && ws.some((x) => x.rir !== undefined) ? (
+                    <T v="small" style={{ fontSize: 12 }}>
+                      {`Запас: ${ws.map((x) => (x.rir === undefined ? '–' : x.rir >= 4 ? '4+' : String(x.rir))).join(' · ')} повт.`}
+                    </T>
+                  ) : null}
                 </View>
                 {/* К прошлому разу — прямо в строке упражнения, без отдельного списка */}
                 {delta[ex?.name ?? ''] ? (

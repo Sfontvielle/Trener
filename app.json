@@ -77,7 +77,8 @@
           "enablePushNotifications": false,
           "frequentUpdates": false
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": false

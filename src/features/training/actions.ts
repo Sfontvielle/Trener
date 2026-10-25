@@ -14,15 +14,9 @@ import { today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { getExercise } from '@/data/exercises';
 import { haptic } from '@/services/haptics';
-import { ensurePermission } from '@/services/notifications';
 import { healthTraining } from '@/features/profile/health';
 import { noIncreaseReason } from '@/features/health/current';
 import { repeatPlanned } from './journal';
-
-/** Разрешение на уведомления спрашиваем в момент, когда оно понятно зачем — при старте тренировки */
-function askRestPermission() {
-  if (useProfile.getState().settings.restNotify) void ensurePermission();
-}
 
 function ctxBase() {
   const ws = useWorkouts.getState();
@@ -40,8 +34,8 @@ function guardActive(start: () => void) {
   }, true);
 }
 
-/** Старт сегодняшней плановой тренировки с учётом readiness / изменений дня */
-export function startTodayPlanned(templateOverride?: WorkoutTemplate) {
+/** Старт сегодняшней плановой тренировки с учётом readiness / изменений дня; plannedId — из «Запланированных» */
+export function startTodayPlanned(templateOverride?: WorkoutTemplate, plannedId?: string) {
   guardActive(() => {
     const { ws, readiness, d } = ctxBase();
     const ps = usePlan.getState();
@@ -57,9 +51,8 @@ export function startTodayPlanned(templateOverride?: WorkoutTemplate) {
       ctx: { sessions: ws.sessions, customs: ws.customExercises, band: !templateOverride && tw.mode !== 'normal' && (!readiness || readiness.band === 'go') ? 'reduce' : readiness?.band, volumeFactor: templateOverride ? 1 : tw.volumeFactor, rirDelta: templateOverride ? 0 : tw.rirDelta, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() },
       readinessScore: readiness?.score,
     });
-    useWorkouts.getState().start(s);
+    useWorkouts.getState().start(plannedId ? { ...s, plannedId } : s);
     haptic.success();
-    askRestPermission();
     router.push('/workout/active');
   });
 }
@@ -78,10 +71,9 @@ export function startDraft(draft: WorkoutDraft) {
       ctx: { sessions: ws.sessions, customs: ws.customExercises, band: readiness?.band, volumeFactor: 1, rirDelta: 0, gym: useProfile.getState().settings.gym, noIncrease: noIncreaseReason() },
       readinessScore: readiness?.score,
     });
-    useWorkouts.getState().start(draft.color ? { ...s, color: draft.color } : s);
+    useWorkouts.getState().start({ ...s, ...(draft.color ? { color: draft.color } : null), ...(draft.plannedId ? { plannedId: draft.plannedId } : null) });
     useWorkouts.getState().setDraft(null);
     haptic.success();
-    askRestPermission();
     router.replace('/workout/active');
   });
 }
@@ -128,9 +120,10 @@ export function openGenerated(minutes: number, focus: GenFocus, quick = false) {
   router.push('/workout/builder');
 }
 
-export function openCustomBuilder() {
+/** Новая тренировка в конструкторе; planDate — собрать и запланировать на этот день, а не начать сейчас */
+export function openCustomBuilder(planDate?: string) {
   useWorkouts.getState().setDraft({ id: uid('d_'), name: 'Своя тренировка', focus: '', source: 'custom', exercises: [], createdAt: Date.now(), color: 'lime' });
-  router.push('/workout/builder');
+  router.push(planDate ? { pathname: '/workout/builder', params: { planDate } } : '/workout/builder');
 }
 
 export function resumeActive() {

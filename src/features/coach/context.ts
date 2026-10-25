@@ -14,6 +14,7 @@ import type {
 } from '@/types';
 import { foodAvoidance, healthOf, healthSummary, healthTraining } from '@/features/profile/health';
 import { GOAL_LABEL } from '@/features/nutrition/targets';
+import { LOCATION_LABEL } from '@/features/profile/questionnaire';
 import { remaining, sumMacros } from '@/features/nutrition/status';
 import { reviewCalories } from '@/features/nutrition/adaptive';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
@@ -80,7 +81,7 @@ export function buildCoachContext(i: CoachInputs): string {
 
   sec('USER PROFILE');
   L.push(`${p.name}, ${p.sex === 'male' ? 'муж' : 'жен'}, ${p.age} лет, рост ${p.heightCm} см, вес (профиль) ${p.weightKg} кг`);
-  L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${p.daysPerWeek} трен/нед по ~${p.sessionMinutes} мин; место: ${p.location === 'gym' ? 'зал' : 'дом'}`);
+  L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${p.daysPerWeek} трен/нед по ~${p.sessionMinutes} мин; место: ${LOCATION_LABEL[p.location] ?? 'зал'}`);
   L.push(`Оборудование: ${p.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ') || '—'}`);
   const hp = healthOf(p);
   const hs = healthSummary(hp);

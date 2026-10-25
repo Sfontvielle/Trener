@@ -1,6 +1,6 @@
 import type { GoalType, WeightEntry } from '@/types';
 import { weightTrend } from '@/features/progress/weightTrend';
-import { addDays } from '@/utils/date';
+import { addDays, weekdayIndex } from '@/utils/date';
 
 /**
  * Данные карточек главной — только из того, что записал пользователь или прислал Apple Health.
@@ -50,4 +50,28 @@ export function sleepCard(checkinMinutes: number | undefined, healthHours: numbe
   if (checkinMinutes && checkinMinutes > 0) return { minutes: checkinMinutes, source: 'checkin' };
   if (healthHours && healthHours > 0) return { minutes: Math.round(healthHours * 60), source: 'health' };
   return null;
+}
+
+/** Приветствие по времени суток (эталон главной: «Доброе утро, Алексей») */
+export function greeting(hour: number): string {
+  if (hour >= 5 && hour < 12) return 'Доброе утро';
+  if (hour >= 12 && hour < 18) return 'Добрый день';
+  if (hour >= 18 && hour < 23) return 'Добрый вечер';
+  return 'Доброй ночи';
+}
+
+const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+/** Шаги за 7 дней, заканчивая сегодняшним: только данные Apple Health, пропуск — undefined (без выдуманных столбиков) */
+export function stepsWeek(days: Record<string, { steps?: number }>, date: string): { date: string; label: string; steps?: number }[] {
+  return Array.from({ length: 7 }, (_, k) => {
+    const key = addDays(date, k - 6);
+    return { date: key, label: WD[weekdayIndex(key)], steps: days[key]?.steps };
+  });
+}
+
+/** Среднее по дням, где есть данные; меньше 3 дней — нет среднего */
+export function stepsAverage(week: { steps?: number }[]): number | null {
+  const v = week.map((x) => x.steps).filter((x): x is number => x !== undefined);
+  return v.length >= 3 ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
 }

@@ -37,7 +37,7 @@ const PROFILE = {
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
 
-  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
+  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
   // Дневник: тренировка с суперсетом, планкой и заметкой; черновик конструктора с суперсетом
   const tplId = await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('form.workouts'));
@@ -136,7 +136,7 @@ const PROFILE = {
   const fp = await fctx.newPage();
   fp.on('pageerror', (e) => problems.push(`[pageerror @ первый запуск] ${e.message}`));
   const step = async (name, fn) => { await fn(); await fp.waitForTimeout(500); await audit(name, fp); routes.push(name); };
-  const next = () => fp.getByRole('button', { name: 'Далее', exact: true }).press('Enter');
+  const next = () => fp.getByRole('button', { name: 'Продолжить', exact: true }).press('Enter');
   // Нажатие с клавиатуры: у нижнего края окна Playwright иногда «не попадает» в элемент
   const tap = (loc) => loc.press('Enter');
   await fp.goto(URL, { waitUntil: 'networkidle' });
@@ -144,14 +144,28 @@ const PROFILE = {
   await audit('/welcome', fp);
   routes.push('/welcome');
   await step('/auth', () => tap(fp.getByRole('button', { name: 'Начать', exact: true })));
-  await step('/onboarding · имя', () => tap(fp.getByRole('button', { name: 'Продолжить без входа', exact: true })));
-  await step('/onboarding · о тебе', async () => { await fp.getByLabel('Как тебя зовут?').fill('Анна'); await next(); });
-  await step('/onboarding · цель', async () => { await tap(fp.getByLabel('Женщина')); await fp.getByLabel('Возраст, лет').fill('27'); await fp.getByLabel('Рост, см').fill('166'); await fp.getByLabel('Текущий вес, кг').fill('58'); await next(); });
-  await step('/onboarding · тренировки', async () => { await tap(fp.getByLabel('Набор массы')); await next(); });
-  await step('/onboarding · тренировки (выбрано)', async () => { await tap(fp.getByLabel('Средний', { exact: true })); for (const d of ['Пн', 'Ср', 'Пт']) await tap(fp.getByLabel(`${d}: отдых`)); await tap(fp.getByRole('button', { name: '60 мин', exact: true })); await tap(fp.getByRole('button', { name: 'Зал', exact: true })); });
-  await step('/onboarding · образ жизни', () => next());
-  await step('/onboarding · образ жизни (ограничения)', async () => { await tap(fp.getByLabel('Сидячая', { exact: true })); await tap(fp.getByRole('button', { name: '5–9 тыс', exact: true })); await tap(fp.getByRole('button', { name: '7–8 ч', exact: true })); await tap(fp.getByRole('button', { name: 'Есть', exact: true })); await fp.getByRole('textbox', { name: 'Что учесть' }).fill('колено'); });
-  await step('/onboarding · старт', () => next());
+  await step('/onboarding · имя', () => tap(fp.getByRole('button', { name: 'Без входа (только разработка)', exact: true })));
+  await step('/onboarding · пол', async () => { await fp.getByLabel('Как тебя зовут?').fill('Анна'); await next(); });
+  await step('/onboarding · возраст', async () => { await tap(fp.getByLabel('Женщина')); await next(); });
+  await step('/onboarding · рост', async () => { await fp.getByLabel('Возраст, лет').fill('27'); await next(); });
+  await step('/onboarding · вес', async () => { await fp.getByLabel('Рост, см').fill('166'); await next(); });
+  await step('/onboarding · цель', async () => { await fp.getByLabel('Текущий вес, кг').fill('58'); await next(); });
+  await step('/onboarding · опыт', async () => { await tap(fp.getByLabel('Набор массы')); await next(); });
+  await step('/onboarding · раз в неделю', async () => { await tap(fp.getByLabel('Средний', { exact: true })); await next(); });
+  await step('/onboarding · длительность', async () => { await tap(fp.getByLabel('3 раза в неделю', { exact: true })); await next(); });
+  await step('/onboarding · место', async () => { await tap(fp.getByLabel('60 минут', { exact: true })); await next(); });
+  await step('/onboarding · что есть дома', async () => { await tap(fp.getByLabel('Дома', { exact: true })); await next(); });
+  await step('/onboarding · образ жизни', async () => { await tap(fp.getByRole('button', { name: 'Гантели', exact: true })); await next(); });
+  await step('/onboarding · образ жизни (заполнено)', async () => {
+    for (const [id, opt] of [['q-activity', 'Умеренный'], ['q-sleep', '7–8 часов'], ['q-diet', 'Нет']]) {
+      await tap(fp.getByTestId(id));
+      await fp.waitForTimeout(600);
+      await tap(fp.getByRole('radio', { name: opt, exact: true }).last());
+      await fp.waitForTimeout(600);
+    }
+    await fp.getByRole('textbox', { name: /Дополнительно/ }).fill('колено');
+  });
+  await step('/onboarding · план готов', () => tap(fp.getByRole('button', { name: 'Завершить анкету', exact: true })));
   await fctx.close();
   console.log(`экранов: ${routes.length}, шрифт ×${SCALE}`);
   console.log(problems.length ? `ПРОБЛЕМЫ (${problems.length}):\n${problems.join('\n')}` : 'Ошибок не найдено');

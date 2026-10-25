@@ -14,6 +14,8 @@ import { ErrorBoundaryView } from '@/components/ErrorBoundaryView';
 import { configureNotifications, onNotificationOpen, syncReminders } from '@/services/notifications';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
+import { finishWorkout } from '@/features/training/planning';
+import { TrainingHub } from '@/features/training/TrainingHub';
 import { useThemeKey } from '@/hooks/useThemeKey';
 import { consumePendingNavState } from '@/features/settings/themeNav';
 import { maybeAutoSync } from '@/features/health/sync';
@@ -118,7 +120,7 @@ function Gate() {
     const done = active.exercises.reduce((a, e) => a + e.sets.filter((x) => x.done).length, 0);
     useDialog.getState().show('У тебя есть незавершённая тренировка', `«${active.name}» · выполнено подходов: ${done}. Всё сохранено.`, [
       { text: 'Продолжить', onPress: () => router.push('/workout/active') },
-      { text: 'Завершить и сохранить', style: 'cancel', onPress: () => { useWorkouts.getState().finish({}); } },
+      { text: 'Завершить и сохранить', style: 'cancel', onPress: () => { finishWorkout(); } },
       { text: 'Удалить', style: 'destructive', onPress: () => useWorkouts.getState().discard() },
     ]);
   }, [hydrated, profile, segments]);
@@ -163,6 +165,8 @@ export default function RootLayout() {
       <SafeAreaProvider key={theme.key} style={{ backgroundColor: colors.bg }}>
         <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
         <Gate />
+        {/* «+» тренировки — над любым экраном: вкладка «Тренировки», карточка прошлой тренировки, шаблоны */}
+        <TrainingHub />
         <DialogHost />
       </SafeAreaProvider>
       <ThemeFade themeKey={theme.key} />

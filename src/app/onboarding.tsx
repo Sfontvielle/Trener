@@ -1,42 +1,100 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import type { Equipment, GoalType } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, Chip, IconButton, T } from '@/components/ui';
-import { Ambient, Appear, FadeIn, Progress } from '@/components/motion';
-import { NumberField } from '@/components/inputs';
-import { ChipChoice, ChoiceCards, GOAL_DESC, GOAL_ICON, GYM_EQUIPMENT, PickerField, SexPicker, WeekdayChips } from '@/features/profile/forms';
-import { DURATION_OPTIONS, LEVEL_OPTIONS, Q_STAGES, SLEEP_OPTIONS, STEP_BUCKETS, WORK_OPTIONS, draftErrors, draftToProfile, resumeStage, stageComplete } from '@/features/profile/questionnaire';
+import { Button, Chip, T } from '@/components/ui';
+import { Ambient, FadeIn } from '@/components/motion';
+import { Wheel } from '@/components/WheelPicker';
+import { RulerPicker } from '@/components/RulerPicker';
+import { ChoiceCard, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
+import { PlanReady } from '@/features/onboarding/PlanReady';
+import {
+  ACTIVITY_OPTIONS,
+  DIET_OPTIONS,
+  DURATION_OPTIONS,
+  EQUIPMENT_CHOICES,
+  LEVEL_OPTIONS,
+  LOCATION_OPTIONS,
+  Q_STAGES,
+  RANGE,
+  SLEEP_OPTIONS,
+  draftErrors,
+  draftToProfile,
+  resumeStage,
+  type QDraft,
+} from '@/features/profile/questionnaire';
 import { nameFromApple } from '@/features/account/route';
+import { connectHealth } from '@/features/health/sync';
 import { useProfile } from '@/stores/profile';
 import { useAccount } from '@/stores/account';
 import { useQuestionnaire } from '@/stores/questionnaire';
-import { WeekStrip } from '@/features/profile/PlanSummary';
-import { GOAL_SHORT, computeNutritionTarget } from '@/features/nutrition/targets';
-import { generatePlan } from '@/features/training/planGenerator';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
 import { haptic } from '@/services/haptics';
-import { BRAND } from '@/config/brand';
-import { fmtNum } from '@/utils/format';
 
 /**
- * Анкета — 5 этапов: имя → о тебе (пол, возраст 18+, рост, вес) → цель → тренировки (опыт, график, длительность,
- * оборудование) → образ жизни (работа, шаги, сон, ограничения), затем «вот твой старт».
- * Ничего не подставляем за человека: поля пустые, пока он не ответил. Каждый ответ сразу сохраняется в черновик —
- * после закрытия приложения анкета продолжается с того же этапа. Целевой вес и срок не спрашиваем.
+ * Анкета — 5 логических этапов по эталонам onboarding/02–06; длинные этапы разбиты на внутренние страницы
+ * (полоса и «N из 5» остаются этапом): 1 имя · 2 пол → возраст → рост → вес · 3 цель · 4 опыт → раз в неделю →
+ * длительность → место (→ что есть, если не зал) · 5 образ жизни. Затем «Анализируем → Создаём план → Твой план готов!».
+ * Ничего не подставляем: пока ответа нет, «Продолжить» недоступна. Каждый ответ сразу в черновике — после закрытия
+ * приложения анкета продолжается с того же места. Целевой вес, срок и темп не спрашиваем.
  */
-const TITLES = ['Как тебя зовут?', 'О тебе', 'Главная цель', 'Тренировки', 'Образ жизни'];
-const HOME_EQUIPMENT: Equipment[] = ['dumbbell', 'bench', 'pullupbar', 'kettlebell', 'band'];
+type Page = 'name' | 'sex' | 'age' | 'height' | 'weight' | 'goal' | 'level' | 'freq' | 'duration' | 'place' | 'equipment' | 'lifestyle';
+
+const needsEquipment = (d: QDraft) => d.location === 'home' || d.location === 'outdoor';
+const pagesOf = (stage: number, d: QDraft): Page[] =>
+  [['name'], ['sex', 'age', 'height', 'weight'], ['goal'], ['level', 'freq', 'duration', 'place', ...(needsEquipment(d) ? (['equipment'] as Page[]) : [])], ['lifestyle']][stage] as Page[];
+
+function pageDone(p: Page, d: QDraft): boolean {
+  const err = draftErrors(d);
+  switch (p) {
+    case 'name':
+      return d.name.trim().length > 0;
+    case 'sex':
+      return !!d.sex;
+    case 'age':
+      return d.age !== undefined && !err.age;
+    case 'height':
+      return d.heightCm !== undefined && !err.heightCm;
+    case 'weight':
+      return d.weightKg !== undefined && !err.weightKg;
+    case 'goal':
+      return !!d.goal;
+    case 'level':
+      return !!d.level;
+    case 'freq':
+      return d.daysPerWeek !== undefined;
+    case 'duration':
+      return !!d.sessionMinutes;
+    case 'place':
+      return !!d.location && (needsEquipment(d) || d.equipment.length > 0);
+    case 'equipment':
+      return true;
+    case 'lifestyle':
+      return !!d.activity && d.sleepHours !== undefined && !!d.diet;
+  }
+}
+/** Первая неотвеченная страница этапа (после перезапуска) */
+const firstOpen = (stage: number, d: QDraft) => Math.max(0, pagesOf(stage, d).findIndex((p) => !pageDone(p, d)));
+
+const GOALS: { v: GoalType; label: string; sub: string; image: number }[] = [
+  { v: 'bulk', label: 'Набор массы', sub: 'Увеличить мышечную массу', image: require('../../assets/art/goal_bulk.webp') },
+  { v: 'cut', label: 'Сушка', sub: 'Снизить процент жира', image: require('../../assets/art/goal_cut.webp') },
+  { v: 'recomp', label: 'Рекомпозиция', sub: 'Улучшить состав тела', image: require('../../assets/art/goal_recomp.webp') },
+  { v: 'maintain', label: 'Поддержание', sub: 'Сохранить текущую форму', image: require('../../assets/art/goal_maintain.webp') },
+];
+const AGES = Array.from({ length: 90 - 14 + 1 }, (_, i) => 14 + i);
 
 export default function Onboarding() {
   const draft = useQuestionnaire((s) => s.draft);
   const update = useQuestionnaire((s) => s.update);
-  const [step, setStepState] = useState(() => resumeStage(useQuestionnaire.getState().draft, useQuestionnaire.getState().stage));
-  const setStep = (n: number) => {
-    setStepState(n);
+  const [stage, setStageState] = useState(() => resumeStage(useQuestionnaire.getState().draft, useQuestionnaire.getState().stage));
+  const [page, setPage] = useState(() => (stage < Q_STAGES ? firstOpen(stage, useQuestionnaire.getState().draft) : 0));
+  const setStage = (n: number, p = 0) => {
+    setStageState(n);
+    setPage(p);
     useQuestionnaire.getState().setStage(n);
   };
 
@@ -50,13 +108,21 @@ export default function Onboarding() {
     }
   }, []);
 
-  const errors = draftErrors(draft);
-  const profile = useMemo(() => (step === Q_STAGES ? draftToProfile(draft, 0) : null), [step, draft]);
-  const preview = useMemo(() => (profile ? { target: computeNutritionTarget(profile), plan: generatePlan(profile) } : null), [profile]);
-  const canNext = step < Q_STAGES && stageComplete(draft, step);
-  const go = (n: number) => {
+  const pages = stage < Q_STAGES ? pagesOf(stage, draft) : [];
+  const cur = pages[Math.min(page, pages.length - 1)];
+  const canNext = !!cur && pageDone(cur, draft);
+  const profile = useMemo(() => (stage === Q_STAGES ? draftToProfile(draft, 0) : null), [stage, draft]);
+
+  const next = () => {
+    if (!canNext) return;
     haptic.tap();
-    setStep(n);
+    if (page < pages.length - 1) setPage(page + 1);
+    else setStage(stage + 1);
+  };
+  const back = () => {
+    haptic.tap();
+    if (page > 0) setPage(page - 1);
+    else if (stage > 0) setStage(stage - 1, pagesOf(stage - 1, draft).length - 1);
   };
 
   const finish = () => {
@@ -70,203 +136,265 @@ export default function Onboarding() {
     router.replace('/');
   };
 
+  if (stage === Q_STAGES) {
+    return (
+      <Screen>
+        <Ambient tone="calm" height={520} />
+        <PlanReady profile={profile} onStart={finish} onBack={() => setStage(Q_STAGES - 1, 0)} />
+      </Screen>
+    );
+  }
+
+  const progress = (stage + (page + 1) / pages.length) / Q_STAGES;
+  const err = draftErrors(draft);
+
   return (
-    <Screen keyboard>
+    <Screen keyboard contentStyle={cur === 'name' ? undefined : { flexGrow: 1 }}>
       <Ambient tone="calm" height={520} />
-      {/* Назад слева, прогресс по центру: плашка «2 из 5» и полоса пропорционально этапу */}
-      <View style={styles.top}>
-        <View style={{ width: 44 }}>{step > 0 ? <IconButton name="chevron-back" label="Назад" bg="transparent" onPress={() => go(step - 1)} /> : null}</View>
-        <View style={styles.progressWrap}>
-          <View style={styles.pill}>
-            <T v="small" color={colors.text} style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }}>
-              {step < Q_STAGES ? `${step + 1} из ${Q_STAGES}` : 'Готово'}
-            </T>
-          </View>
-          <Progress value={Math.min(step + 1, Q_STAGES) / Q_STAGES} color={colors.accent} track={colors.surface2} height={4} style={{ width: '100%' }} />
-        </View>
-        <View style={{ width: 44 }} />
-      </View>
+      <StageHeader stage={stage + 1} total={Q_STAGES} progress={progress} onBack={stage > 0 || page > 0 ? back : undefined} />
 
-      <FadeIn key={step} from={14} style={{ gap: space.xl, marginTop: space.xl }}>
-        {step < Q_STAGES ? (
-          <T v="h1" accessibilityRole="header">
-            {TITLES[step]}
-          </T>
+      <FadeIn key={`${stage}-${page}`} from={14} style={{ gap: space.xl, marginTop: space.xl, flex: 1 }}>
+        {cur === 'name' ? (
+          <>
+            <StageTitle title="Как тебя зовут?" sub="Так я буду к тебе обращаться" />
+            <TextInput
+              value={draft.name}
+              onChangeText={(t) => update({ name: t })}
+              placeholder="Введите имя"
+              placeholderTextColor={colors.muted}
+              autoFocus={!draft.name}
+              returnKeyType="next"
+              onSubmitEditing={next}
+              maxLength={40}
+              accessibilityLabel="Как тебя зовут?"
+              selectionColor={colors.accent}
+              style={styles.nameInput}
+            />
+          </>
         ) : null}
 
-        {step === 0 ? (
-          <TextInput
-            value={draft.name}
-            onChangeText={(t) => update({ name: t })}
-            placeholder="Имя"
-            placeholderTextColor={colors.muted}
-            autoFocus={!draft.name}
-            returnKeyType="next"
-            onSubmitEditing={() => canNext && go(1)}
-            maxLength={40}
-            accessibilityLabel="Как тебя зовут?"
-            selectionColor={colors.accent}
-            style={styles.nameInput}
-          />
-        ) : null}
-
-        {step === 1 ? (
-          <View style={{ gap: space.lg }}>
-            <SexPicker value={draft.sex} onChange={(v) => update({ sex: v })} />
-            <View style={styles.rows}>
-              <NumberField label="Возраст" unit="лет" value={draft.age} onChange={(v) => update({ age: v })} error={errors.age} testID="q-age" />
-              <View style={styles.rowLine} />
-              <NumberField label="Рост" unit="см" value={draft.heightCm} onChange={(v) => update({ heightCm: v })} error={errors.heightCm} testID="q-height" />
-              <View style={styles.rowLine} />
-              <NumberField label="Текущий вес" unit="кг" decimals={1} value={draft.weightKg} onChange={(v) => update({ weightKg: v })} error={errors.weightKg} testID="q-weight" />
+        {cur === 'sex' ? (
+          <>
+            <StageTitle title="Твой пол?" />
+            <View style={{ marginTop: space.lg }}>
+              <SexCards value={draft.sex} onChange={(v) => update({ sex: v })} />
             </View>
-            <T v="small">Нужны для расчёта калорий и нагрузки. Хранятся только на этом iPhone.</T>
-          </View>
+          </>
         ) : null}
 
-        {step === 2 ? (
-          <ChoiceCards<GoalType>
-            items={(['bulk', 'cut', 'recomp', 'maintain'] as GoalType[]).map((g) => ({ v: g, label: g === 'bulk' ? 'Набор массы' : GOAL_SHORT[g], sub: GOAL_DESC[g], icon: GOAL_ICON[g] }))}
-            value={draft.goal}
-            onChange={(g) => update({ goal: g })}
-          />
-        ) : null}
-
-        {step === 3 ? (
-          <View style={{ gap: space.lg }}>
-            <Block title="Опыт">
-              <ChoiceCards compact items={LEVEL_OPTIONS.map((x) => ({ v: x.v, label: x.label, sub: x.sub }))} value={draft.level} onChange={(v) => update({ level: v })} />
-            </Block>
-            <Block title="Дни тренировок">
-              <WeekdayChips days={draft.days} onChange={(days) => update({ days })} />
-            </Block>
-            <Block title="Длительность тренировки">
-              <ChipChoice items={DURATION_OPTIONS.map((v) => ({ v, label: `${v} мин` }))} value={draft.sessionMinutes} onChange={(v) => update({ sessionMinutes: v })} />
-            </Block>
-            <Block title="Где тренируешься">
-              <ChipChoice
-                items={[
-                  { v: 'gym' as const, label: 'Зал' },
-                  { v: 'home' as const, label: 'Дома' },
-                ]}
-                value={draft.location}
-                // Зал — стандартный набор (можно снять лишнее); дома — ничего не отмечаем за человека
-                onChange={(v) => v !== draft.location && update({ location: v, equipment: v === 'gym' ? GYM_EQUIPMENT : [] })}
-              />
-            </Block>
-            {draft.location ? (
-              <Block title={draft.location === 'gym' ? 'Оборудование в зале' : 'Что есть дома'}>
-                <View style={styles.wrap}>
-                  {(draft.location === 'gym' ? GYM_EQUIPMENT : HOME_EQUIPMENT).map((e) => (
-                    <Chip key={e} label={EQUIPMENT_LABEL[e]} active={draft.equipment.includes(e)} onPress={() => update({ equipment: draft.equipment.includes(e) ? draft.equipment.filter((x) => x !== e) : [...draft.equipment, e] })} />
-                  ))}
-                </View>
-                {draft.location === 'home' && !draft.equipment.length ? <T v="small">Ничего нет — соберём программу с весом тела.</T> : null}
-              </Block>
-            ) : null}
-          </View>
-        ) : null}
-
-        {step === 4 ? (
-          <View style={{ gap: space.lg }}>
-            <Block title="Работа и образ жизни">
-              <ChoiceCards compact items={WORK_OPTIONS} value={draft.workStyle} onChange={(v) => update({ workStyle: v })} />
-            </Block>
-            <Block title="Шагов в день, обычно">
-              <ChipChoice items={STEP_BUCKETS.map((b) => ({ v: b.steps, label: b.label }))} value={draft.stepsPerDay} onChange={(v) => update({ stepsPerDay: v })} />
-            </Block>
-            <Block title="Сон, обычно">
-              <ChipChoice items={SLEEP_OPTIONS.map((b) => ({ v: b.hours, label: b.label }))} value={draft.sleepHours} onChange={(v) => update({ sleepHours: v })} />
-            </Block>
-            <Block title="Травмы и ограничения">
-              <ChipChoice
-                items={[
-                  { v: 'none' as const, label: 'Нет' },
-                  { v: 'some' as const, label: 'Есть' },
-                ]}
-                value={draft.limits}
-                onChange={(v) => update({ limits: v })}
-              />
-              {draft.limits === 'some' ? (
-                <PickerField label="Что учесть" category="injuries" placeholder="Например: правое плечо — больно в жиме над головой" value={draft.limitations} onChange={(t) => update({ limitations: t })} maxLength={400} hint="Такие движения не назначим. Подробности о здоровье — потом в Профиле." />
+        {cur === 'age' ? (
+          <>
+            <StageTitle title="Сколько тебе лет?" sub="Только для пользователей 18+" />
+            <View style={{ alignItems: 'center', gap: space.md }}>
+              <Wheel label="Возраст" values={AGES} value={draft.age ?? 18} onChange={(v) => update({ age: v })} format={(v) => (v === (draft.age ?? -1) ? `${v} лет` : String(v))} width={240} testID="q-age-wheel" />
+              <View style={styles.manual}>
+                <T v="small" color={colors.textDim}>
+                  или введи:
+                </T>
+                <TextInput
+                  value={draft.age === undefined ? '' : String(draft.age)}
+                  onChangeText={(t) => {
+                    const n = parseInt(t.replace(/\D/g, ''), 10);
+                    update({ age: Number.isFinite(n) ? n : undefined });
+                  }}
+                  placeholder="—"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  accessibilityLabel="Возраст, лет"
+                  selectionColor={colors.accent}
+                  style={styles.manualInput}
+                />
+                <T v="small" color={colors.textDim}>
+                  лет
+                </T>
+              </View>
+              {err.age ? (
+                <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+                  {err.age}
+                </T>
+              ) : draft.age === undefined ? (
+                <T v="small" style={{ textAlign: 'center' }}>
+                  Прокрути колесо или введи число
+                </T>
               ) : null}
-            </Block>
-          </View>
+            </View>
+          </>
         ) : null}
 
-        {step === Q_STAGES && profile && preview ? <Start name={profile.name} plan={preview.plan} target={preview.target} /> : null}
+        {cur === 'height' ? (
+          <>
+            <StageTitle title="Какой у тебя рост?" />
+            <RulerPicker label="Рост" unit="см" value={draft.heightCm} onChange={(v) => update({ heightCm: v })} min={RANGE.heightCm[0]} max={RANGE.heightCm[1]} start={draft.sex === 'female' ? 165 : 178} testID="q-height" />
+            {err.heightCm ? (
+              <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+                {err.heightCm}
+              </T>
+            ) : null}
+          </>
+        ) : null}
+
+        {cur === 'weight' ? (
+          <>
+            <StageTitle title="Сколько ты весишь?" />
+            <RulerPicker label="Текущий вес" unit="кг" value={draft.weightKg} onChange={(v) => update({ weightKg: v })} min={RANGE.weightKg[0]} max={RANGE.weightKg[1]} start={draft.sex === 'female' ? 62 : 78} step={0.1} decimals={1} testID="q-weight" />
+            {err.weightKg ? (
+              <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+                {err.weightKg}
+              </T>
+            ) : (
+              <T v="small" style={{ textAlign: 'center' }}>
+                Нужны для расчёта калорий и нагрузки. Хранятся только на этом iPhone.
+              </T>
+            )}
+          </>
+        ) : null}
+
+        {cur === 'goal' ? (
+          <>
+            <StageTitle title="Твоя цель?" />
+            <View style={{ gap: 14 }}>
+              {GOALS.map((g) => (
+                <ChoiceCard key={g.v} tall title={g.label} sub={g.sub} image={g.image} active={draft.goal === g.v} onPress={() => update({ goal: g.v })} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {cur === 'level' ? (
+          <>
+            <StageTitle title="Опыт тренировок?" />
+            <View style={{ gap: 14 }}>
+              {LEVEL_OPTIONS.map((l) => (
+                <ChoiceCard key={l.v} tall title={l.label} sub={l.sub} active={draft.level === l.v} onPress={() => update({ level: l.v })} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {cur === 'freq' ? (
+          <>
+            <StageTitle title="Сколько раз в неделю планируешь тренироваться?" />
+            <View style={{ marginTop: space.lg }}>
+              <FrequencyPicker value={draft.daysPerWeek} onChange={(v) => update({ daysPerWeek: v })} />
+            </View>
+          </>
+        ) : null}
+
+        {cur === 'duration' ? (
+          <>
+            <StageTitle title="Сколько времени готов уделять одной тренировке?" />
+            <View style={{ gap: 14 }}>
+              {DURATION_OPTIONS.map((m) => (
+                <ChoiceCard key={m} title={`${m} минут`} active={draft.sessionMinutes === m} onPress={() => update({ sessionMinutes: m })} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {cur === 'place' ? (
+          <>
+            <StageTitle title="Где планируешь тренироваться?" />
+            <View style={{ gap: 14 }}>
+              {LOCATION_OPTIONS.map((l) => (
+                <ChoiceCard
+                  key={l.v}
+                  title={l.label}
+                  icon={l.icon as React.ComponentProps<typeof ChoiceCard>['icon']}
+                  active={draft.location === l.v}
+                  // зал — стандартный набор (лишнее можно снять в Профиле); дома и на улице ничего не отмечаем за человека
+                  onPress={() => l.v !== draft.location && update({ location: l.v, equipment: [...l.equipment] })}
+                />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {cur === 'equipment' ? (
+          <>
+            <StageTitle title={draft.location === 'outdoor' ? 'Что есть на площадке?' : 'Что есть дома?'} sub="Отметь всё, чем можешь пользоваться" />
+            <View style={styles.wrap}>
+              {(EQUIPMENT_CHOICES[draft.location!] ?? []).map((e: Equipment) => (
+                <Chip key={e} label={EQUIPMENT_LABEL[e]} active={draft.equipment.includes(e)} onPress={() => update({ equipment: draft.equipment.includes(e) ? draft.equipment.filter((x) => x !== e) : [...draft.equipment, e] })} />
+              ))}
+            </View>
+            <T v="small" style={{ textAlign: 'center' }}>
+              {draft.equipment.length ? 'Подберу упражнения под это оборудование.' : 'Ничего нет — соберу программу с весом тела.'}
+            </T>
+          </>
+        ) : null}
+
+        {cur === 'lifestyle' ? <Lifestyle draft={draft} update={update} /> : null}
       </FadeIn>
 
+      {/* как на эталонах — главная кнопка внизу экрана; на странице имени — сразу под полем (над клавиатурой) */}
       <View style={{ marginTop: space.xxl }}>
-        {step < Q_STAGES ? (
-          <Button title="Далее" size="lg" live={canNext} disabled={!canNext} onPress={() => go(step + 1)} />
-        ) : (
-          <Button title={`Начать с ${BRAND}`} icon="checkmark" size="lg" live disabled={!profile} onPress={finish} />
-        )}
+        <Button title={cur === 'lifestyle' ? 'Завершить анкету' : 'Продолжить'} size="lg" live={canNext} disabled={!canNext} onPress={next} />
       </View>
     </Screen>
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+/** Этап 5 (эталон 06_lifestyle): три выпадающих списка, «Дополнительно» и Apple Health по желанию */
+function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraft>) => void }) {
+  const [health, setHealth] = useState<string | null>(null);
   return (
-    <View style={{ gap: 8 }}>
-      <T v="caption">{title}</T>
-      {children}
-    </View>
-  );
-}
-
-/** Старт: калории крупно, БЖУ одной строкой, неделя тренировок; подробный расчёт — по тапу */
-function Start({ name, plan, target }: { name: string; plan: ReturnType<typeof generatePlan>; target: ReturnType<typeof computeNutritionTarget> }) {
-  const [more, setMore] = useState(false);
-  return (
-    <View style={{ gap: space.xl }}>
-      <Appear i={0} style={{ gap: 6 }}>
-        <T v="caption">{name}, вот твой старт</T>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <T v="hero">{fmtNum(target.kcal)}</T>
-          <T v="h3" color={colors.textDim}>
-            ккал в день
+    <View style={{ gap: space.lg }}>
+      <StageTitle title="Расскажи о своём образе жизни" />
+      <Dropdown
+        label="Уровень повседневной активности"
+        value={draft.activity}
+        options={ACTIVITY_OPTIONS.map((a) => ({ v: a.v, label: a.label, sub: a.sub }))}
+        onChange={(v) => {
+          const a = ACTIVITY_OPTIONS.find((x) => x.v === v)!;
+          update({ activity: v, workStyle: a.workStyle, stepsPerDay: a.steps });
+        }}
+        testID="q-activity"
+      />
+      <Dropdown label="Сколько ты спишь?" value={draft.sleepHours} options={SLEEP_OPTIONS.map((s) => ({ v: s.hours, label: s.label.replace(' ч', ' часов').replace('ч+', 'часов и больше') }))} onChange={(v) => update({ sleepHours: v })} testID="q-sleep" />
+      <Dropdown label="Есть ли ограничения в питании?" value={draft.diet} options={DIET_OPTIONS} onChange={(v) => update({ diet: v })} testID="q-diet" />
+      <View style={{ gap: 10 }}>
+        <T v="body" style={{ fontWeight: '700', fontSize: 16 }}>
+          Дополнительно (необязательно)
+        </T>
+        <TextInput
+          value={draft.limitations}
+          onChangeText={(t) => update({ limitations: t })}
+          placeholder="Аллергии, травмы, особенности и т.д."
+          placeholderTextColor={colors.muted}
+          multiline
+          maxLength={400}
+          accessibilityLabel="Дополнительно: аллергии, травмы, особенности"
+          selectionColor={colors.accent}
+          style={styles.area}
+        />
+      </View>
+      <View style={styles.healthRow}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <T v="body" style={{ fontWeight: '700' }}>
+            Apple Health
           </T>
+          <T v="small">{health ?? 'Необязательно: шаги и сон будут подтягиваться сами'}</T>
         </View>
-        <T v="bodyDim">
-          Белки {target.protein} · Жиры {target.fat} · Углеводы {target.carbs} г
-        </T>
-      </Appear>
-      <Appear i={1} style={{ gap: 12 }}>
-        <T v="h3">
-          {plan.splitLabel} · {plan.daysPerWeek}× в неделю
-        </T>
-        <WeekStrip plan={plan} />
-      </Appear>
-      <Appear i={2}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={8} style={{ alignSelf: 'flex-start' }}>
-          <T v="small" style={{ fontWeight: '600' }}>
-            {more ? 'Скрыть расчёт' : 'Как это рассчитано ›'}
-          </T>
-        </Pressable>
-        {more ? (
-          <View style={{ gap: 6, marginTop: 10 }}>
-            {[...target.steps, ...plan.rationale].map((st, i) => (
-              <T key={i} v="small">
-                {st.label}: {st.value}
-                {st.label === 'Бытовая активность' || st.label === 'Тренировки' ? ` (${st.note})` : ''}
-              </T>
-            ))}
-          </View>
-        ) : null}
-      </Appear>
+        <Button
+          title="Подключить"
+          size="sm"
+          variant="secondary"
+          onPress={async () => {
+            const r = await connectHealth();
+            setHealth(r.message);
+          }}
+        />
+      </View>
     </View>
   );
 }
 
 const styles = themed({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  progressWrap: { flex: 1, alignItems: 'center', gap: 10, paddingHorizontal: '6%' },
-  pill: { paddingHorizontal: 14, height: 30, borderRadius: radius.pill, backgroundColor: colors.surface2, justifyContent: 'center' },
-  nameInput: { fontSize: 34, fontWeight: '800', color: colors.text, letterSpacing: -0.6, paddingVertical: 10, borderBottomWidth: 1.5, borderBottomColor: colors.borderStrong },
-  rows: { borderRadius: radius.lg, backgroundColor: colors.surface, paddingHorizontal: space.md },
-  rowLine: { height: 0.5, backgroundColor: colors.borderStrong },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  nameInput: { fontSize: 18, color: colors.text, height: 62, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  manual: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  manualInput: { fontSize: 18, fontWeight: '700', color: colors.text, width: 56, height: 40, textAlign: 'center', borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, padding: 0 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  area: { minHeight: 96, fontSize: 16, color: colors.text, padding: 16, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, textAlignVertical: 'top' },
+  healthRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md, backgroundColor: colors.surface2 },
 });
