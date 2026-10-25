@@ -10,7 +10,7 @@ import { GOAL_LABEL, GOAL_SHORT, defaultRate } from '@/features/nutrition/target
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { haptic } from '@/services/haptics';
 import { healthOf, healthTraining } from './health';
-import { SLEEP_OPTIONS, STEP_BUCKETS, stepBucketOf } from './questionnaire';
+import { DURATION_OPTIONS, EQUIPMENT_CHOICES, LOCATION_OPTIONS, SLEEP_OPTIONS, STEP_BUCKETS, stepBucketOf } from './questionnaire';
 import { AREA_LABEL, RESTRICTION_LABEL } from '@/features/training/engine/restrictions';
 import { BRAND } from '@/config/brand';
 import { CategoryPicker, joinItems, splitItems, type PickerCategory } from './CategoryPicker';
@@ -338,7 +338,7 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
           items={[
             { v: 'beginner', label: 'Новичок' },
             { v: 'intermediate', label: 'Средний' },
-            { v: 'advanced', label: 'Продвинутый' },
+            { v: 'advanced', label: 'Опытный' },
           ]}
           value={p.level}
           onChange={(v) => set(compact ? { level: v, trainingYears: v === 'beginner' ? 0 : v === 'intermediate' ? 2 : 5 } : { level: v })}
@@ -353,19 +353,16 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
       <>
       <View style={{ gap: 6 }}>
         <T v="caption">Длительность тренировки</T>
-        <Opt items={[45, 60, 75, 90].map((v) => ({ v, label: `${v} мин` }))} value={[45, 60, 75, 90].reduce((a, b) => (Math.abs(b - p.sessionMinutes) < Math.abs(a - p.sessionMinutes) ? b : a))} onChange={(v) => set({ sessionMinutes: v })} />
+        <Opt items={DURATION_OPTIONS.map((v) => ({ v, label: `${v} мин` }))} value={DURATION_OPTIONS.reduce((a, b) => (Math.abs(b - p.sessionMinutes) < Math.abs(a - p.sessionMinutes) ? b : a))} onChange={(v) => set({ sessionMinutes: v })} />
       </View>
       </>
       )}
       <View style={{ gap: 6 }}>
         <T v="caption">Где тренируешься</T>
         <Opt
-          items={[
-            { v: 'gym', label: 'Зал' },
-            { v: 'home', label: 'Дома' },
-          ]}
+          items={LOCATION_OPTIONS.map((l) => ({ v: l.v, label: l.label }))}
           value={p.location}
-          onChange={(v) => set({ location: v, equipment: v === 'gym' ? GYM_EQUIPMENT : HOME_DEFAULT })}
+          onChange={(v) => set({ location: v, equipment: v === 'gym' || v === 'mixed' ? GYM_EQUIPMENT : v === 'home' ? HOME_DEFAULT : ['pullupbar'] })}
         />
       </View>
       {compact ? (
@@ -374,7 +371,7 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
       <View style={{ gap: 6 }}>
         <T v="caption">Доступное оборудование</T>
         <View style={styles.wrap}>
-          {(p.location === 'gym' ? GYM_EQUIPMENT : (['dumbbell', 'bench', 'pullupbar', 'kettlebell', 'band'] as Equipment[])).map((e) => (
+          {(p.location === 'gym' || p.location === 'mixed' ? GYM_EQUIPMENT : (EQUIPMENT_CHOICES[p.location] ?? [])).map((e) => (
             <Chip key={e} label={EQUIPMENT_LABEL[e]} active={p.equipment.includes(e)} onPress={() => toggleEq(e)} />
           ))}
         </View>

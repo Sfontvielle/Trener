@@ -1,5 +1,6 @@
 /**
- * Иллюстрации интерфейса: node tools/anim/stills.cjs [<id> …] → assets/art/<id>.png (прозрачный фон).
+ * Иллюстрации интерфейса: node tools/anim/stills.cjs [<id> …] → tools/anim/out/art/<id>.png (прозрачный фон),
+ * затем python3 tools/anim/art.py — WebP под размеры экранов в assets/art.
  * id — из web/stills.js; без аргументов — все. W×HH — размер кадра (по умолчанию 1200×1500), H — шаг сетки тела.
  */
 const path = require('path');
@@ -7,12 +8,12 @@ const fs = require('fs');
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const serve = require('./serve.cjs');
 
-const SIZES = { welcome: [1200, 1500], home_hero: [1200, 1200], goal_bulk: [900, 900], goal_cut: [900, 900], goal_recomp: [900, 900], goal_maintain: [900, 900] };
+const SIZES = { welcome: [1200, 1500], home_hero: [1200, 1200], goal_bulk: [900, 900], goal_cut: [900, 900], goal_recomp: [900, 900], goal_maintain: [900, 900], tip_plate: [900, 600] };
 
 (async () => {
   const ids = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SIZES);
   const step = Number(process.env.H || 0.005);
-  const out = path.resolve(__dirname, process.env.OUT || '../../assets/art');
+  const out = path.resolve(__dirname, process.env.OUT || 'out/art');
   fs.mkdirSync(out, { recursive: true });
   const port = 8890 + Math.floor(Math.random() * 100);
   const server = await serve(port);

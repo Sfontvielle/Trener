@@ -17,7 +17,7 @@ const PROFILE = {
 if (process.env.E2E_SEX === 'female') Object.assign(PROFILE, { name: 'Анна', sex: 'female', age: 27, heightCm: 166, weightKg: 58 });
 if (process.env.E2E_GOAL) Object.assign(PROFILE, { goal: process.env.E2E_GOAL, ratePctPerWeek: process.env.E2E_GOAL === 'cut' ? 0.6 : 0 });
 // Кнопки, которые меняют/удаляют данные или уводят из приложения — не нажимаем
-const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Заполнить демо|Экспорт|Восстанов|Импорт|Поделиться|настройк|Управление доступом|Свернуть тренировку|Завершить и сохранить|Не предлагать больше|Мне не нравится|Перейти на этот сплит|Применить|Начать с RYNJI|Подключить Apple Health|Сохранить и пересчитать|Перейти на мой расход|Профиль$/i;
+const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Заполнить демо|Экспорт|Восстанов|Импорт|Поделиться|настройк|Управление доступом|Свернуть тренировку|Завершить и сохранить|Не предлагать больше|Мне не нравится|Перейти на этот сплит|Применить|Открыть мой план|Подключить Apple Health|Сохранить и пересчитать|Перейти на мой расход|Профиль$/i;
 
 (async () => {
   const browser = await chromium.launch();
@@ -159,17 +159,24 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await p2.waitForTimeout(1200);
       // Приветствие → без входа → 5 этапов анкеты
       await p2.getByText('Начать', { exact: true }).click(); await p2.waitForTimeout(600);
-      await p2.getByText('Продолжить без входа', { exact: true }).click(); await p2.waitForTimeout(800);
-      const next = async () => { await p2.getByRole('button', { name: 'Далее', exact: true }).press('Enter'); await p2.waitForTimeout(300); };
+      await p2.getByText('Без входа (только разработка)', { exact: true }).click(); await p2.waitForTimeout(800);
+      const next = async (t = 'Продолжить') => { await p2.getByRole('button', { name: t, exact: true }).press('Enter'); await p2.waitForTimeout(350); };
       await p2.getByLabel('Как тебя зовут?').fill('Тест'); await next();
-      await p2.getByLabel('Мужчина').click();
-      await p2.getByLabel('Возраст, лет').fill('29'); await p2.getByLabel('Рост, см').fill('180'); await p2.getByLabel('Текущий вес, кг').fill('80'); await next();
+      await p2.getByLabel('Мужчина').click(); await next();
+      await p2.getByLabel('Возраст, лет').fill('29'); await next();
+      await p2.getByLabel('Рост, см').fill('180'); await next();
+      await p2.getByLabel('Текущий вес, кг').fill('80'); await next();
       await p2.getByLabel('Набор массы').click(); await next();
-      await p2.getByLabel('Средний', { exact: true }).click();
-      for (const d of ['Пн', 'Ср', 'Пт']) await p2.getByLabel(`${d}: отдых`).click();
-      await p2.getByText('60 мин', { exact: true }).click(); await p2.getByText('Зал', { exact: true }).click(); await next();
-      await p2.getByLabel('Сидячая', { exact: true }).click(); await p2.getByText('5–9 тыс', { exact: true }).click(); await p2.getByText('7–8 ч', { exact: true }).click(); await p2.getByText('Нет', { exact: true }).click(); await next();
-      await p2.getByText('Начать с RYNJI').click();
+      await p2.getByLabel('Средний', { exact: true }).click(); await next();
+      await p2.getByLabel('3 раза в неделю', { exact: true }).click(); await next();
+      await p2.getByLabel('60 минут', { exact: true }).click(); await next();
+      await p2.getByLabel('В зале', { exact: true }).click(); await next();
+      for (const [id, opt] of [['q-activity', 'Умеренный'], ['q-sleep', '7–8 часов'], ['q-diet', 'Нет']]) {
+        await p2.getByTestId(id).click(); await p2.waitForTimeout(600);
+        await p2.getByRole('radio', { name: opt, exact: true }).last().click(); await p2.waitForTimeout(600);
+      }
+      await next('Завершить анкету'); await p2.waitForTimeout(600);
+      await p2.getByText('Открыть мой план', { exact: true }).click();
       await p2.waitForTimeout(1500);
       await p2.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
       await p2.waitForTimeout(1500);

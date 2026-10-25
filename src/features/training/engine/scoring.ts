@@ -30,8 +30,18 @@ export interface SelectionContext {
 
 export type Allowed = { ok: true } | { ok: false; reason: string };
 
+/**
+ * Место тренировок → разметка каталога: на улице — то же, что дома (свой вес, турник, резина), комбинированно — и зал, и дом.
+ * Наличие снаряда всё равно проверяется по списку оборудования человека.
+ */
+export function placesFor(location: UserProfile['location']): ('gym' | 'home')[] {
+  return location === 'gym' ? ['gym'] : location === 'mixed' ? ['gym', 'home'] : ['home'];
+}
+/** Без зала: дома и на улице — упражнения с весом тела и резиной в приоритете */
+export const noGym = (location: UserProfile['location']) => location === 'home' || location === 'outdoor';
+
 export function hasEquipment(ex: Exercise, equipment: Equipment[], location: UserProfile['location']): boolean {
-  if (!ex.location.includes(location)) return false;
+  if (!placesFor(location).some((l) => ex.location.includes(l))) return false;
   const have = new Set<Equipment>([...equipment, 'bodyweight']);
   return ex.equipment.every((e) => have.has(e));
 }
@@ -129,7 +139,7 @@ export function scoreExercise(ex: Exercise, slot: SlotSpec, ctx: SelectionContex
   // 1b. Качество стимула (дома упражнения с резиной/своим весом — норма, в зале — хуже нагружаемых аналогов)
   const q = QUALITY[ex.id] ?? 5;
   s += (q - 5) * 3;
-  if (ctx.profile.location === 'home' && (ex.bodyweight || ex.equipment.includes('band'))) s += 4;
+  if (noGym(ctx.profile.location) && (ex.bodyweight || ex.equipment.includes('band'))) s += 4;
 
   // 2. Соответствие роли в тренировке
   if (slot.role === 'main') s += ex.mechanic === 'compound' ? (ex.tier === 1 ? 14 : ex.tier === 2 ? 9 : 3) : -10;

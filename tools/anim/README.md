@@ -37,3 +37,22 @@ npx tsx tools/anim/registry.ts
 1. Сцена в `web/motions.js`: снаряды (`setup`), поза по фазе (`pose(p)`), привязка снаряда к кисти (`after`), камера, подсветка мышц.
 2. Проверить кадры начала, середины и конца цикла с нескольких ракурсов; записать заметку и `checked: true` в `manifest.json` только после проверки.
 3. `node tools/anim/render.cjs <id>` → `npx tsx tools/anim/registry.ts`.
+
+## Иллюстрации интерфейса
+
+Та же фигура и снаряды дают картинки для экранов (прозрачный фон — свечение и анимацию рисует приложение):
+
+| id | Экран |
+|---|---|
+| `welcome` | приветствие: атлет со спины (+ слой энергии `energy.py`) |
+| `home_hero` | главная: карточка сегодняшней тренировки |
+| `goal_bulk`, `goal_cut`, `goal_recomp`, `goal_maintain` | анкета, «Твоя цель?» |
+| `tip_plate` | главная: «Совет RYNJI» |
+
+```bash
+node tools/anim/stills.cjs                      # все сцены → tools/anim/out/art/<id>.png
+python3 tools/anim/energy.py tools/anim/out/art/energy.png 1200 1500 7
+python3 tools/anim/art.py                       # WebP под экраны iPhone @3x → assets/art/<id>.webp
+```
+
+Телосложение задаётся `anatomy({ mass, lean, def, head })` в `web/stills.js`; лицензии и источники — `docs/ASSETS_LICENSES.md`.

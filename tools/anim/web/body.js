@@ -53,9 +53,10 @@ const C = (joint, a, b, r1, r2, group, k) => ({ t: 'c', joint, a, b, r1, r2, gro
 
 /**
  * Телосложение (для иллюстраций целей): mass — объём мышц, lean — толщина «подкожного» слоя кожи туловища и бёдер
- * (меньше — рельефнее), def — сглаживание между мышцами (меньше — чётче борозды). По умолчанию — атлет сцен техники.
+ * (меньше — рельефнее), def — сглаживание между мышцами (меньше — чётче борозды), head — размер головы (крупный план).
+ * По умолчанию — атлет сцен техники.
  */
-export function anatomy({ mass = 1, lean = 1, def = 1 } = {}) {
+export function anatomy({ mass = 1, lean = 1, def = 1, head = 1 } = {}) {
   const P = [];
   // Таз (шорты) и ягодицы
   P.push(E('pelvis', [0, 0.03, -0.005], [0.148, 0.115, 0.104], [0, 0, 0], SKIN, 0.05));
@@ -131,11 +132,11 @@ export function anatomy({ mass = 1, lean = 1, def = 1 } = {}) {
     P.push(C(ft, [0, 0.04, 0], [0, -0.035, -0.01], 0.034, 0.042, SHOE, 0.02));
     P.push(E(ft, [0, -0.055, 0.06], [0.047, 0.035, 0.125], [0.05, 0, 0], SHOE, 0.02));
   }
-  if (mass === 1 && lean === 1 && def === 1) return P;
+  if (mass === 1 && lean === 1 && def === 1 && head === 1) return P;
   const TRUNK = ['pelvis', 'spine', 'chest', 'hipL', 'hipR'];
   return P.map((p) => {
     const muscle = GROUPS.includes(p.group);
-    const f = muscle ? mass : p.group === SKIN && TRUNK.includes(p.joint) ? lean : 1;
+    const f = muscle ? mass : p.group === SKIN && TRUNK.includes(p.joint) ? lean : p.joint === 'head' ? head : 1;
     const k = muscle ? p.k * def : p.k;
     return p.t === 'e' ? { ...p, r: p.r.map((x) => x * f), k } : { ...p, r1: p.r1 * f, r2: p.r2 * f, k };
   });
@@ -373,14 +374,18 @@ export function buildMesh(prims, { primary = [], secondary = [], h = 0.009, clot
     g /= wsum;
     b /= wsum;
     em /= wsum;
-    // шорты: ткань поверх, подсвеченная мышца видна приглушённо
-    const inCloth = cloth.some((c) => x >= c.min[0] && y >= c.min[1] && z >= c.min[2] && x <= c.max[0] && y <= c.max[1] && z <= c.max[2] && primDist(c, x, y, z) < 0);
-    if (inCloth) {
+    // шорты: ткань поверх, подсвеченная мышца видна приглушённо; край ткани — плавный (±3 мм), без «ступенек» сетки
+    let dc = Infinity;
+    for (const c of cloth) if (x >= c.min[0] && y >= c.min[1] && z >= c.min[2] && x <= c.max[0] && y <= c.max[1] && z <= c.max[2]) dc = Math.min(dc, primDist(c, x, y, z));
+    const t = Math.min(1, Math.max(0, (0.003 - dc) / 0.006));
+    const wc = t * t * (3 - 2 * t);
+    if (wc > 0) {
       const k = Math.min(1, em * 1.4) * 0.7;
-      r = COLORS.shorts[0] * (1 - k) + r * k;
-      g = COLORS.shorts[1] * (1 - k) + g * k;
-      b = COLORS.shorts[2] * (1 - k) + b * k;
-      em *= 0.55;
+      const sr = COLORS.shorts[0] * (1 - k) + r * k, sg = COLORS.shorts[1] * (1 - k) + g * k, sb = COLORS.shorts[2] * (1 - k) + b * k;
+      r = r * (1 - wc) + sr * wc;
+      g = g * (1 - wc) + sg * wc;
+      b = b * (1 - wc) + sb * wc;
+      em *= 1 - 0.45 * wc;
     }
     col[3 * i] = r;
     col[3 * i + 1] = g;

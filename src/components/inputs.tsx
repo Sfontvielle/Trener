@@ -53,7 +53,7 @@ export function Field({ label, hint, error, style, accessory, ...rest }: TextInp
  * Ширина поля числа — по числу символов, размеру шрифта и системному масштабу текста (Dynamic Type):
  * иначе «26» при крупном шрифте обрезалось до «2». Цифры моноширинные (tabular-nums) ≈ 0,62 кегля.
  */
-const INPUT_MAX_SCALE = 1.3;
+export const INPUT_MAX_SCALE = 1.3;
 export function inputWidth(text: string, fontSize: number, fontScale = PixelRatio.getFontScale()): number {
   const k = Math.min(Math.max(fontScale, 1), INPUT_MAX_SCALE);
   const chars = Math.max(2, text.length);

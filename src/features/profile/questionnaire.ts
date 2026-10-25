@@ -4,11 +4,12 @@ import { goalPresets, recommendedPreset } from '@/features/coach/decisions/goals
 import { defaultRate } from '@/features/nutrition/targets';
 
 /**
- * Анкета первого запуска — 5 этапов:
- *   1. имя · 2. пол, возраст (18+), рост, текущий вес · 3. цель · 4. опыт, график, длительность, оборудование ·
- *   5. образ жизни, активность за день, сон, ограничения.
- * Личные показатели ничем не заполняются заранее: пока пользователь не ответил, поля пустые и «Далее» недоступно.
- * Целевой вес и срок не спрашиваем. Темп цели — рекомендованный (поменять можно в Профиле).
+ * Анкета первого запуска — 5 этапов (эталоны onboarding/02–06):
+ *   1. имя · 2. пол, возраст (18+), рост, текущий вес · 3. цель · 4. опыт, сколько раз в неделю, длительность, место
+ *   (и что есть из оборудования, если не зал) · 5. повседневная активность, сон, ограничения в питании, дополнительно.
+ * Личные показатели ничем не заполняются заранее: пока пользователь не ответил, поля пустые и «Продолжить» недоступно.
+ * Целевой вес, срок и темп не спрашиваем — темп движок берёт рекомендованный (поле ratePctPerWeek сохраняется).
+ * Дни недели не спрашиваем: план расставляет тренировки сам, поменять дни можно в Профиле.
  */
 export const Q_STAGES = 5;
 
@@ -20,22 +21,38 @@ export interface QDraft {
   weightKg?: number;
   goal?: GoalType;
   level?: ExperienceLevel;
-  /** Дни тренировок, 0 = Пн … 6 = Вс (2–6 дней) */
-  days: number[];
+  /** Тренировок в неделю, 2–6 */
+  daysPerWeek?: number;
+  /** Старые черновики: дни недели (0 = Пн … 6 = Вс) — переводятся в daysPerWeek */
+  days?: number[];
   sessionMinutes?: number;
   location?: TrainingLocation;
   equipment: Equipment[];
+  /** Повседневная активность — одним выбором (задаёт работу и шаги для расчёта расхода) */
+  activity?: ActivityKey;
   workStyle?: WorkStyle;
   stepsPerDay?: number;
   /** Обычный сон, часов */
   sleepHours?: number;
-  /** «Нет ограничений» или «есть» (тогда нужен текст) */
-  limits?: 'none' | 'some';
+  /** Ограничения в питании: 'none' или ключ ограничения */
+  diet?: string;
+  /** «Дополнительно (необязательно)»: аллергии, травмы, особенности — свободный текст */
   limitations: string;
+  /** Старые черновики: «есть / нет ограничений» */
+  limits?: 'none' | 'some';
 }
 
 export function emptyDraft(name = ''): QDraft {
-  return { name, days: [], equipment: [], limitations: '' };
+  return { name, equipment: [], limitations: '' };
+}
+
+/** Черновик из прошлой версии анкеты → текущий (дни недели → частота, работа + шаги → активность) */
+export function migrateDraft(d: QDraft): QDraft {
+  const out = { ...d, equipment: d.equipment ?? [], limitations: d.limitations ?? '' };
+  if (out.daysPerWeek === undefined && out.days?.length) out.daysPerWeek = Math.min(6, Math.max(2, out.days.length));
+  if (!out.activity && out.workStyle && out.stepsPerDay !== undefined) out.activity = activityFromLegacy(out.workStyle, out.stepsPerDay);
+  if (out.sessionMinutes === 75) out.sessionMinutes = 60;
+  return out;
 }
 
 export const RANGE = { age: [18, 90], heightCm: [130, 230], weightKg: [35, 250] } as const;
@@ -49,11 +66,52 @@ export function parseNumber(text: string): number | undefined {
 }
 
 export const LEVEL_OPTIONS: { v: ExperienceLevel; label: string; sub: string; years: number }[] = [
-  { v: 'beginner', label: 'Новичок', sub: 'меньше года или после долгого перерыва', years: 0.5 },
-  { v: 'intermediate', label: 'Средний', sub: '1–3 года регулярно', years: 2 },
-  { v: 'advanced', label: 'Продвинутый', sub: 'больше 3 лет, знаю технику и рабочие веса', years: 5 },
+  { v: 'beginner', label: 'Новичок', sub: 'Нет опыта или до 6 месяцев', years: 0.3 },
+  { v: 'intermediate', label: 'Средний', sub: '6 месяцев – 2 года', years: 1.2 },
+  { v: 'advanced', label: 'Опытный', sub: 'Более 2 лет', years: 4 },
 ];
-export const DURATION_OPTIONS = [45, 60, 75, 90];
+export const DURATION_OPTIONS = [30, 45, 60, 90];
+export const FREQUENCY_RANGE = [2, 6] as const;
+
+/** Где тренируешься: подпись, значок (Ionicons) и стартовое оборудование. Дома и на улице ничего не отмечаем за человека */
+export const LOCATION_OPTIONS: { v: TrainingLocation; label: string; icon: string; equipment: Equipment[] }[] = [
+  { v: 'gym', label: 'В зале', icon: 'barbell-outline', equipment: ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'pullupbar', 'ezbar', 'smith', 'kettlebell', 'band'] },
+  { v: 'home', label: 'Дома', icon: 'home-outline', equipment: [] },
+  { v: 'outdoor', label: 'На улице', icon: 'leaf-outline', equipment: [] },
+  { v: 'mixed', label: 'Комбинированно', icon: 'sync-outline', equipment: ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'pullupbar', 'ezbar', 'smith', 'kettlebell', 'band'] },
+];
+export const LOCATION_LABEL: Record<TrainingLocation, string> = { gym: 'зал', home: 'дом', outdoor: 'улица', mixed: 'зал и дом' };
+/** Что предложить отметить, если тренируешься не в зале */
+export const EQUIPMENT_CHOICES: Partial<Record<TrainingLocation, Equipment[]>> = {
+  home: ['dumbbell', 'bench', 'pullupbar', 'kettlebell', 'band'],
+  outdoor: ['pullupbar', 'band', 'kettlebell'],
+};
+
+/**
+ * Повседневная активность одним выбором (эталон 06_lifestyle): задаёт тип работы и типичные шаги —
+ * два главных множителя бытового расхода (±200–400 ккал). Точные шаги потом подтянутся из Apple Health.
+ */
+export type ActivityKey = 'low' | 'moderate' | 'high' | 'veryHigh';
+export const ACTIVITY_OPTIONS: { v: ActivityKey; label: string; sub: string; workStyle: WorkStyle; steps: number }[] = [
+  { v: 'low', label: 'Низкий', sub: 'сидячая работа, мало хожу', workStyle: 'desk', steps: 4000 },
+  { v: 'moderate', label: 'Умеренный', sub: 'работа, учёба, небольшая активность', workStyle: 'desk', steps: 7000 },
+  { v: 'high', label: 'Высокий', sub: 'много хожу, часто на ногах', workStyle: 'mixed', steps: 10500 },
+  { v: 'veryHigh', label: 'Очень высокий', sub: 'физическая работа, весь день в движении', workStyle: 'physical', steps: 13000 },
+];
+function activityFromLegacy(work: WorkStyle, steps: number): ActivityKey {
+  if (work === 'physical') return 'veryHigh';
+  if (steps >= 9000 || work === 'mixed') return 'high';
+  return steps >= 5000 ? 'moderate' : 'low';
+}
+/** Ограничения в питании (ключи — как в profile.dietRestrictions) */
+export const DIET_OPTIONS: { v: string; label: string }[] = [
+  { v: 'none', label: 'Нет' },
+  { v: 'vegetarian', label: 'Вегетарианство' },
+  { v: 'vegan', label: 'Веганство' },
+  { v: 'lactose', label: 'Без лактозы' },
+  { v: 'gluten', label: 'Без глютена' },
+  { v: 'halal', label: 'Халяль' },
+];
 export const WORK_OPTIONS: { v: WorkStyle; label: string; sub: string }[] = [
   { v: 'desk', label: 'Сидячая', sub: 'офис, учёба, за рулём' },
   { v: 'mixed', label: 'Смешанная', sub: 'то сижу, то на ногах' },
@@ -100,10 +158,19 @@ export function stageComplete(d: QDraft, stage: number): boolean {
     case 2:
       return !!d.goal;
     case 3:
-      // Дома можно без оборудования (вес тела); в зале — хотя бы что-то из списка
-      return !!d.level && d.days.length >= 2 && d.days.length <= 6 && !!d.sessionMinutes && !!d.location && (d.location === 'home' || d.equipment.length > 0);
+      // Дома и на улице можно без оборудования (вес тела); в зале — хотя бы что-то из списка
+      return (
+        !!d.level &&
+        d.daysPerWeek !== undefined &&
+        d.daysPerWeek >= FREQUENCY_RANGE[0] &&
+        d.daysPerWeek <= FREQUENCY_RANGE[1] &&
+        !!d.sessionMinutes &&
+        !!d.location &&
+        (d.location === 'home' || d.location === 'outdoor' || d.equipment.length > 0)
+      );
     case 4:
-      return !!d.workStyle && d.stepsPerDay !== undefined && d.sleepHours !== undefined && (d.limits === 'none' || (d.limits === 'some' && d.limitations.trim().length > 0));
+      // «Дополнительно» — необязательно
+      return !!d.activity && d.sleepHours !== undefined && !!d.diet;
     default:
       return false;
   }
@@ -126,8 +193,8 @@ export function draftToProfile(d: QDraft, now: number): UserProfile | null {
   const weightKg = d.weightKg!;
   const heightCm = d.heightCm!;
   const rec = goal === 'bulk' || goal === 'cut' ? goalPresets(goal, level, weightKg).find((x) => x.id === recommendedPreset({ goal, level, sex, heightCm, weightKg }).id) : undefined;
-  const limitations = d.limits === 'some' ? d.limitations.trim() : '';
-  const days = [...d.days].sort((a, b) => a - b);
+  const limitations = d.limitations.trim();
+  const act = ACTIVITY_OPTIONS.find((x) => x.v === d.activity)!;
   return {
     name: d.name.trim(),
     sex,
@@ -138,7 +205,7 @@ export function draftToProfile(d: QDraft, now: number): UserProfile | null {
     ratePctPerWeek: rec?.ratePct ?? defaultRate(goal, level),
     level,
     trainingYears: LEVEL_OPTIONS.find((x) => x.v === level)!.years,
-    daysPerWeek: days.length,
+    daysPerWeek: d.daysPerWeek!,
     sessionMinutes: d.sessionMinutes!,
     location: d.location!,
     equipment: [...d.equipment],
@@ -147,13 +214,14 @@ export function draftToProfile(d: QDraft, now: number): UserProfile | null {
     avoidExerciseIds: [],
     likedFoods: [],
     dislikedFoods: [],
-    dietRestrictions: [],
-    activity: activityOf(d.stepsPerDay!),
-    stepsPerDay: d.stepsPerDay!,
-    workStyle: d.workStyle!,
+    dietRestrictions: d.diet && d.diet !== 'none' ? [d.diet] : [],
+    activity: activityOf(act.steps),
+    stepsPerDay: act.steps,
+    workStyle: act.workStyle,
     sleepHours: d.sleepHours,
     preferredTime: 'any',
-    preferredDays: days,
+    // дни расставляет план (DEFAULT_DAYS под частоту); поменять — в Профиле
+    preferredDays: [],
     createdAt: now,
     updatedAt: now,
   };

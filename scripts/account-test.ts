@@ -23,7 +23,9 @@ test('Вход через Apple: имя только то, что дал пол�
   assert.equal(nameFromApple(), '');
 });
 
-import { draftErrors, draftToProfile, emptyDraft, parseNumber, resumeStage, stageComplete, type QDraft } from '../src/features/profile/questionnaire';
+import { draftErrors, draftToProfile, emptyDraft, migrateDraft, parseNumber, resumeStage, stageComplete, type QDraft } from '../src/features/profile/questionnaire';
+import { hasEquipment, placesFor } from '../src/features/training/engine/scoring';
+import { getExercise } from '../src/data/exercises';
 
 const full: QDraft = {
   ...emptyDraft('Алекс'),
@@ -33,20 +35,18 @@ const full: QDraft = {
   weightKg: 78.5,
   goal: 'bulk',
   level: 'intermediate',
-  days: [4, 0, 2],
-  sessionMinutes: 75,
+  daysPerWeek: 3,
+  sessionMinutes: 60,
   location: 'gym',
   equipment: ['barbell', 'dumbbell'],
-  workStyle: 'desk',
-  stepsPerDay: 7000,
+  activity: 'moderate',
   sleepHours: 7.5,
-  limits: 'none',
+  diet: 'none',
 };
 
 test('Анкета: пустой черновик — никаких выдуманных показателей', () => {
   const d = emptyDraft();
-  for (const k of ['sex', 'age', 'heightCm', 'weightKg', 'goal', 'level', 'sessionMinutes', 'location', 'workStyle', 'stepsPerDay', 'sleepHours'] as const) assert.equal(d[k], undefined, k);
-  assert.deepEqual(d.days, []);
+  for (const k of ['sex', 'age', 'heightCm', 'weightKg', 'goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'activity', 'sleepHours', 'diet'] as const) assert.equal(d[k], undefined, k);
   for (let i = 0; i < 5; i++) assert.equal(stageComplete(d, i), false, `этап ${i + 1} не пройден без ответов`);
   assert.equal(draftToProfile(d, 1), null, 'недостающее не подставляется');
 });
@@ -63,31 +63,59 @@ test('Анкета: возраст от 18, рост и вес в разумны
   assert.equal(parseNumber('abc'), undefined);
 });
 
-test('Анкета: этапы 4 и 5 — опыт, график, длительность, оборудование; образ жизни, шаги, сон, ограничения', () => {
-  assert.equal(stageComplete({ ...full, days: [0] }, 3), false, 'минимум 2 дня');
+test('Анкета: этапы 4 и 5 — опыт, раз в неделю, длительность, место; активность, сон, питание, дополнительно', () => {
+  assert.equal(stageComplete({ ...full, daysPerWeek: 1 }, 3), false, 'минимум 2 раза');
+  assert.equal(stageComplete({ ...full, daysPerWeek: 7 }, 3), false, 'максимум 6');
+  assert.equal(stageComplete({ ...full, daysPerWeek: undefined }, 3), false);
   assert.equal(stageComplete({ ...full, sessionMinutes: undefined }, 3), false);
   assert.equal(stageComplete({ ...full, location: 'gym', equipment: [] }, 3), false, 'в зале нужно хоть что-то');
   assert.equal(stageComplete({ ...full, location: 'home', equipment: [] }, 3), true, 'дома можно с весом тела');
+  assert.equal(stageComplete({ ...full, location: 'outdoor', equipment: [] }, 3), true, 'на улице — тоже');
+  assert.equal(stageComplete({ ...full, location: 'mixed', equipment: [] }, 3), false, 'комбинированно — с оборудованием зала');
   assert.equal(stageComplete({ ...full, sleepHours: undefined }, 4), false, 'сон обязателен');
-  assert.equal(stageComplete({ ...full, limits: undefined }, 4), false, 'про ограничения надо ответить');
-  assert.equal(stageComplete({ ...full, limits: 'some', limitations: ' ' }, 4), false, '«есть» — нужно описать');
-  assert.equal(stageComplete({ ...full, limits: 'some', limitations: 'колено' }, 4), true);
+  assert.equal(stageComplete({ ...full, activity: undefined }, 4), false, 'активность обязательна');
+  assert.equal(stageComplete({ ...full, diet: undefined }, 4), false, 'про питание надо ответить');
+  assert.equal(stageComplete({ ...full, limitations: '' }, 4), true, '«Дополнительно» — необязательно');
+});
+
+test('Анкета: черновик прошлой версии продолжается без потери ответов', () => {
+  const old = { ...emptyDraft('Алекс'), days: [0, 2, 4], workStyle: 'desk', stepsPerDay: 7000, sessionMinutes: 75 } as QDraft;
+  const m = migrateDraft(old);
+  assert.equal(m.daysPerWeek, 3, 'дни недели → частота');
+  assert.equal(m.activity, 'moderate', 'работа + шаги → активность');
+  assert.equal(m.sessionMinutes, 60, '75 мин больше не предлагаем — ближайшее');
+  assert.equal(migrateDraft({ ...old, workStyle: 'physical' }).activity, 'veryHigh');
+});
+
+test('Место тренировок: на улице — как дома, комбинированно — зал и дом', () => {
+  assert.deepEqual(placesFor('gym'), ['gym']);
+  assert.deepEqual(placesFor('outdoor'), ['home']);
+  assert.deepEqual(placesFor('mixed'), ['gym', 'home']);
+  const pullup = getExercise('pull_up')!;
+  const bench = getExercise('bench_press')!;
+  assert.equal(hasEquipment(pullup, ['pullupbar'], 'outdoor'), true, 'турник на площадке');
+  assert.equal(hasEquipment(bench, ['barbell', 'bench'], 'outdoor'), false, 'жима штанги на улице нет');
+  assert.equal(hasEquipment(bench, ['barbell', 'bench'], 'mixed'), true);
 });
 
 test('Анкета: продолжение после перезапуска и сборка профиля', () => {
   assert.equal(resumeStage({ ...full, goal: undefined }, 4), 2, 'не дальше первого незаполненного этапа');
   assert.equal(resumeStage(full, 3), 3);
   assert.equal(resumeStage(full, 5), 5, 'все этапы пройдены — итог');
-  const p = draftToProfile({ ...full, limits: 'some', limitations: 'правое плечо' }, 42)!;
+  const p = draftToProfile({ ...full, limitations: 'правое плечо', diet: 'lactose' }, 42)!;
   assert.equal(p.weightKg, 78.5);
-  assert.deepEqual(p.preferredDays, [0, 2, 4]);
+  assert.deepEqual(p.preferredDays, [], 'дни расставляет план');
   assert.equal(p.daysPerWeek, 3);
+  assert.equal(p.stepsPerDay, 7000, 'активность → шаги');
+  assert.equal(p.workStyle, 'desk');
+  assert.deepEqual(p.dietRestrictions, ['lactose']);
   assert.equal(p.sleepHours, 7.5);
   assert.equal(p.health!.injuries, 'правое плечо');
   assert.equal(p.limitations, 'правое плечо');
   assert.equal(p.targetWeightKg, undefined, 'целевой вес не спрашиваем');
   assert.ok(p.ratePctPerWeek > 0 && p.ratePctPerWeek <= 0.5, 'темп — рекомендованный');
-  assert.equal(draftToProfile({ ...full, limits: 'none', limitations: 'старый текст' }, 1)!.limitations, '', '«Нет» — без ограничений');
+  assert.equal(draftToProfile(full, 1)!.limitations, '', 'без дополнительного — без ограничений');
+  assert.deepEqual(draftToProfile(full, 1)!.dietRestrictions, [], '«Нет» в питании');
 });
 
 import { sleepBaseline } from '../src/features/science/recovery';
@@ -100,7 +128,7 @@ test('Сон из анкеты — норма, пока не набралось 
   assert.equal(sleepBaseline('2026-10-20', five, undefined, 7.5), 6, 'свои данные важнее анкеты');
 });
 
-import { deltaText, sleepCard, weightCard, weightOnTrack } from '../src/features/home/today';
+import { deltaText, greeting, sleepCard, stepsAverage, stepsWeek, weightCard, weightOnTrack } from '../src/features/home/today';
 
 test('Главная: вес и динамика — только из записей', () => {
   assert.equal(weightCard([], '2026-10-24'), null, 'нет взвешиваний — пустое состояние, без примерных цифр');
@@ -124,4 +152,19 @@ test('Главная: сон — чек-ин важнее Apple Health, без �
   assert.deepEqual(sleepCard(450, 7), { minutes: 450, source: 'checkin' });
   assert.deepEqual(sleepCard(undefined, 6.5), { minutes: 390, source: 'health' });
   assert.equal(sleepCard(undefined, undefined), null);
+});
+
+test('Главная: приветствие по времени и шаги за 7 дней — только из Apple Health', () => {
+  assert.equal(greeting(8), 'Доброе утро');
+  assert.equal(greeting(14), 'Добрый день');
+  assert.equal(greeting(20), 'Добрый вечер');
+  assert.equal(greeting(2), 'Доброй ночи');
+  const w = stepsWeek({ '2026-10-25': { steps: 6840 }, '2026-10-23': { steps: 9000 }, '2026-10-20': { steps: 12000 } }, '2026-10-25');
+  assert.equal(w.length, 7);
+  assert.equal(w[6].date, '2026-10-25');
+  assert.equal(w[6].label, 'Вс');
+  assert.equal(w[0].label, 'Пн');
+  assert.equal(w[5].steps, undefined, 'нет данных — пусто, а не ноль');
+  assert.equal(stepsAverage(w), Math.round((6840 + 9000 + 12000) / 3));
+  assert.equal(stepsAverage(w.slice(5)), null, 'меньше трёх дней — без среднего');
 });

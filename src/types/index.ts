@@ -12,7 +12,8 @@ export type ID = string;
 export type Sex = 'male' | 'female';
 export type GoalType = 'bulk' | 'cut' | 'recomp' | 'maintain';
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
-export type TrainingLocation = 'gym' | 'home';
+/** Где человек тренируется. Каталог упражнений размечен только 'gym' / 'home'; улица и комбинированно сводятся к ним (placesFor) */
+export type TrainingLocation = 'gym' | 'home' | 'outdoor' | 'mixed';
 export type Equipment =
   | 'barbell'
   | 'dumbbell'
@@ -90,6 +91,8 @@ export interface AppSettings {
   restTimerAuto: boolean;
   defaultRestSec: number;
   haptics: boolean;
+  /** Фото профиля (файл в папке приложения); нет — инициалы */
+  avatarUri?: string;
   coachApiUrl: string; // пусто → берётся из EXPO_PUBLIC_COACH_API_URL
   /** Уведомление об окончании отдыха, когда приложение свёрнуто */
   restNotify: boolean;
@@ -562,6 +565,38 @@ export interface WorkoutSession {
 }
 
 export type WorkoutColor = 'lime' | 'blue' | 'orange' | 'violet' | 'pink' | 'cyan';
+
+/**
+ * Запланированная тренировка на дату (любая: тренировка плана, свой шаблон, повтор прошлой или собранная вручную).
+ * Состав — снимок на момент планирования. Статус «пропущено» хранится, только если человек сам отметил;
+ * просроченная без отметки показывается как пропуск, но не меняется (её можно выполнить позже).
+ */
+export interface PlannedWorkout {
+  id: ID;
+  date: ISODate;
+  name: string;
+  source: 'plan' | 'template' | 'repeat' | 'custom';
+  /** Шаблон плана или свой шаблон */
+  templateId?: ID;
+  /** Повтор: исходная тренировка (не меняется) */
+  fromSessionId?: ID;
+  exercises: PlannedExercise[];
+  color?: WorkoutColor;
+  status: 'planned' | 'done' | 'skipped';
+  /** Выполнено: какая тренировка закрыла план */
+  doneSessionId?: ID;
+  createdAt: number;
+}
+
+/** Свой шаблон тренировки («Сохранить как шаблон») */
+export interface UserTemplate {
+  id: ID;
+  name: string;
+  exercises: PlannedExercise[];
+  color?: WorkoutColor;
+  createdAt: number;
+  updatedAt: number;
+}
 
 /** Сгенерированная/собранная, но ещё не начатая тренировка */
 export interface WorkoutDraft {

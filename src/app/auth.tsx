@@ -10,7 +10,9 @@ import { useAppleLink } from '@/features/account/useAppleLink';
 import { useAccount } from '@/stores/account';
 
 /**
- * Вход перед анкетой — только заголовок и две кнопки: Apple ID или без входа (привязать можно позже в Профиле).
+ * Вход перед анкетой — только Apple ID (решение владельца продукта; ТЗ 2.1). Уже существующие профили сюда не попадают.
+ * Без входа можно только в dev-сборке там, где Apple ID недоступен (веб, Android, симулятор без Apple ID) — для разработки
+ * и автотестов; в сборке для iPhone этой кнопки нет.
  */
 export default function Auth() {
   const { available, busy, link } = useAppleLink();
@@ -40,7 +42,7 @@ export default function Auth() {
               <AppleButton dark={currentTheme().scheme === 'dark'} onPress={signIn} />
             </View>
           ) : null}
-          <Button title="Продолжить без входа" variant="secondary" size="lg" onPress={skip} />
+          {__DEV__ && available === false ? <Button title="Без входа (только разработка)" variant="secondary" size="lg" onPress={skip} /> : null}
         </View>
       </FadeIn>
     </Screen>

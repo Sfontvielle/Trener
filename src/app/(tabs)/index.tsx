@@ -28,8 +28,9 @@ import { applyProgramProposal } from '@/features/training/adaptActions';
 import { useDayKey } from '@/hooks/useDayKey';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
-import { deltaText, sleepCard, weightCard, weightOnTrack } from '@/features/home/today';
-import { CoachCard, NutritionCard, RecoveryCard, StatCard, tint } from '@/features/home/TodayCards';
+import { deltaText, greeting, sleepCard, stepsAverage, stepsWeek, weightCard, weightOnTrack } from '@/features/home/today';
+import { tint } from '@/features/home/TodayCards';
+import { BrandLogo, MacroCard, StepsWeekCard, TipCard, Tile, TodayCard, WeightCard, recoveryTile } from '@/features/home/HomeCards';
 import { sleepMinutesOf } from '@/features/science/recovery';
 import { buildJournal, dayMode } from '@/features/journal/build';
 import { workoutDebrief } from '@/features/training/debrief';
@@ -177,6 +178,8 @@ export default function Home() {
   const sleepNow = sleepCard(checkin ? sleepMinutesOf(checkin) : undefined, health?.sleepHours);
   const trainingDay = tw.kind === 'workout' || tw.kind === 'done' || !!active;
   const waterGoal = waterTarget(wc?.kg ?? profile.weightKg, trainingDay);
+  const week = stepsWeek(healthDays, d);
+  const rec = recoveryTile(readiness, sleepNow);
 
   const reactTo = (i: LocalInsight, status: 'accepted' | 'dismissed') => {
     if (i.key) useCoach.getState().recordAdvice({ key: i.key, date: d, text: i.text, status });
@@ -209,53 +212,117 @@ export default function Home() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Ambient tone={tone} />
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl }} showsVerticalScrollIndicator={false}>
-        {/* Шапка: дата (открывает дневник дня и календарь). Профиль — нижняя вкладка */}
+        {/* Шапка (эталон 01_home): логотип, колокольчик — сигналы тренера. Профиль — нижняя вкладка */}
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setJournalOpen(true)} hitSlop={10} style={{ flex: 1 }}>
-            <T v="caption" numberOfLines={1}>
-              {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
-            </T>
+          <BrandLogo />
+          <Pressable accessibilityRole="button" accessibilityLabel={feed.length ? `Сигналы тренера: ${feed.length}` : 'Сигналы тренера'} onPress={() => { haptic.tap(); setFeedOpen(true); }} hitSlop={10} style={styles.bell} testID="home-bell">
+            <Icon name="notifications-outline" size={24} color={colors.text} />
+            {feed.length ? <View style={styles.bellDot} /> : null}
           </Pressable>
         </View>
-
-        <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => setAddFood(true)} />
-
-        {/* День — карточки: калории и БЖУ, шаги и вес, сон и восстановление, тренер. Только данные пользователя */}
-        <Appear i={5} style={{ marginTop: space.xxl }}>
-          <NutritionCard eaten={nut.eaten} target={target} onOpen={() => router.push('/nutrition')} />
+        <Appear i={0} style={{ marginTop: space.lg, gap: 4 }}>
+          <T v="h1" numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: 28 }}>
+            {greeting(now.getHours())}, {profile.name}
+          </T>
+          <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setJournalOpen(true)} hitSlop={8} style={{ alignSelf: 'flex-start' }}>
+            <T v="bodyDim">
+              {active ? 'Идёт тренировка' : tw.kind === 'done' ? 'Сегодня — тренировка выполнена' : tw.kind === 'workout' ? 'Сегодня — день тренировки' : tw.kind === 'rest' ? 'Сегодня — день отдыха' : `${WEEKDAY_FULL[weekdayIndex(d)]}, ${formatDayLong(d)}`} ›
+            </T>
+          </Pressable>
         </Appear>
-        <Appear i={6} style={styles.pair}>
-          <StatCard
+
+        <Appear i={1} style={{ marginTop: space.lg }}>
+          <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => setAddFood(true)} />
+        </Appear>
+
+        {/* Плитки 2×2: калории, белки, шаги, восстановление — только данные пользователя и Apple Health */}
+        <Appear i={2} style={styles.pair}>
+          <Tile
+            icon="flame"
+            label="Калории"
+            value={fmtNum(nut.eaten.kcal)}
+            of={target ? fmtNum(target.kcal) : undefined}
+            unit="ккал"
+            ring={target ? nut.eaten.kcal / target.kcal : undefined}
+            accent={target && nut.eaten.kcal > target.kcal * 1.08 ? colors.warning : colors.accent}
+            a11y={`Калории: ${fmtNum(nut.eaten.kcal)}${target ? ` из ${fmtNum(target.kcal)}` : ''} ккал. Открыть питание`}
+            onPress={() => router.push('/nutrition')}
+            testID="home-kcal"
+          />
+          <Tile
+            icon="arm-flex"
+            iconLib="mci"
+            label="Белки"
+            value={String(Math.round(nut.eaten.protein))}
+            of={target ? String(Math.round(target.protein)) : undefined}
+            unit="г"
+            ring={target ? nut.eaten.protein / Math.max(1, target.protein) : undefined}
+            a11y={`Белки: ${Math.round(nut.eaten.protein)}${target ? ` из ${Math.round(target.protein)}` : ''} г. Открыть питание`}
+            onPress={() => router.push('/nutrition')}
+            testID="home-protein"
+          />
+        </Appear>
+        <Appear i={3} style={styles.pair}>
+          <Tile
             icon="footsteps"
             label="Шаги"
-            color={colors.stabilizerMuscle}
             value={health?.steps !== undefined ? fmtNum(health.steps) : '—'}
-            sub={health?.steps !== undefined ? `из ${fmtNum(steps?.target ?? profile.stepsPerDay)}` : healthOn ? 'Нет данных за сегодня' : 'Подключи Apple Health'}
-            progress={health?.steps !== undefined && steps ? health.steps / steps.target : 0}
+            bars={week.map((w) => w.steps)}
+            empty={health?.steps !== undefined ? `из ${fmtNum(steps?.target ?? profile.stepsPerDay)}` : healthOn ? 'Нет данных за сегодня' : 'Подключи Apple Health'}
             a11y={`Шаги, как рассчитана цель: ${health?.steps !== undefined ? `${fmtNum(health.steps)} из ${fmtNum(steps?.target ?? profile.stepsPerDay)}` : 'нет данных'}`}
             onPress={() => setStepsOpen(true)}
             testID="home-steps"
           />
-          <StatCard
-            icon="scale-outline"
-            label="Вес"
-            color={colors.protein}
-            value={wc ? String(wc.kg).replace('.', ',') : '—'}
-            unit={wc ? 'кг' : undefined}
+          <Tile
+            icon="pulse"
+            label="Восстановление"
+            value={rec.value}
+            accent={rec.color}
+            segments={rec.n}
+            empty={rec.sub}
+            a11y={`Восстановление: ${readiness ? rec.value.toLowerCase() : 'нет данных'}${sleepNow ? `, сон ${rec.sub?.replace('Сон ', '')}` : ''}. ${readiness ? 'Почему так' : 'Чек-ин'}`}
+            onPress={() => (readiness ? setWhyOpen(true) : router.push('/checkin'))}
+            testID="home-recovery"
+          />
+        </Appear>
+        {!checkin ? (
+          <Appear i={4}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Чек-ин за 30 секунд" onPress={() => { haptic.tap(); router.push('/checkin'); }} style={styles.checkin}>
+              <Icon name="sunny-outline" size={18} color={colors.accent} />
+              <T v="body" style={{ flex: 1, fontWeight: '600' }}>
+                Чек-ин: сон и самочувствие
+              </T>
+              <T v="small">30 сек ›</T>
+            </Pressable>
+          </Appear>
+        ) : null}
+
+        {/* Совет RYNJI: главный сигнал тренера (все сигналы — в листе) и вопрос тренеру */}
+        <Appear i={5} style={{ marginTop: 12 }}>
+          <TipCard
+            title={feed[0]?.title ?? 'Сигналов нет — всё по плану'}
+            text={feed[0]?.text}
+            tone={feed[0]?.tone === 'urgent' ? 'urgent' : feed[0]?.tone === 'warning' ? 'warning' : 'info'}
+            more={Math.max(0, feed.length - 1)}
+            onOpen={() => setFeedOpen(true)}
+            onAsk={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')}
+          />
+        </Appear>
+        <Appear i={6} style={{ marginTop: 12 }}>
+          <MacroCard eaten={nut.eaten} target={target} onOpen={() => router.push('/nutrition')} />
+        </Appear>
+        <Appear i={7} style={{ marginTop: 12 }}>
+          <WeightCard
+            kg={wc ? String(wc.kg).replace('.', ',') : null}
             sub={!wc ? 'Записать вес' : wc.stale ? 'Давно не взвешивался' : wc.week !== null ? `${deltaText(wc.week)} за неделю` : 'Динамика — через неделю'}
             subColor={wc && wc.week !== null && !wc.stale ? (weightOnTrack(profile.goal, wc.week) ? colors.accent : colors.warning) : undefined}
             spark={wc?.spark}
             a11y={wc ? `Вес ${String(wc.kg).replace('.', ',')} кг${wc.week !== null ? `, ${deltaText(wc.week)} за неделю` : ''}. Открыть прогресс` : 'Вес: записей нет. Записать вес'}
             onPress={() => router.push(wc ? '/progress' : '/weight')}
-            testID="home-weight"
           />
         </Appear>
-        <Appear i={7} style={{ marginTop: 12 }}>
-          <RecoveryCard sleep={sleepNow} readiness={readiness} hasCheckin={!!checkin} onOpen={() => setWhyOpen(true)} onCheckin={() => router.push('/checkin')} />
-        </Appear>
-        {/* RYNJI Coach: главный сигнал дня (лист со всеми сигналами) и вопрос тренеру */}
         <Appear i={8} style={{ marginTop: 12 }}>
-          <CoachCard top={feed[0]} more={feed.length - 1} onOpen={() => setFeedOpen(true)} onAsk={() => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach')} />
+          <StepsWeekCard week={week} average={stepsAverage(week)} today={health?.steps} goal={steps?.target ?? profile.stepsPerDay} healthOn={healthOn} onPress={() => setStepsOpen(true)} />
         </Appear>
         <Appear i={9}>
           <WaterLine ml={water} goal={waterGoal} text={waterText} onOpen={() => setWaterOpen(true)} onAdd={() => { useNutrition.getState().addWater(d, 250); haptic.light(); }} />
@@ -438,8 +505,8 @@ export default function Home() {
 }
 
 /**
- * Главное на сегодня — крупно, на фоне, без карточки: состояние дня, имя тренировки, одна строка параметров
- * (тап — состав), фокус тренера (тап — «почему») и одна «живая» кнопка. Появляется «лесенкой».
+ * Главное на сегодня (эталон 01_home): карточка с 3D-атлетом — чип, название тренировки, одна строка параметров
+ * (тап — состав) и одна главная кнопка. Состояния: идёт тренировка, выполнена, план дня, отдых, плана нет.
  */
 function Hero({
   tw,
@@ -456,95 +523,56 @@ function Hero({
   evening: boolean;
   onAddFood: () => void;
 }) {
-  const eyebrow = (text: string, warn?: string) => (
-    <Appear i={0}>
-      <T v="caption" color={colors.textDim}>
-        {text}
-        {warn ? <T v="caption" color={colors.warning}>{` · ${warn}`}</T> : null}
-      </T>
-    </Appear>
-  );
-  const title = (text: string) => (
-    <Appear i={1}>
-      <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
-        {text}
-      </T>
-    </Appear>
-  );
-  const meta = (text: string, onPress?: () => void, label?: string) => (
-    <Appear i={2}>
-      {onPress ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { haptic.tap(); onPress(); }} hitSlop={8} style={({ pressed }) => [{ alignSelf: 'flex-start' }, pressed && { opacity: 0.6 }]}>
-          <T v="bodyDim" numberOfLines={2}>
-            {text} <T v="bodyDim" color={colors.text}>›</T>
-          </T>
-        </Pressable>
-      ) : (
-        <T v="bodyDim" numberOfLines={2}>
-          {text}
-        </T>
-      )}
-    </Appear>
-  );
-  // Фокус тренера и «почему» — одна строка: решение дня, тап — данные и уверенность
-  const cta = (b: React.ReactNode) => <Appear i={4} style={styles.heroCta}>{b}</Appear>;
-
   if (active) {
     const done = active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
-    return (
-      <View style={styles.hero}>
-        {eyebrow('Идёт тренировка')}
-        {title(active.name)}
-        {meta(`Выполнено подходов: ${done}`)}
-        {cta(<Button title="Продолжить тренировку" icon="play" size="lg" live onPress={resumeActive} />)}
-      </View>
-    );
+    return <TodayCard chip="Идёт тренировка" title={active.name} meta={`Выполнено подходов: ${done}`} cta="Продолжить тренировку" onCta={resumeActive} />;
   }
   if (tw.kind === 'done' && tw.completedSession) {
     const s = tw.completedSession;
     return (
-      <View style={styles.hero} testID="coach-today">
-        {eyebrow(evening ? 'Итог дня · тренировка выполнена' : 'Тренировка выполнена')}
-        {title(`${s.name} ✓`)}
-        {meta(
-          [debrief ? `${debrief.minutes} мин · ${debrief.sets} подходов${debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}` : 'Итоги', tw.nextWorkout ? `дальше ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''].filter(Boolean).join(' · '),
-          () => router.push({ pathname: '/workout/[id]', params: { id: s.id } }),
-          'Итоги тренировки',
-        )}
-        {cta(<Button title="Добавить еду" icon="add" size="lg" live onPress={onAddFood} />)}
-      </View>
+      <TodayCard
+        testID="coach-today"
+        chip={evening ? 'Итог дня · выполнено' : 'Сегодня · выполнено'}
+        title={`${s.name} ✓`}
+        meta={[debrief ? `${debrief.minutes} мин · ${debrief.sets} подходов${debrief.prs.length ? ` · рекордов: ${debrief.prs.length}` : ''}` : 'Итоги', tw.nextWorkout ? `дальше ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''].filter(Boolean).join(' · ')}
+        onMeta={() => router.push({ pathname: '/workout/[id]', params: { id: s.id } })}
+        cta="Добавить еду"
+        ctaIcon="add"
+        onCta={onAddFood}
+      />
     );
   }
   if (tw.kind === 'workout' && tw.template) {
     const stop = coach?.mode === 'Отдых';
     const tid = tw.template.id;
     return (
-      <View style={styles.hero} testID="coach-today">
-        {eyebrow('Тренировка дня', stop ? 'отдых' : tw.mode !== 'normal' ? MODE_LABEL[tw.mode].toLowerCase() : undefined)}
-        {title(coach?.title ?? tw.template.name)}
-        {meta(`~${tw.estMinutes} мин · ${tw.totalSets} подходов`, () => router.push({ pathname: '/workout/preview', params: { templateId: tid } }), 'Состав тренировки')}
-        {cta(<Button title="Начать тренировку" icon="play" size="lg" live={!stop} onPress={() => startTodayPlanned()} variant={stop ? 'secondary' : 'primary'} />)}
-      </View>
+      <TodayCard
+        testID="coach-today"
+        chip={`Сегодня${stop ? ' · отдых' : tw.mode !== 'normal' ? ` · ${MODE_LABEL[tw.mode].toLowerCase()}` : ''}`}
+        title={coach?.title ?? tw.template.name}
+        meta={`~${tw.estMinutes} мин · ${tw.totalSets} подходов`}
+        onMeta={() => router.push({ pathname: '/workout/preview', params: { templateId: tid } })}
+        cta="Начать тренировку"
+        ctaLive={!stop}
+        onCta={() => startTodayPlanned()}
+      />
     );
   }
   if (tw.kind === 'rest') {
     return (
-      <View style={styles.hero} testID="coach-today">
-        {eyebrow('Сегодня')}
-        {title('День отдыха')}
-        {meta([tw.reason ?? 'Восстановление — часть плана', tw.nextWorkout ? `дальше ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''].filter(Boolean).join(' · '))}
-        {cta(<Button title="Добавить еду" icon="add" size="lg" live onPress={onAddFood} />)}
-      </View>
+      <TodayCard
+        testID="coach-today"
+        dim
+        chip="Сегодня"
+        title="День отдыха"
+        meta={[tw.reason ?? 'Восстановление — часть плана', tw.nextWorkout ? `дальше ${tw.nextWorkout.template.name}, ${formatDayLong(tw.nextWorkout.date)}` : ''].filter(Boolean).join(' · ')}
+        cta="Добавить еду"
+        ctaIcon="add"
+        onCta={onAddFood}
+      />
     );
   }
-  return (
-    <View style={styles.hero}>
-      {eyebrow('Сегодня')}
-      {title('Плана пока нет')}
-      {meta(`Заполни профиль — ${BRAND} составит программу и питание.`)}
-      {cta(<Button title="Открыть профиль" size="lg" live onPress={() => router.push('/profile')} />)}
-    </View>
-  );
+  return <TodayCard dim chip="Сегодня" title="Плана пока нет" meta={`Заполни профиль — ${BRAND} составит программу и питание.`} cta="Открыть профиль" ctaIcon="person-outline" onCta={() => router.push('/profile')} />;
 }
 
 /** Вода — одной компактной строкой: сколько выпито, тонкая полоса, «+250» в один тап; выполнено — галочка */
@@ -637,13 +665,13 @@ function NoteSheet({ visible, onClose, date }: { visible: boolean; onClose: () =
 }
 
 const styles = themed({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  hero: { gap: 10, marginTop: space.xxl },
-  heroCta: { marginTop: space.lg },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  bell: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  bellDot: { position: 'absolute', top: 9, right: 10, width: 9, height: 9, borderRadius: 5, backgroundColor: colors.accent, borderWidth: 1.5, borderColor: colors.bg },
+  checkin: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingVertical: 12, paddingHorizontal: space.md, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   pair: { flexDirection: 'row', gap: 12, marginTop: 12 },
   water: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12, paddingVertical: 12, paddingHorizontal: space.md, borderRadius: radius.lg, backgroundColor: colors.surface },
   waterBtn: { minWidth: 56, height: 36, borderRadius: 18, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: colors.surface2 },
   fit: { padding: 14, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 4 },
   jRow: { flexDirection: 'row', gap: 10 },
   jRail: { alignItems: 'center', width: 12, paddingTop: 6 },
