@@ -23,6 +23,8 @@ test('Live Activity: текущее упражнение, подход N из M,
   assert.equal(p.progress, 0.25);
   assert.equal(p.startedAt, 1_000);
   assert.equal(p.next, '', 'пока упражнение не закончено — без «далее»');
+  assert.deepEqual([p.accentDark, p.accentLight], ['#C8F53C', '#4C8A00'], 'по умолчанию — фирменный лайм');
+  assert.equal(workoutActivityProps(s, { ...deps, accent: { dark: '#4DA3FF', light: '#1F6FD1' } }).accentDark, '#4DA3FF', 'акцент из настроек');
 });
 
 test('Live Activity: разминка не считается рабочим подходом; упражнение выполнено → «далее»', () => {

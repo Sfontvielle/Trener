@@ -11,8 +11,10 @@ import type { WorkoutActivityProps } from '@/features/training/liveActivity';
  */
 const WorkoutActivity = (p: WorkoutActivityProps, env: LiveActivityEnvironment) => {
   'widget';
-  const lime = env.isLuminanceReduced ? '#FFFFFF' : '#C8F53C';
-  const dim = '#9C9CA2';
+  // Акцент пользователя; на светлом экране блокировки — его затемнённый вариант (лайм на белом не читается)
+  const light = env.colorScheme === 'light';
+  const lime = env.isLuminanceReduced ? '#FFFFFF' : light ? p.accentLight : p.accentDark;
+  const dim = light ? '#5F6168' : '#9C9CA2';
   const resting = p.restTo > 0 && p.restTo > p.restFrom;
   const started = new Date(p.startedAt);
   const setShort = p.setNo > 0 ? `${p.setNo}/${p.setTotal}` : p.allDone ? '✓' : p.setText === 'Разминка' ? 'Р' : `${p.setTotal}/${p.setTotal}`;

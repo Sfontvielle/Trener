@@ -1,6 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
+import { paletteFor } from '@/theme';
 import { getExercise } from '@/data/exercises';
 import { isTimed } from '@/features/training/journal';
 import { workoutActivityProps, type WorkoutActivityProps } from '@/features/training/liveActivity';
@@ -38,12 +39,14 @@ function load(): Mod | null {
 function currentProps(): WorkoutActivityProps | null {
   const { active, rest, customExercises } = useWorkouts.getState();
   if (!active) return null;
+  const accent = useProfile.getState().settings.accent ?? 'lime';
   return workoutActivityProps(active, {
     nameOf: (id) => getExercise(id, customExercises)?.name ?? '',
     isTimed: (id) => isTimed(getExercise(id, customExercises)),
     isBodyweight: (id) => !!getExercise(id, customExercises)?.bodyweight,
     unit: useProfile.getState().settings.weightUnit,
     rest: rest ? { startedAt: rest.startedAt, endsAt: rest.endsAt } : null,
+    accent: { dark: paletteFor('dark', accent).accent, light: paletteFor('light', accent).accent },
   });
 }
 
@@ -71,7 +74,7 @@ export function startWorkoutActivitySync(): void {
     if (s.active !== prev.active || s.rest !== prev.rest) queue();
   });
   useProfile.subscribe((s, prev) => {
-    if (s.settings.weightUnit !== prev.settings.weightUnit) queue();
+    if (s.settings.weightUnit !== prev.settings.weightUnit || s.settings.accent !== prev.settings.accent) queue();
   });
   AppState.addEventListener('change', (st) => {
     if (st !== 'active') return;

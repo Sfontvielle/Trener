@@ -38,6 +38,9 @@ export interface WorkoutActivityProps {
   restTo: number;
   /** Все подходы выполнены — осталось завершить */
   allDone: boolean;
+  /** Акцент пользователя: для тёмного фона (Dynamic Island, тёмный экран блокировки) и для светлого */
+  accentDark: string;
+  accentLight: string;
 }
 
 export interface ActivityDeps {
@@ -46,6 +49,8 @@ export interface ActivityDeps {
   isBodyweight: (exerciseId: string) => boolean;
   unit: WeightUnit;
   rest: { startedAt: number; endsAt: number } | null;
+  /** Акцент из настроек оформления; по умолчанию — фирменный лайм */
+  accent?: { dark: string; light: string };
 }
 
 export function workoutActivityProps(s: WorkoutSession, d: ActivityDeps): WorkoutActivityProps {
@@ -66,6 +71,8 @@ export function workoutActivityProps(s: WorkoutSession, d: ActivityDeps): Workou
     restFrom: d.rest ? d.rest.startedAt : 0,
     restTo: d.rest ? d.rest.endsAt : 0,
     allDone,
+    accentDark: d.accent?.dark ?? '#C8F53C',
+    accentLight: d.accent?.light ?? '#4C8A00',
   };
   if (!we) return { ...base, exercise: s.name, superset: '', setNo: 0, setTotal: 0, setText: 'Добавь упражнения', target: '', timed: false, next: '' };
 
