@@ -453,8 +453,8 @@ const closeSheet = async (pg) => {
     assert.equal(errors.length, before, errors.slice(before).join(' | '));
   });
 
-  await check('19. Тренировки → «План и сплит» (лист): выбор сплита', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('19. Тренировки → «Программы» → «План и сплит» (лист): выбор сплита; библиотека — отдельный экран', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
     await page.getByLabel('План и сплит').click();
@@ -470,8 +470,10 @@ const closeSheet = async (pg) => {
     await page.getByText('Отмена', { exact: true }).last().click();
     await page.waitForTimeout(300);
     await closeSheet(page);
-    await page.getByText('Упражнения', { exact: true }).first().click();
-    await page.waitForTimeout(800);
+    await page.getByLabel('Библиотека упражнений', { exact: true }).click();
+    await page.waitForTimeout(1200);
+    assert.match(page.url(), /\/library/);
+    assert.match(await page.evaluate(() => document.body.innerText), /Библиотека упражнений[\s\S]*114 упражнений/);
     await shot('library');
   });
 
@@ -1349,8 +1351,8 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
   });
 
-  await check('52. Неделя: «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('52. Программы: неделя «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
     assert.equal((await page.getByTestId('week-label').innerText()).trim(), 'Эта неделя');
@@ -1370,6 +1372,181 @@ const closeSheet = async (pg) => {
     assert.match(tm, /Целевые мышцы/i);
     const pcts = [...tm.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
     assert.ok(pcts.length >= 2 && pcts.every((x, i) => i === 0 || x <= pcts[i - 1]), `по убыванию: ${pcts}`);
+  });
+
+  // ─── Этап 3: «Мои тренировки», планирование любой тренировки, шаблоны, фильтры ───
+  const schedule = () => page.evaluate(() => JSON.parse(localStorage.getItem('form.schedule') || '{"state":{"planned":[],"templates":[]}}').state);
+  const resetActive = () => page.evaluate(() => { const raw = JSON.parse(localStorage.getItem('form.workouts')); raw.state.active = null; raw.state.draft = null; localStorage.setItem('form.workouts', JSON.stringify(raw)); });
+  const openTraining = async (seg = '') => {
+    await page.goto(`${URL}/training${seg ? `?seg=${seg}` : ''}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+  };
+
+  await check('53. «+» → «Запланировать»: своя тренировка на завтра (конструктор) и повтор любой прошлой на сегодня; «Начать» у плана → выполнено', async () => {
+    await resetActive();
+    await openTraining();
+    assert.match(await page.evaluate(() => document.body.innerText), /Мои тренировки[\s\S]*Программы[\s\S]*Шаблоны[\s\S]*Текущая программа[\s\S]*Сегодня[\s\S]*История тренировок/);
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-plan').click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('hub-plan-form').innerText(), /Программа[\s\S]*Другое[\s\S]*Повтор прошлой тренировки[\s\S]*Своя тренировка/);
+    await page.getByTestId('plan-days').getByText('Завтра', { exact: true }).click();
+    await page.getByTestId('hub-plan-custom').click();
+    await page.waitForTimeout(1500);
+    assert.match(page.url(), /workout\/builder/);
+    await page.getByLabel('Название тренировки').fill('Руки и пресс');
+    await page.getByText('Добавить упражнение', { exact: true }).click();
+    await page.waitForTimeout(900);
+    await page.getByPlaceholder('Поиск: жим, присед, бицепс…').fill('планка');
+    await page.waitForTimeout(500);
+    await page.getByLabel('Планка', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('builder-plan').click();
+    await page.waitForTimeout(1500);
+    let st = await schedule();
+    const custom = st.planned.find((x) => x.name === 'Руки и пресс');
+    assert.ok(custom && custom.source === 'custom' && custom.status === 'planned', 'своя тренировка запланирована');
+    assert.deepEqual(custom.exercises.map((e) => e.exerciseId), ['plank']);
+    assert.ok(await page.getByLabel('Руки и пресс, Завтра, запланировано').isVisible(), 'в «Ближайших» — на завтра');
+    // Повтор любой прошлой: список полный, одинаковые названия не склеены
+    const done = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed' && x.exercises.length).sort((a, b) => b.startedAt - a.startedAt));
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-plan').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('hub-plan-repeat').click();
+    await page.waitForTimeout(600);
+    const list = page.getByTestId('hub-plan-repeat-list').getByRole('button');
+    assert.equal(await list.count(), Math.min(done.length, 20) + (done.length > 20 ? 1 : 0), 'все прошлые тренировки (страницами по 20)');
+    await list.first().click();
+    await page.waitForTimeout(1200);
+    st = await schedule();
+    const rep = st.planned.find((x) => x.source === 'repeat');
+    assert.ok(rep && rep.fromSessionId === done[0].id && rep.name === done[0].name, 'повтор привязан к исходной тренировке');
+    const original = JSON.stringify(done[0]);
+    // «Сегодня» → ▶ → активная тренировка помнит план; завершение отмечает план выполненным
+    await page.getByTestId('mine-today-planned').getByLabel(`Начать: ${rep.name}`).first().click();
+    await page.waitForTimeout(1800);
+    assert.match(page.url(), /workout\/active/);
+    const a = await activeState();
+    assert.equal(a.plannedId, rep.id, 'сессия знает свой план');
+    await page.getByLabel(/^Завершить подход 1$/).first().click();
+    await page.waitForTimeout(700);
+    await page.getByLabel('Тренировка: время, калории, завершение').click();
+    await page.waitForTimeout(700);
+    await page.getByText('Закончить тренировку', { exact: true }).click();
+    await page.waitForTimeout(800);
+    await page.getByText('Завершить', { exact: true }).last().click();
+    await page.waitForTimeout(1800);
+    st = await schedule();
+    const closed = st.planned.find((x) => x.id === rep.id);
+    assert.equal(closed.status, 'done', 'план выполнен');
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions);
+    assert.equal(JSON.stringify(after.find((x) => x.id === done[0].id)), original, 'исходная тренировка не изменилась');
+    assert.ok(after.some((x) => x.id === closed.doneSessionId && x.plannedId === rep.id), 'новая сессия в истории');
+    await shot('stage3-planned-done');
+  });
+
+  await check('54. Шаблоны: «Сохранить как шаблон» в конструкторе и «В шаблоны» у прошлой → «Шаблоны» → «Запланировать» на выбранный день', async () => {
+    await resetActive();
+    await openTraining();
+    await page.getByTestId('training-plus').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('hub-start').click();
+    await page.waitForTimeout(400);
+    await page.getByTestId('hub-new').click();
+    await page.waitForTimeout(1500);
+    await page.getByLabel('Название тренировки').fill('Верх (любимый)');
+    await page.getByLabel('Цвет: Синий').click().catch(() => {});
+    await page.getByText('Добавить упражнение', { exact: true }).click();
+    await page.waitForTimeout(900);
+    await page.getByPlaceholder('Поиск: жим, присед, бицепс…').fill('планка');
+    await page.waitForTimeout(500);
+    await page.getByLabel('Планка', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('builder-save-template').click();
+    await page.waitForTimeout(900);
+    let st = await schedule();
+    const t = st.templates.find((x) => x.name === 'Верх (любимый)');
+    assert.ok(t && t.exercises.length === 1, 'шаблон сохранён');
+    // прошлая тренировка → «В шаблоны»
+    const sid = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed').sort((a, b) => b.startedAt - a.startedAt)[1].id);
+    await page.goto(`${URL}/workout/${sid}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1300);
+    await page.getByTestId('session-template').click();
+    await page.waitForTimeout(800);
+    st = await schedule();
+    assert.equal(st.templates.length >= 2, true, 'и прошлая — в шаблонах');
+    await openTraining('templates');
+    assert.match(await page.evaluate(() => document.body.innerText), /Программа от RYNJI[\s\S]*Мои шаблоны[\s\S]*Верх \(любимый\)[\s\S]*Создать с нуля[\s\S]*Библиотека упражнений/);
+    await shot('stage3-templates');
+    await page.getByLabel('Шаблон Верх (любимый)').click();
+    await page.waitForTimeout(900);
+    await page.getByTestId('template-plan').click();
+    await page.waitForTimeout(1200);
+    assert.ok(await page.getByTestId('hub-plan-confirm').isVisible(), 'остался только выбор дня');
+    const third = page.getByTestId('plan-days').getByRole('button').nth(3);
+    await third.click();
+    await page.getByTestId('hub-plan-confirm').click();
+    await page.waitForTimeout(1000);
+    st = await schedule();
+    const p = st.planned.find((x) => x.source === 'template' && x.templateId === t.id);
+    const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    assert.ok(p && p.date === iso(new Date(Date.now() + 3 * 86400000)), `запланирован на 4-й день: ${p && p.date}`);
+  });
+
+  await check('55. История: фильтры по статусу, группе мышц и периоду; пропущенная запланированная → «Перенести»', async () => {
+    // Просроченная запланированная (вчера) — в истории как «пропущено»
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('form.schedule'));
+      const dt = new Date(Date.now() - 86400000);
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      raw.state.planned.push({ id: 'e2e_missed', date: iso, name: 'Пропущенная спина', source: 'custom', exercises: [{ exerciseId: 'lat_pulldown', sets: 3, repMin: 8, repMax: 12, targetRir: 2, restSec: 90 }], status: 'planned', createdAt: 1 });
+      localStorage.setItem('form.schedule', JSON.stringify(raw));
+    });
+    await openTraining('history');
+    await page.getByTestId('history-filter').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('history-filter-sheet').getByText('Пропущенные', { exact: true }).click();
+    await page.waitForTimeout(300);
+    await page.getByTestId('history-filter-apply').click();
+    await page.waitForTimeout(800);
+    assert.match(await page.getByTestId('history-filter-summary').innerText(), /пропущенные · найдено: \d+/);
+    assert.ok(await page.getByLabel(/^Пропущенная спина, Вчера, пропущено$/).isVisible(), 'просроченный план — «пропущено»');
+    assert.equal(await page.getByTestId('session-exercise').count(), 0);
+    await shot('stage3-filter-missed');
+    // группа мышц + период: только тренировки со спиной за 30 дней
+    await page.getByTestId('history-filter').click();
+    await page.waitForTimeout(700);
+    await page.getByTestId('history-filter-sheet').getByText('Все', { exact: true }).click();
+    await page.getByTestId('history-filter-sheet').getByText('Спина', { exact: true }).click();
+    await page.getByTestId('history-filter-sheet').getByText('30 дней', { exact: true }).click();
+    await page.getByTestId('history-filter-apply').click();
+    await page.waitForTimeout(800);
+    const n = Number((await page.getByTestId('history-filter-summary').innerText()).match(/найдено: (\d+)/)[1]);
+    const expect = await page.evaluate(() => {
+      const from = new Date(Date.now() - 29 * 86400000);
+      const f = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+      return { sessions: JSON.parse(localStorage.getItem('form.workouts')).state.sessions.filter((x) => x.status === 'completed' && x.date >= f).length };
+    });
+    assert.ok(n > 0 && n <= expect.sessions + 1, `спина за 30 дней: ${n} из ${expect.sessions}`);
+    await page.getByLabel('Сбросить фильтры').click();
+    await page.waitForTimeout(600);
+    assert.equal(await page.getByTestId('history-filter-summary').count(), 0, 'фильтры сброшены');
+    // пропущенная → перенести на завтра → снова в «Ближайших»
+    await page.getByLabel(/^Пропущенная спина, Вчера, пропущено$/).click();
+    await page.waitForTimeout(900);
+    assert.match(await page.getByTestId('planned-sheet').innerText(), /Выполнить сейчас[\s\S]*Перенести[\s\S]*Отметить пропущенной/);
+    await page.getByTestId('planned-move').click();
+    await page.waitForTimeout(400);
+    await page.getByTestId('planned-sheet').getByTestId('plan-days').getByText('Завтра', { exact: true }).click();
+    await page.getByTestId('planned-move-confirm').click();
+    await page.waitForTimeout(1000);
+    assert.ok(await page.getByLabel('Пропущенная спина, Завтра, запланировано').isVisible(), 'перенесена на завтра');
+    const st = await schedule();
+    assert.equal(st.planned.find((x) => x.id === 'e2e_missed').status, 'planned');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

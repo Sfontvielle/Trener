@@ -75,7 +75,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem('form.workouts')).state.sessions.find((s) => s.status === 'completed'));
   const plan = await page.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
   const routes = [
-    '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=library', '/progress',
+    '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress',
     '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/labs', '/labs/hct', '/labs/review', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor',
     '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan',
     '/exercise/bench_press', `/workout/${session.id}`, `/workout/preview?templateId=${plan.templates[0].id}`, '/workout/builder', '/onboarding',

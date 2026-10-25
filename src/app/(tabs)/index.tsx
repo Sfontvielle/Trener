@@ -28,6 +28,9 @@ import { applyProgramProposal } from '@/features/training/adaptActions';
 import { useDayKey } from '@/hooks/useDayKey';
 import { MODE_LABEL } from '@/features/training/today';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
+import { startPlanned } from '@/features/training/planning';
+import { estimateMinutes } from '@/features/training/planGenerator';
+import { useSchedule } from '@/stores/schedule';
 import { deltaText, greeting, sleepCard, stepsAverage, stepsWeek, weightCard, weightOnTrack } from '@/features/home/today';
 import { tint } from '@/features/home/TodayCards';
 import { BrandLogo, MacroCard, StepsWeekCard, TipCard, Tile, TodayCard, WeightCard, recoveryTile } from '@/features/home/HomeCards';
@@ -36,7 +39,7 @@ import { buildJournal, dayMode } from '@/features/journal/build';
 import { workoutDebrief } from '@/features/training/debrief';
 import { healthContext } from '@/features/health/model';
 import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
-import { formatDayLong, weekdayIndex } from '@/utils/date';
+import { formatDayLong, today, weekdayIndex } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
@@ -523,6 +526,9 @@ function Hero({
   evening: boolean;
   onAddFood: () => void;
 }) {
+  const d = today();
+  const planned = useSchedule((st) => st.planned.find((p) => p.date === d && p.status === 'planned'));
+  const customs = useWorkouts((st) => st.customExercises);
   if (active) {
     const done = active.exercises.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
     return <TodayCard chip="Идёт тренировка" title={active.name} meta={`Выполнено подходов: ${done}`} cta="Продолжить тренировку" onCta={resumeActive} />;
@@ -555,6 +561,19 @@ function Hero({
         cta="Начать тренировку"
         ctaLive={!stop}
         onCta={() => startTodayPlanned()}
+      />
+    );
+  }
+  // По программе отдыха нет, но человек сам запланировал тренировку на сегодня — она главная
+  if (planned && (tw.kind === 'rest' || tw.kind === 'no_plan')) {
+    return (
+      <TodayCard
+        testID="coach-today"
+        chip="Сегодня · запланировано"
+        title={planned.name}
+        meta={`${planned.exercises.length} упр. · ~${estimateMinutes(planned.exercises, customs)} мин`}
+        cta="Начать тренировку"
+        onCta={() => startPlanned(planned)}
       />
     );
   }

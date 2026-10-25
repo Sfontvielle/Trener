@@ -28,6 +28,7 @@ import { useBody } from '@/stores/body';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { afterSetTarget, currentIndexOf, isExerciseDone, navItems, nextIndex, prevIndex, remainingInfo, supersetLabels, supersetMembers, workoutProgress } from '@/features/training/workoutNav';
 import { isTimed } from '@/features/training/journal';
+import { finishWorkout } from '@/features/training/planning';
 import { HoldTimer } from '@/features/training/HoldTimer';
 import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, prefFavorite } from '@/features/training/prefActions';
 import { warmupPlan } from '@/features/training/warmup';
@@ -218,7 +219,7 @@ export default function ActiveWorkout() {
     if (!hasProgress(a)) return setDiscardOpen(true);
     const finish = () => {
       const e = sessionEnergy(a, bodyW, useHealth.getState().days, customs);
-      const s = useWorkouts.getState().finish({ energy: { kcal: e.kcal, source: e.source } });
+      const s = finishWorkout({ energy: { kcal: e.kcal, source: e.source } });
       haptic.success();
       if (s) router.replace({ pathname: '/workout/[id]', params: { id: s.id, fresh: '1' } });
     };

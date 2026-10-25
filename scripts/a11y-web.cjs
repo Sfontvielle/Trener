@@ -37,7 +37,7 @@ const PROFILE = {
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
 
-  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
+  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
   // Дневник: тренировка с суперсетом, планкой и заметкой; черновик конструктора с суперсетом
   const tplId = await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('form.workouts'));

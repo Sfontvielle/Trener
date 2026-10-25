@@ -562,6 +562,8 @@ export interface WorkoutSession {
   currentIndex?: number;
   /** Цвет, выбранный пользователем для своей тренировки (ключ WORKOUT_COLORS); нет — цвет по типу тренировки */
   color?: WorkoutColor;
+  /** Запущена из запланированной (useSchedule): по завершении план отмечается выполненным */
+  plannedId?: ID;
 }
 
 export type WorkoutColor = 'lime' | 'blue' | 'orange' | 'violet' | 'pink' | 'cyan';
@@ -609,6 +611,8 @@ export interface WorkoutDraft {
   createdAt: number;
   /** Цвет своей тренировки */
   color?: WorkoutColor;
+  /** Черновик запланированной тренировки — переходит в сессию */
+  plannedId?: ID;
 }
 
 // ─── Nutrition ──────────────────────────────────────────────────────────────

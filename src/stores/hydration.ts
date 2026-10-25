@@ -12,8 +12,9 @@ import { useLabs } from './labs';
 import { useEnhanced } from './enhanced';
 import { useAccount } from './account';
 import { useQuestionnaire } from './questionnaire';
+import { useSchedule } from './schedule';
 
-const STORES = [useProfile, usePlan, useCheckins, useBody, useNutrition, useWorkouts, useCoach, useHealth, useJournal, useLabs, useEnhanced, useAccount, useQuestionnaire];
+const STORES = [useProfile, usePlan, useCheckins, useBody, useNutrition, useWorkouts, useCoach, useHealth, useJournal, useLabs, useEnhanced, useAccount, useQuestionnaire, useSchedule];
 
 /** true, когда все сторы восстановлены из локального хранилища */
 export function useHydrated(): boolean {
@@ -44,4 +45,5 @@ export async function resetAllStores(): Promise<void> {
   useEnhanced.getState().reset();
   useAccount.getState().reset();
   useQuestionnaire.getState().reset();
+  useSchedule.getState().reset();
 }

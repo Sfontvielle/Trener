@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, FlatList, PanResponder, Platform, Pressable, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Animated, PanResponder, Platform, Pressable, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Exercise, SplitPreference, WorkoutSession, WorkoutTemplate } from '@/types';
+import type { Exercise, SplitPreference, WorkoutTemplate } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
@@ -13,7 +13,6 @@ import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useUi } from '@/stores/ui';
-import { WORKOUT_COLORS } from '@/features/training/colors';
 import { useTodayWorkout } from '@/hooks/useToday';
 import { scaleSets } from '@/features/training/scale';
 import { resumeActive, startTodayPlanned } from '@/features/training/actions';
@@ -26,10 +25,7 @@ import { applyProfile } from '@/features/profile/applyProfile';
 import { generatePlan, planVolume } from '@/features/training/planGenerator';
 import { doneFineVolume } from '@/features/training/engine/volume';
 import { VM_LABEL, VOLUME_MUSCLES } from '@/features/training/engine/muscles';
-import { ExerciseList } from '@/features/exercises/ExerciseList';
 import { WeekStrip } from '@/features/profile/PlanSummary';
-import { TrainingCalendar } from '@/features/day/Calendar';
-import { DayDetailsSheet, useDaySources } from '@/features/day/DayDetails';
 import { checkDeload, deloadDates, DELOAD_FACTOR, DELOAD_RIR, isDeloadActive } from '@/features/training/deload';
 import { applyDeload, cancelDeload } from '@/features/training/deloadActions';
 import { useCheckins } from '@/stores/checkins';
@@ -37,62 +33,78 @@ import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
 import { addDays, formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
-import { journalDay, journalSections, KIND_COLOR, KIND_LABEL, prCounts, sessionEmoji, sessionKind, sessionStats, weekStreak, type SessionStats, type WeekStats } from '@/features/training/journal';
+import { sessionStats } from '@/features/training/journal';
+import { MyWorkouts, EMPTY_FILTER, isFiltered, type HistoryFilter } from '@/features/training/MyWorkouts';
+import { TemplatesTab } from '@/features/training/TemplatesTab';
 import { BRAND } from '@/config/brand';
 
-type Seg = 'today' | 'history' | 'library';
+type Seg = 'mine' | 'program' | 'templates';
+/** Старые ссылки (?seg=today|history|plan|library) ведут в новые разделы */
+const SEG_OF: Record<string, Seg> = { mine: 'mine', today: 'mine', history: 'mine', program: 'program', plan: 'program', templates: 'templates' };
 
 /**
- * Тренировки — три вкладки: неделя (что сделано и что дальше), дневник и упражнения. Сегодняшняя тренировка
- * крупно — на главной; здесь — программа недели одним списком. План и сплит — в листе.
+ * Тренировки (эталон 03_anatomy · «Тренировки»): «Мои тренировки» — единый список (идёт сейчас, сегодня, ближайшие,
+ * вся история с фильтрами), «Программы» — неделя плана, сплит и объём, «Шаблоны» — программа от RYNJI и свои.
+ * «+» справа сверху — запланировать или начать. Библиотека упражнений — отдельный экран.
  */
 export default function Training() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ seg?: Seg | 'plan' }>();
-  const norm = (x?: Seg | 'plan') => (x === 'plan' ? 'today' : x);
-  const [seg, setSeg] = useState<Seg>(norm(params.seg) ?? 'today');
-  // Переход из «+» → Библиотека: синхронизируем вкладку при новом параметре (без эффекта)
+  const params = useLocalSearchParams<{ seg?: string }>();
+  const [seg, setSeg] = useState<Seg>(SEG_OF[params.seg ?? ''] ?? 'mine');
+  // Переход по ссылке с другим разделом: синхронизируем вкладку при новом параметре (без эффекта)
   const [lastParam, setLastParam] = useState(params.seg);
   if (params.seg !== lastParam) {
     setLastParam(params.seg);
-    if (params.seg) setSeg(norm(params.seg)!);
+    if (params.seg && SEG_OF[params.seg]) setSeg(SEG_OF[params.seg]);
   }
+  useEffect(() => {
+    if (params.seg === 'library') router.push('/library');
+  }, [params.seg]);
   const bottom = insets.bottom + TAB_BAR_HEIGHT + space.lg;
   const [calOpen, setCalOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filter, setFilter] = useState<HistoryFilter>(EMPTY_FILTER);
   const openHub = useUi((s) => s.openHub);
+  const filtered = isFiltered(filter);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
       <Ambient height={360} />
       <View style={{ paddingHorizontal: space.lg, gap: space.md, marginBottom: space.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <T v="h1" style={{ flex: 1 }}>
             Тренировки
           </T>
-          {seg === 'history' ? (
-            <Tap accessibilityRole="button" accessibilityLabel="Календарь тренировок" onPress={() => { haptic.tap(); setCalOpen(true); }} style={styles.calBtn} scaleTo={0.9}>
-              <Icon name="calendar-outline" size={19} color={colors.text} />
-            </Tap>
+          {seg === 'mine' ? (
+            <>
+              <Tap accessibilityRole="button" accessibilityLabel="Календарь тренировок" onPress={() => { haptic.tap(); setCalOpen(true); }} style={styles.calBtn} scaleTo={0.9}>
+                <Icon name="calendar-outline" size={19} color={colors.text} />
+              </Tap>
+              <Tap accessibilityRole="button" accessibilityLabel={filtered ? 'Фильтры истории: включены' : 'Фильтры истории'} onPress={() => { haptic.tap(); setFilterOpen(true); }} style={[styles.calBtn, filtered && { backgroundColor: colors.accent }]} scaleTo={0.9} testID="history-filter">
+                <Icon name="options-outline" size={20} color={filtered ? colors.onAccent : colors.text} />
+              </Tap>
+            </>
           ) : null}
           {/* «+» — запланировать или начать тренировку (новая / повтор) */}
-          <Tap accessibilityRole="button" accessibilityLabel="Тренировка: запланировать или начать" onPress={() => { haptic.light(); openHub(); }} style={[styles.calBtn, styles.plusBtn]} scaleTo={0.9} testID="training-plus">
+          <Tap accessibilityRole="button" accessibilityLabel="Тренировка: запланировать или начать" onPress={() => { haptic.light(); openHub(); }} style={styles.calBtn} scaleTo={0.9} testID="training-plus">
             <Icon name="add" size={24} color={colors.text} />
           </Tap>
         </View>
         <Segmented
           items={[
-            { key: 'today', label: 'Неделя' },
-            { key: 'history', label: 'Дневник' },
-            { key: 'library', label: 'Упражнения' },
+            { key: 'mine', label: 'Мои тренировки' },
+            { key: 'program', label: 'Программы' },
+            { key: 'templates', label: 'Шаблоны' },
           ]}
           value={seg}
           onChange={setSeg}
+          fit
         />
       </View>
       <FadeIn key={seg} style={{ flex: 1, paddingHorizontal: space.lg }} from={6}>
-        {seg === 'today' ? <WeekTab bottom={bottom} openPlan={params.seg === 'plan'} /> : null}
-        {seg === 'history' ? <HistoryTab bottom={bottom} calOpen={calOpen} setCalOpen={setCalOpen} /> : null}
-        {seg === 'library' ? <ExerciseList onSelect={(e: Exercise) => router.push({ pathname: '/exercise/[id]', params: { id: e.id } })} contentPaddingBottom={bottom} /> : null}
+        {seg === 'mine' ? <MyWorkouts bottom={bottom} filter={filter} setFilter={setFilter} filterOpen={filterOpen} setFilterOpen={setFilterOpen} calOpen={calOpen} setCalOpen={setCalOpen} onProgram={() => setSeg('program')} /> : null}
+        {seg === 'program' ? <WeekTab bottom={bottom} openPlan={params.seg === 'plan'} /> : null}
+        {seg === 'templates' ? <TemplatesTab bottom={bottom} /> : null}
       </FadeIn>
     </View>
   );
@@ -200,7 +212,7 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
         {/* Дни недели — один спокойный список */}
         <View style={{ marginTop: space.lg }}>
           {days.length ? (
-            days.map((day, i) => <AgendaRow key={day.date} day={day} last={i === days.length - 1} customs={customs} tw={tw} onRestTrain={openHub} />)
+            days.map((day, i) => <AgendaRow key={day.date} day={day} last={i === days.length - 1} customs={customs} tw={tw} onRestTrain={() => openHub({ step: 'start' })} />)
           ) : (
             <T v="small" style={{ paddingVertical: space.md }}>
               Тренировок на этой неделе не было.
@@ -212,7 +224,8 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
       {/* Второстепенное — строками */}
       <Appear i={2} style={styles.navList}>
         <NavRow title={`План · ${plan.splitLabel}`} label="План и сплит" onPress={() => setPlanOpen(true)} />
-        <NavRow title={`Объём · в норме ${volGroups.filter((g) => g.p >= 0.9).length} из ${volGroups.length}`} label="Объём за неделю" onPress={() => setVolOpen(true)} last />
+        <NavRow title={`Объём · в норме ${volGroups.filter((g) => g.p >= 0.9).length} из ${volGroups.length}`} label="Объём за неделю" onPress={() => setVolOpen(true)} />
+        <NavRow title="Библиотека упражнений" label="Библиотека упражнений" onPress={() => router.push('/library')} last />
       </Appear>
 
       <Sheet visible={volOpen} onClose={() => setVolOpen(false)} title="Объём за неделю" subtitle="Прямые рабочие подходы с понедельника · сделано / план">
@@ -608,94 +621,9 @@ function TemplateRow({ t, editable, last, onOpen }: { t: WorkoutTemplate; editab
   );
 }
 
-type JournalRow = { kind: 'week'; key: string; title: string; stats: WeekStats; first?: boolean } | { kind: 'item'; key: string; s: WorkoutSession; stats: SessionStats };
-
-/**
- * Дневник (по мотивам Fitsession): итоги недели плашками, календарь с цветами тренировок,
- * лента по неделям — название, смайл ощущения, время, объём, рекорды, заметка. Тап — подробности и «Повторить».
- */
-function HistoryTab({ bottom, calOpen, setCalOpen }: { bottom: number; calOpen: boolean; setCalOpen: (v: boolean) => void }) {
-  const sessions = useWorkouts((s) => s.sessions);
-  const customs = useWorkouts((s) => s.customExercises);
-  const d = today();
-  const [dayOpen, setDayOpen] = useState<string | null>(null);
-  const daySrc = useDaySources();
-  const { rows, streak, total } = useMemo(() => {
-    const prs = prCounts(sessions, customs);
-    const sections = journalSections(sessions, d, customs, prs);
-    const out: JournalRow[] = [];
-    for (const sec of sections) {
-      out.push({ kind: 'week', key: `w${sec.weekStart}`, title: sec.title, stats: sec.stats, first: !out.length });
-      for (const x of sec.sessions) out.push({ kind: 'item', key: x.id, s: x, stats: sessionStats(x, sessions, customs, prs) });
-    }
-    return { rows: out, streak: weekStreak(sessions, d), total: sessions.filter((x) => x.status === 'completed').length };
-  }, [sessions, customs, d]);
-  const renderItem = useCallback(({ item }: { item: JournalRow }) => (item.kind === 'week' ? <WeekHeader title={item.title} stats={item.stats} streak={item.first ? streak : 0} /> : <JournalCard s={item.s} stats={item.stats} customs={customs} />), [customs, streak]);
-  if (!total) return <EmptyState icon="book-outline" title="Дневник пуст" text="Заверши первую тренировку — здесь появятся результаты, веса и рекорды по неделям." />;
-  return (
-    <>
-      <FlatList
-        data={rows}
-        keyExtractor={(r) => r.key}
-        renderItem={renderItem}
-        initialNumToRender={14}
-        windowSize={9}
-        contentContainerStyle={{ paddingBottom: bottom }}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={<View testID="journal-week" />}
-      />
-      <Sheet visible={calOpen} onClose={() => setCalOpen(false)} title="Календарь" subtitle="Тап по дню — тренировка, сон, питание и вес">
-        <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setCalOpen(false); afterModalClose(() => setDayOpen(x)); }} />
-      </Sheet>
-      <DayDetailsSheet date={dayOpen} onClose={() => setDayOpen(null)} />
-    </>
-  );
-}
-
 function fmtTonnage(kg: number): string {
   return kg >= 1000 ? `${fmtNum(kg / 1000, 1)} т` : `${fmtNum(kg)} кг`;
 }
-
-const WeekHeader = React.memo(function WeekHeader({ title, stats, streak }: { title: string; stats: WeekStats; streak: number }) {
-  return (
-    <View style={styles.weekHead} accessibilityRole="header">
-      <T v="h3">
-        {title}
-        <T v="small" style={{ fontSize: 13 }}>
-          {`   ${stats.workouts} ${plural(stats.workouts, 'тренировка', 'тренировки', 'тренировок')}${stats.prs ? ` · ${stats.prs} ${plural(stats.prs, 'рекорд', 'рекорда', 'рекордов')}` : ''}`}
-        </T>
-        {streak >= 2 ? (
-          <T v="small" style={{ fontSize: 13 }} color={colors.warning} accessibilityLabel={`Серия: ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд с тренировками`}>
-            {`  🔥 ${streak} ${plural(streak, 'неделя', 'недели', 'недель')} подряд`}
-          </T>
-        ) : null}
-      </T>
-    </View>
-  );
-});
-
-/** Тренировка в дневнике — строка без карточки: цвет типа, название, дата и объём одной строкой, ощущение, заметка */
-const JournalCard = React.memo(function JournalCard({ s, stats, customs }: { s: WorkoutSession; stats: SessionStats; customs: Exercise[] }) {
-  const kind = sessionKind(s, customs);
-  const emoji = sessionEmoji(s);
-  const parts = [journalDay(s.date, today()), `${stats.minutes} мин`, stats.tonnage ? fmtTonnage(stats.tonnage) : '', stats.prs ? `🏆 ${stats.prs}` : ''].filter(Boolean);
-  return (
-    <Tap accessibilityRole="button" onPress={() => { haptic.tap(); router.push({ pathname: '/workout/[id]', params: { id: s.id } }); }} accessibilityLabel={`${s.name}, ${journalDay(s.date, today())}, ${KIND_LABEL[kind]}`} scaleTo={0.985} style={styles.jRow}>
-      {/* Свой цвет тренировки (выбран при создании) — иначе цвет по типу */}
-      <View style={[styles.kindDot, { backgroundColor: s.color ? WORKOUT_COLORS[s.color] : colors[KIND_COLOR[kind]] }]} />
-      <View style={{ flex: 1, gap: 3 }}>
-        <T v="body" style={{ fontWeight: '700', fontSize: 17 }} numberOfLines={1}>
-          {s.name}
-          {emoji ? ` ${emoji}` : ''}
-        </T>
-        <T v="small" style={{ fontVariant: ['tabular-nums'], fontSize: 13 }} numberOfLines={s.notes ? 2 : 1}>
-          {parts.join(' · ')}
-          {s.notes ? <T v="small" style={{ fontStyle: 'italic', fontSize: 13 }}>{`\n«${s.notes}»`}</T> : null}
-        </T>
-      </View>
-    </Tap>
-  );
-});
 
 const styles = themed({
   weekHero: { marginTop: space.lg },

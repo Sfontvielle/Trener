@@ -3,26 +3,20 @@ import { addDays, formatDayShort, weekdayIndex, WEEKDAYS_SHORT } from '@/utils/d
 
 /**
  * Меню «+» на вкладке «Тренировки»: запланировать тренировку на день и повторить прошлую.
- * Планирование — это тот же DayOverride, что использует перенос дня тренером: календарь недели,
- * «Сегодня» и напоминания подхватывают его без отдельной логики.
+ * Запланированное хранится в useSchedule; тренировка программы дополнительно ставится тем же DayOverride, что
+ * использует перенос дня тренером: календарь недели, «Сегодня» и напоминания подхватывают её без отдельной логики.
  */
 
-/** Прошлые тренировки для «Повторить»: последние выполненные, по одной на название, новые первыми */
-export function recentRepeatable(sessions: WorkoutSession[], limit = 8): WorkoutSession[] {
-  const seen = new Set<string>();
-  const out: WorkoutSession[] = [];
-  for (const s of [...sessions].filter((x) => x.status === 'completed' && x.exercises.length > 0).sort((a, b) => b.startedAt - a.startedAt)) {
-    const key = s.name.trim().toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(s);
-    if (out.length >= limit) break;
-  }
-  return out;
+/**
+ * Прошлые тренировки для «Повторить» и «Запланировать повтор»: все выполненные, новые первыми. Без обрезки и без
+ * склейки одинаковых названий — «Верх А» от 3 и от 10 октября разные тренировки (веса, состав).
+ */
+export function repeatableSessions(sessions: WorkoutSession[]): WorkoutSession[] {
+  return sessions.filter((x) => x.status === 'completed' && x.exercises.length > 0).sort((a, b) => b.startedAt - a.startedAt);
 }
 
 /** Дни, на которые можно запланировать: сегодня и ещё n−1 дней вперёд */
-export function planningDays(from: ISODate, n = 14): ISODate[] {
+export function planningDays(from: ISODate, n = 28): ISODate[] {
   return Array.from({ length: n }, (_, i) => addDays(from, i));
 }
 

@@ -6,7 +6,6 @@ import { colors, themed } from '@/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Icon, T, type IconName } from '@/components/ui';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
-import { TrainingHub } from '@/features/training/TrainingHub';
 import { useWorkouts } from '@/stores/workouts';
 import { haptic } from '@/services/haptics';
 import { GlassSurface } from '@/components/Glass';
@@ -83,7 +82,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="progress" />
         <Tabs.Screen name="profile" />
       </Tabs>
-      <TrainingHub />
     </>
   );
 }
