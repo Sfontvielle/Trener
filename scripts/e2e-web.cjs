@@ -56,7 +56,8 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   assert.match(await body(), /Тренировки под твои цели\./);
   await pg.getByText('Начать', { exact: true }).click();
   await pg.waitForTimeout(800);
-  assert.match(await body(), /данные пока хранятся только на этом iPhone/i);
+  assert.match(await body(), /Вход/);
+  assert.doesNotMatch(await body(), /пароль|iCloud|хранятся/i, 'на экране входа — только заголовок и кнопки');
   await pg.getByText('Продолжить без входа', { exact: true }).click();
   await pg.waitForTimeout(1000);
   assert.match(await body(), /1 из 5/);
