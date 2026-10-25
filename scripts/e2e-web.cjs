@@ -382,8 +382,8 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByTestId('technique-inline').count(), 0, 'раздел свёрнут');
   });
 
-  await check('22. Тренировки: неделя сверху, объём — шторкой', async () => {
-    await page.goto(`${URL}/training`, { waitUntil: 'networkidle' });
+  await check('22. Тренировки → «Программы»: неделя сверху, объём — шторкой', async () => {
+    await page.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
     const wk = await page.getByText('Эта неделя', { exact: true }).boundingBox();
@@ -1383,7 +1383,7 @@ const closeSheet = async (pg) => {
     await dismiss();
   };
 
-  await check('53. «+» → «Запланировать»: своя тренировка на завтра (конструктор) и повтор любой прошлой на сегодня; «Начать» у плана → выполнено', async () => {
+  await check('56. «+» → «Запланировать»: своя тренировка на завтра (конструктор) и повтор любой прошлой на сегодня; «Начать» у плана → выполнено', async () => {
     await resetActive();
     await openTraining();
     assert.match(await page.evaluate(() => document.body.innerText), /Мои тренировки[\s\S]*Программы[\s\S]*Шаблоны[\s\S]*Текущая программа[\s\S]*Сегодня[\s\S]*История тренировок/);
@@ -1432,6 +1432,13 @@ const closeSheet = async (pg) => {
     assert.match(page.url(), /workout\/active/);
     const a = await activeState();
     assert.equal(a.plannedId, rep.id, 'сессия знает свой план');
+    // Основная зона: прошлый раз и предложение RYNJI; подходы заполнены предложением
+    const r0 = a.exercises[0].recommendation;
+    if (r0 && r0.action !== 'new' && r0.weight > 0) {
+      assert.ok(await page.getByTestId('last-result').isVisible(), 'прошлый раз');
+      assert.match(await page.getByTestId('rynji-suggestion').innerText(), /RYNJI: [\d,]+ кг × \d+–\d+/);
+      assert.equal(a.exercises[0].sets.find((x) => !x.warmup).weight, r0.weight, 'подход заполнен предложением');
+    }
     await page.getByLabel(/^Завершить подход 1$/).first().click();
     await page.waitForTimeout(700);
     await page.getByLabel('Тренировка: время, калории, завершение').click();
@@ -1449,7 +1456,7 @@ const closeSheet = async (pg) => {
     await shot('stage3-planned-done');
   });
 
-  await check('54. Шаблоны: «Сохранить как шаблон» в конструкторе и «В шаблоны» у прошлой → «Шаблоны» → «Запланировать» на выбранный день', async () => {
+  await check('57. Шаблоны: «Сохранить как шаблон» в конструкторе и «В шаблоны» у прошлой → «Шаблоны» → «Запланировать» на выбранный день', async () => {
     await resetActive();
     await openTraining();
     await page.getByTestId('training-plus').click();
@@ -1497,7 +1504,7 @@ const closeSheet = async (pg) => {
     assert.ok(p && p.date === iso(new Date(Date.now() + 3 * 86400000)), `запланирован на 4-й день: ${p && p.date}`);
   });
 
-  await check('55. История: фильтры по статусу, группе мышц и периоду; пропущенная запланированная → «Перенести»', async () => {
+  await check('58. История: фильтры по статусу, группе мышц и периоду; пропущенная запланированная → «Перенести»', async () => {
     // Просроченная запланированная (вчера) — в истории как «пропущено»
     await page.evaluate(() => {
       const raw = JSON.parse(localStorage.getItem('form.schedule'));

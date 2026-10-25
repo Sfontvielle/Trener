@@ -719,6 +719,7 @@ function ExerciseFocus({
   const prevWarm = lastWarmupCount(ex.id, sessions);
   const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
   const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
+  const recTxt = rec ? `${rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}` : '';
   const lastTxt = last ? last.sets.map((x) => { const v = timed ? fmtSec(x.reps) : String(x.reps); return x.weight ? `${fmtWeight(x.weight, unit)}×${v}` : v; }).join(' · ') : '';
 
   return (
@@ -753,6 +754,16 @@ function ExerciseFocus({
           <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="last-result">
             <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
               Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{lastTxt}</T> ›
+            </T>
+          </Pressable>
+        ) : null}
+        {/* Предложение RYNJI на сегодня — одной строкой; подходы уже заполнены им: отметка подхода — подтвердить, поле — исправить */}
+        {rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight) ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Предложение ${BRAND}: ${recTxt}${rec.delta ? `, ${rec.delta}` : ''}. Почему`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="rynji-suggestion">
+            <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
+              <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '800' }}>{`${BRAND}: `}</T>
+              <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{recTxt}</T>
+              {rec.delta ? <T v="small" style={{ fontSize: 12 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' || rec.action === 'deload' ? colors.warning : colors.textDim}>{`  ${rec.delta}`}</T> : null}
             </T>
           </Pressable>
         ) : null}
