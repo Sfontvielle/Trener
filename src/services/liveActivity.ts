@@ -1,4 +1,6 @@
 import { AppState, Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useWorkouts } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
 import { paletteFor } from '@/theme';
@@ -18,13 +20,17 @@ import { createActivitySync, type ActivityFactory } from '@/features/training/li
 /** Тап по Live Activity открывает активную тренировку (схема из app.json) */
 export const ACTIVITY_URL = 'form://workout/active';
 
+const isExpoGo = () => Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
 type Mod = { factory: ActivityFactory; after: (d: Date) => unknown };
 let mod: Mod | null | undefined;
 function load(): Mod | null {
   if (mod !== undefined) return mod;
   if (Platform.OS !== 'ios') return (mod = null);
+  // В Expo Go (и в сборке без расширения) нативных модулей нет. Проверяем заранее, без исключений:
+  // require() из кода приложения Metro при ошибке загрузки модуля сам показывает как критическую, try/catch не спасает
+  if (isExpoGo() || !requireOptionalNativeModule('ExpoWidgets') || !requireOptionalNativeModule('ExpoUI')) return (mod = null);
   try {
-    // Нативного модуля нет в Expo Go — require бросит, и функция просто выключится
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const w = require('expo-widgets') as { after: (d: Date) => unknown };
     // eslint-disable-next-line @typescript-eslint/no-require-imports
