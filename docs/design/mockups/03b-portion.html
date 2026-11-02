@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Порция</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .dim { position: absolute; inset: 0; background: rgba(5, 8, 12, 0.6); }
+  [data-theme="light"] .dim { background: rgba(14, 20, 27, 0.32); }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 150px; background: var(--s1); border-radius: 24px 24px 0 0; padding: 8px 16px 34px; box-shadow: var(--shadow); }
+  .handle { width: 36px; height: 5px; border-radius: 3px; background: var(--s3); margin: 0 auto 12px; }
+  .qty { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+  .qty .field { flex: 1; height: 64px; border-radius: 12px; background: var(--s2); display: flex; align-items: baseline; justify-content: center; gap: 6px; padding-top: 10px; }
+  .qty .step { width: 52px; height: 52px; border-radius: 26px; background: var(--s3); display: flex; align-items: center; justify-content: center; }
+  .chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .chip { height: 34px; padding: 0 12px; border-radius: 8px; background: var(--s2); display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--t1); }
+  .chip.on { background: var(--t1); color: var(--bg); }
+  table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+  th { text-align: right; font-weight: 500; font-size: 12px; color: var(--t2); padding-bottom: 6px; }
+  th:first-child { text-align: left; }
+  td { padding: 7px 0; border-top: 0.5px solid var(--sep); font-size: 15px; }
+  td:not(:first-child) { text-align: right; font-weight: 600; }
+  td .unit { font-weight: 400; font-size: 13px; }
+  .actions { position: absolute; left: 16px; right: 16px; bottom: 34px; display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; }
+  .actions .secondary { height: 52px; }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen no-tabs" style="padding:0 16px">
+  <div style="display:flex;align-items:center;min-height:52px"><div class="icon-btn"><i data-i="chevL"></i></div><div class="body-strong" style="flex:1;text-align:center">Добавить в обед</div><div style="width:44px"></div></div>
+</div>
+<div class="dim"></div>
+<div class="sheet">
+  <div class="handle"></div>
+  <div class="title2">Творог 5%</div>
+  <div class="footnote t2" style="margin-top:2px">Базовый продукт, справочные данные</div>
+
+  <div class="seg" style="margin-top:16px">
+    <div>Завтрак</div><div class="on">Обед</div><div>Ужин</div><div>Перекус</div>
+  </div>
+
+  <div class="qty">
+    <div class="step"><i data-i="minus"></i></div>
+    <div class="field"><span class="display">180</span><span class="callout unit">г</span></div>
+    <div class="step"><i data-i="plus"></i></div>
+  </div>
+  <div class="chips">
+    <div class="chip on">Как обычно, 180 г</div>
+    <div class="chip">100 г</div>
+    <div class="chip">200 г</div>
+    <div class="chip">250 г</div>
+  </div>
+
+  <table>
+    <tr><th></th><th>На 100 г</th><th>На 180 г</th></tr>
+    <tr><td>Калории</td><td>121 <span class="unit">ккал</span></td><td>218 <span class="unit">ккал</span></td></tr>
+    <tr><td><span class="dot" style="--c:var(--protein);margin-right:8px"></span>Белки</td><td>17,2 <span class="unit">г</span></td><td>31,0 <span class="unit">г</span></td></tr>
+    <tr><td><span class="dot" style="--c:var(--fat);margin-right:8px"></span>Жиры</td><td>5,0 <span class="unit">г</span></td><td>9,0 <span class="unit">г</span></td></tr>
+    <tr><td><span class="dot" style="--c:var(--carbs);margin-right:8px"></span>Углеводы</td><td>1,8 <span class="unit">г</span></td><td>3,2 <span class="unit">г</span></td></tr>
+  </table>
+
+  <div class="actions">
+    <div class="secondary">В корзину</div>
+    <div class="primary">Добавить в обед</div>
+  </div>
+</div>
+<script src="icons.js"></script>
+</body>
+</html>

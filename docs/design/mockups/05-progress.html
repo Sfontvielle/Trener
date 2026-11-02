@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Прогресс</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .weight { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 20px; }
+  svg.chart { display: block; width: 361px; margin-top: 12px; overflow: visible; }
+  .stat-right { display: flex; align-items: baseline; gap: 12px; }
+  .pct { width: 48px; text-align: right; font-size: 15px; font-weight: 600; color: var(--t2); }
+  .insight p { margin: 6px 0 14px; }
+  .insight .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen" style="padding:0">
+  <div class="scroll" id="scroll">
+    <div class="app-header">
+      <div class="grow title1">Прогресс</div>
+      <div class="icon-btn filled"><i data-i="plus"></i></div>
+    </div>
+    <div class="seg" style="margin-top:8px"><div>7 дней</div><div class="on">30 дней</div><div>90 дней</div></div>
+
+    <div class="weight">
+      <div>
+        <div class="footnote t2">Вес, тренд</div>
+        <div><span class="display">79,7</span> <span class="callout unit">кг</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="body-strong">+0,6 кг</div>
+        <div class="footnote t2">за 30 дней</div>
+      </div>
+    </div>
+    <svg class="chart" id="wchart" height="132" viewBox="0 0 361 132"></svg>
+
+    <div class="section-header">
+      <div class="headline">Питание</div>
+      <div class="footnote t2">21 из 29 дней с записями</div>
+    </div>
+    <div class="group">
+      <div class="row"><span class="grow body">В среднем</span><span class="stat-right"><span><span class="body-strong">2 650</span><span class="callout unit"> ккал</span></span><span class="pct">92%</span></span></div>
+      <div class="row"><span class="grow body">Цель</span><span class="stat-right"><span><span class="body-strong">2 890</span><span class="callout unit"> ккал</span></span><span class="pct"></span></span></div>
+      <div class="row"><span class="dot" style="--c:var(--protein)"></span><span class="grow body">Белки</span><span class="stat-right"><span><span class="body-strong">131</span><span class="callout unit"> г</span></span><span class="pct">90%</span></span></div>
+      <div class="row"><span class="dot" style="--c:var(--fat)"></span><span class="grow body">Жиры</span><span class="stat-right"><span><span class="body-strong">72</span><span class="callout unit"> г</span></span><span class="pct">103%</span></span></div>
+      <div class="row"><span class="dot" style="--c:var(--carbs)"></span><span class="grow body">Углеводы</span><span class="stat-right"><span><span class="body-strong">318</span><span class="callout unit"> г</span></span><span class="pct">76%</span></span></div>
+    </div>
+    <svg class="chart" id="kchart" height="96" viewBox="0 0 361 96"></svg>
+    <div class="footnote t3" style="margin-top:4px">Калории по дням, линия — цель. Дни без записей и сегодняшний незаконченный день в средние не входят.</div>
+
+    <div class="card insight" style="margin-top:24px">
+      <div class="footnote t2" style="display:flex;align-items:center;gap:6px"><i data-i="coach" class="sm"></i>RYNJI</div>
+      <p class="body">Вы ели в среднем на 240 ккал меньше цели, и вес растёт примерно на 0,15 кг в неделю вместо 0,3. Можно поднять цель на 150 ккал.</p>
+      <div class="btns"><div class="secondary">Не менять</div><div class="secondary" style="background:var(--accent-fill);color:var(--on-accent)">Применить</div></div>
+    </div>
+
+    <div class="section-header"><div class="headline">Тренировки</div></div>
+    <div class="group">
+      <div class="row"><span class="grow body">Тренировок</span><span class="body-strong">12</span></div>
+      <div class="row"><span class="grow body">Объём</span><span class="stat-right"><span><span class="body-strong">56 680</span><span class="callout unit"> кг</span></span><span class="pct" style="color:var(--accent-ink)">+12%</span></span></div>
+      <div class="row"><span class="grow body">Личные рекорды</span><span class="body-strong">8</span><span class="chev"><i data-i="chevR" class="sm"></i></span></div>
+    </div>
+  </div>
+</div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="home" class="lg"></i>Сегодня</div>
+  <div class="tab"><i data-i="dumbbell" class="lg"></i>Тренировки</div>
+  <div class="tab"><i data-i="fork" class="lg"></i>Питание</div>
+  <div class="tab on"><i data-i="chart" class="lg"></i>Прогресс</div>
+  <div class="tab"><i data-i="person" class="lg"></i>Профиль</div>
+  <div class="home-ind"></div>
+</nav>
+<script src="icons.js"></script>
+<script>
+  // Пример данных для макета: взвешивания за 30 дней и тренд (скользящее среднее)
+  const css = getComputedStyle(document.documentElement);
+  const c = (v) => css.getPropertyValue(v).trim();
+  const W = 361, H = 132, L = 0, R = 324;
+  const w = [79.1, null, 79.3, 78.9, null, 79.2, 79.4, null, 79.0, 79.3, null, 79.5, 79.2, null, 79.6, 79.4, null, 79.3, 79.7, null, 79.5, 79.8, null, 79.6, 79.9, null, 79.7, 79.6, null, 79.8];
+  const trend = []; let acc = null;
+  w.forEach((v) => { if (v !== null) acc = acc === null ? v : acc + 0.25 * (v - acc); trend.push(acc); });
+  const y = (v) => 12 + (80.3 - v) / (80.3 - 78.7) * (H - 32);
+  const x = (i) => L + (i / (w.length - 1)) * (R - L);
+  let s = '';
+  [79.0, 79.5, 80.0].forEach((g) => { s += `<line x1="0" x2="${R}" y1="${y(g)}" y2="${y(g)}" stroke="${c('--sep')}" stroke-width="0.5"/><text x="${W}" y="${y(g) + 4}" text-anchor="end" font-size="12" fill="${c('--t3')}">${String(g.toFixed(1)).replace('.', ',')}</text>`; });
+  w.forEach((v, i) => { if (v !== null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${c('--t3')}"/>`; });
+  s += `<path d="${trend.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${c('--t1')}" stroke-width="2" stroke-linejoin="round"/>`;
+  s += `<circle cx="${x(w.length - 1)}" cy="${y(trend[trend.length - 1])}" r="4" fill="${c('--accent-ink')}"/>`;
+  [['3 окт', 0], ['17 окт', 14], ['1 ноя', 29]].forEach(([t, i], k) => { s += `<text x="${x(i)}" y="${H - 2}" font-size="12" text-anchor="${k === 0 ? 'start' : k === 2 ? 'end' : 'middle'}" fill="${c('--t3')}">${t}</text>`; });
+  document.getElementById('wchart').innerHTML = s;
+  // Калории по дням: null — день без записей
+  const k = [2710, 2850, null, 2480, 2930, 2560, null, 2700, 2620, 2390, null, 2880, 2750, 2510, null, null, 2660, 2580, 2810, null, 2450, 2700, 2600, null, 2540, 2790, 2630, null, 2500, 1079];
+  const KH = 96, maxK = 3200, bw = (R / k.length) - 4;
+  let t = '';
+  k.forEach((v, i) => {
+    const bx = i * (R / k.length);
+    if (v === null) t += `<rect x="${bx}" y="${KH - 6}" width="${bw}" height="2" rx="1" fill="${c('--s3')}"/>`;
+    else { const h = (v / maxK) * (KH - 14); t += `<rect x="${bx}" y="${KH - 4 - h}" width="${bw}" height="${h}" rx="2" fill="${c('--t2')}" opacity="${i === k.length - 1 ? 0.35 : 0.75}"/>`; }
+  });
+  const ty = KH - 4 - (2890 / maxK) * (KH - 14);
+  t += `<line x1="0" x2="${R}" y1="${ty}" y2="${ty}" stroke="${c('--accent-ink')}" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${W}" y="${ty + 4}" text-anchor="end" font-size="12" fill="${c('--t3')}">цель</text>`;
+  document.getElementById('kchart').innerHTML = t;
+</script>
+</body>
+</html>

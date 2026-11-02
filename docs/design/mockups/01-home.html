@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Сегодня</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .workout-meta { display: grid; grid-template-columns: repeat(3, 1fr); margin: 14px 0 6px; }
+  .workout-meta .metric { display: block; }
+  .kcal-line { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .macros { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+  .insight p { margin: 6px 0 12px; }
+  .insight .actions { display: flex; justify-content: space-between; align-items: center; }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen" style="padding:0">
+  <div class="scroll" id="scroll">
+    <div class="app-header">
+      <div class="grow">
+        <div class="title1">Сегодня</div>
+        <div class="footnote t2">Понедельник, 2 ноября</div>
+      </div>
+      <div class="icon-btn filled"><i data-i="bell"></i></div>
+    </div>
+
+    <!-- Главное: тренировка -->
+    <div class="card" style="margin-top:16px">
+      <div class="footnote t2">Тренировка по программе</div>
+      <div class="title2" style="margin-top:2px">Низ Б</div>
+      <div class="workout-meta">
+        <div><span class="metric">7</span><span class="footnote t2">упражнений</span></div>
+        <div><span class="metric">~50</span><span class="footnote t2">минут</span></div>
+        <div><span class="metric">18</span><span class="footnote t2">подходов</span></div>
+      </div>
+      <div class="callout t2" style="margin-bottom:16px">Ягодицы, бицепс бедра, квадрицепс и икры</div>
+      <div class="primary"><i data-i="play" class="fill sm"></i>Начать тренировку</div>
+    </div>
+
+    <!-- Питание -->
+    <div class="section-header">
+      <div class="headline">Питание</div>
+      <div class="action">Дневник<i data-i="chevR" class="sm"></i></div>
+    </div>
+    <div class="kcal-line">
+      <div><span class="display">1 079</span> <span class="callout unit">из 2 890 ккал</span></div>
+      <div class="footnote t2">осталось 1 811</div>
+    </div>
+    <div class="scale" data-v="0.373"></div>
+    <div class="macros">
+      <div class="macro"><span class="callout">Белки</span><div class="scale" data-v="0.648" style="--c:var(--protein)"></div><span class="v">94<span class="unit"> / 145 г</span></span></div>
+      <div class="macro"><span class="callout">Жиры</span><div class="scale" data-v="0.243" style="--c:var(--fat)"></div><span class="v">17<span class="unit"> / 70 г</span></span></div>
+      <div class="macro"><span class="callout">Углеводы</span><div class="scale" data-v="0.321" style="--c:var(--carbs)"></div><span class="v">135<span class="unit"> / 420 г</span></span></div>
+    </div>
+
+    <!-- Активность и восстановление: одна группа -->
+    <div class="section-header"><div class="headline">Активность и восстановление</div></div>
+    <div class="group">
+      <div class="row inset">
+        <span class="t2"><i data-i="steps"></i></span>
+        <span class="grow body">Шаги</span>
+        <span class="right"><span class="body-strong">6 840</span><span class="callout unit"> / 7 000</span></span>
+      </div>
+      <div class="row inset">
+        <span class="t2"><i data-i="moon"></i></span>
+        <span class="grow body">Сон</span>
+        <span class="body-strong">7 ч 20 мин</span>
+      </div>
+      <div class="row inset">
+        <span class="t2"><i data-i="pulse"></i></span>
+        <span class="grow body">Готовность</span>
+        <span class="body-strong" style="display:flex;align-items:center;gap:8px"><span class="dot" style="--c:var(--accent-ink)"></span>Хорошая</span>
+      </div>
+    </div>
+
+    <!-- Один совет тренера -->
+    <div class="card insight" style="margin-top:24px">
+      <div class="footnote t2" style="display:flex;align-items:center;gap:6px"><i data-i="coach" class="sm"></i>RYNJI</div>
+      <p class="body">До цели по белку 51 г. 300 г творога 5% на ужин дадут 52 г.</p>
+      <div class="actions">
+        <span class="callout t2">Почему так?</span>
+        <span class="text-action">Добавить в ужин</span>
+      </div>
+    </div>
+  </div>
+</div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="home" class="lg"></i>Сегодня</div>
+  <div class="tab"><i data-i="dumbbell" class="lg"></i>Тренировки</div>
+  <div class="tab"><i data-i="fork" class="lg"></i>Питание</div>
+  <div class="tab"><i data-i="chart" class="lg"></i>Прогресс</div>
+  <div class="tab"><i data-i="person" class="lg"></i>Профиль</div>
+  <div class="home-ind"></div>
+</nav>
+<script src="icons.js"></script>
+</body>
+</html>
