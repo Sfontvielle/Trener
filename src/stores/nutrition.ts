@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { FoodEntry, FoodProduct, ISODate, MealSlot } from '@/types';
+import type { DiaryDraft, FoodEntry, FoodProduct, ISODate, MealSlot, Recipe } from '@/types';
 import { persistOptions } from '@/storage/persist';
 import { uid } from '@/utils/id';
-import { macrosFor } from '@/features/nutrition/status';
 import { LOCAL_FOODS } from '@/data/foods';
+import { buildRecipe, entryFor, migrateNutrition, normalizeProduct, NUTRITION_VERSION, recipeProduct, rescaleEntry, type NutritionPersisted } from '@/features/nutrition/schema';
 
 interface NutritionState {
   entries: FoodEntry[];
@@ -14,8 +14,8 @@ interface NutritionState {
   recent: string[];
   /** Запомненная граммовка для продукта */
   lastGrams: Record<string, number>;
-  addEntry: (p: FoodProduct, grams: number, meal: MealSlot, date: ISODate) => FoodEntry;
-  updateEntry: (id: string, grams: number) => void;
+  addEntry: (p: FoodProduct, grams: number, meal: MealSlot, date: ISODate, unit?: FoodEntry['unit']) => FoodEntry;
+  updateEntry: (id: string, grams: number, unit?: FoodEntry['unit']) => void;
   removeEntry: (id: string) => void;
   cacheProduct: (p: FoodProduct) => void;
   /** Мои блюда: сохранённые комбинации продуктов */
@@ -33,6 +33,22 @@ interface NutritionState {
   toggleFavorite: (productId: string) => void;
   /** Скопировать приём пищи или весь день с другой даты */
   copyEntries: (fromDate: ISODate, toDate: ISODate, meal?: MealSlot) => string[];
+  /** v2: рецепты (вес до/после, порции); в дневник добавляются как продукт `recipe:<id>` */
+  recipes: Recipe[];
+  saveRecipe: (r: { id?: string; name: string; ingredients: Recipe['ingredients']; cookedWeightG?: number; servings: number }) => Recipe;
+  removeRecipe: (id: string) => void;
+  /** v2: корзина добавления — несколько продуктов одним действием; сохраняется между запусками */
+  draft: DiaryDraft | null;
+  draftAdd: (date: ISODate, meal: MealSlot, item: DiaryDraft['items'][number]) => void;
+  draftUpdate: (index: number, item: DiaryDraft['items'][number]) => void;
+  draftRemove: (index: number) => void;
+  draftSetMeal: (meal: MealSlot) => void;
+  draftClear: () => void;
+  /** Записать корзину в дневник; возвращает id новых записей (для «Отменить») */
+  draftCommit: () => string[];
+  /** Удалить записи и вернуть их — тост «Отменить» кладёт их обратно через restoreEntries */
+  deleteEntries: (ids: string[]) => FoodEntry[];
+  restoreEntries: (entries: FoodEntry[]) => void;
   reset: () => void;
 }
 
@@ -66,30 +82,23 @@ export const useNutrition = create<NutritionState>()(
       products: {},
       recent: [],
       lastGrams: {},
-      addEntry: (p, grams, meal, date) => {
-        const e: FoodEntry = { id: uid('f_'), date, productId: p.id, name: p.brand ? `${p.name} · ${p.brand}` : p.name, grams, macros: macrosFor(p.per100, grams), meal, createdAt: Date.now() };
+      addEntry: (p, grams, meal, date, unit) => {
+        const prod = normalizeProduct(p);
+        const e = entryFor({ id: uid('f_'), product: prod, grams, meal, date, now: Date.now(), unit });
         set((s) => ({
           entries: [...s.entries, e],
-          products: { ...s.products, [p.id]: p },
-          recent: [p.id, ...s.recent.filter((x) => x !== p.id)].slice(0, 60),
-          lastGrams: { ...s.lastGrams, [p.id]: grams },
+          products: { ...s.products, [prod.id]: prod },
+          recent: [prod.id, ...s.recent.filter((x) => x !== prod.id)].slice(0, 60),
+          lastGrams: { ...s.lastGrams, [prod.id]: grams },
         }));
         return e;
       },
-      updateEntry: (id, grams) =>
+      updateEntry: (id, grams, unit) =>
         set((s) => ({
-          entries: s.entries.map((e) => {
-            if (e.id !== id) return e;
-            const p = get().products[e.productId];
-            if (!p) {
-              const k = grams / e.grams;
-              return { ...e, grams, macros: { kcal: Math.round(e.macros.kcal * k), protein: e.macros.protein * k, fat: e.macros.fat * k, carbs: e.macros.carbs * k } };
-            }
-            return { ...e, grams, macros: macrosFor(p.per100, grams) };
-          }),
+          entries: s.entries.map((e) => (e.id === id ? rescaleEntry(e, grams, s.products[e.productId], unit) : e)),
         })),
       removeEntry: (id) => set((s) => ({ entries: s.entries.filter((e) => e.id !== id) })),
-      cacheProduct: (p) => set((s) => ({ products: { ...s.products, [p.id]: p } })),
+      cacheProduct: (p) => set((s) => ({ products: { ...s.products, [p.id]: normalizeProduct(p) } })),
       meals: [],
       saveMeal: (name, items) => {
         const m: SavedMeal = { id: uid('meal_'), name: name.trim() || 'Моё блюдо', items, createdAt: Date.now(), uses: 0 };
@@ -120,8 +129,55 @@ export const useNutrition = create<NutritionState>()(
         set((s) => ({ entries: [...s.entries, ...copies] }));
         return copies.map((c) => c.id);
       },
-      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {}, meals: [], water: {}, favorites: [] }),
+      recipes: [],
+      saveRecipe: (r) => {
+        const prev = r.id ? get().recipes.find((x) => x.id === r.id) : undefined;
+        const rec = buildRecipe({ id: prev?.id ?? uid('rcp_'), name: r.name, ingredients: r.ingredients, cookedWeightG: r.cookedWeightG, servings: r.servings, now: Date.now(), createdAt: prev?.createdAt });
+        // Продукт рецепта обновляется для новых записей; прошлые записи хранят свой снимок КБЖУ и не меняются
+        const prod = recipeProduct(rec);
+        set((s) => ({ recipes: prev ? s.recipes.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...s.recipes], products: { ...s.products, [prod.id]: prod } }));
+        return rec;
+      },
+      removeRecipe: (id) => set((s) => ({ recipes: s.recipes.filter((r) => r.id !== id), favorites: s.favorites.filter((f) => f !== `recipe:${id}`) })),
+      draft: null,
+      draftAdd: (date, meal, item) =>
+        set((s) => {
+          const it = { ...item, product: normalizeProduct(item.product) };
+          // Корзина — на один день и приём; новая дата начинает новую корзину
+          const base = s.draft && s.draft.date === date ? s.draft : { date, meal, items: [] };
+          const i = base.items.findIndex((x) => x.product.id === it.product.id);
+          const items = i >= 0 ? base.items.map((x, k) => (k === i ? it : x)) : [...base.items, it];
+          return { draft: { ...base, meal: base.items.length ? base.meal : meal, items } };
+        }),
+      draftUpdate: (index, item) => set((s) => (s.draft ? { draft: { ...s.draft, items: s.draft.items.map((x, k) => (k === index ? item : x)) } } : {})),
+      draftRemove: (index) =>
+        set((s) => {
+          if (!s.draft) return {};
+          const items = s.draft.items.filter((_, k) => k !== index);
+          return { draft: items.length ? { ...s.draft, items } : null };
+        }),
+      draftSetMeal: (meal) => set((s) => (s.draft ? { draft: { ...s.draft, meal } } : {})),
+      draftClear: () => set({ draft: null }),
+      draftCommit: () => {
+        const d = get().draft;
+        if (!d) return [];
+        const ids = d.items.map((it) => get().addEntry(it.product, it.grams, d.meal, d.date, it.unit).id);
+        set({ draft: null });
+        return ids;
+      },
+      deleteEntries: (ids) => {
+        const gone = get().entries.filter((e) => ids.includes(e.id));
+        set((s) => ({ entries: s.entries.filter((e) => !ids.includes(e.id)) }));
+        return gone;
+      },
+      restoreEntries: (list) => set((s) => ({ entries: [...s.entries.filter((e) => !list.some((x) => x.id === e.id)), ...list] })),
+      reset: () => set({ entries: [], products: {}, recent: [], lastGrams: {}, meals: [], water: {}, favorites: [], recipes: [], draft: null }),
     }),
-    persistOptions<NutritionState>('nutrition', 1, (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams, meals: s.meals, water: s.water, favorites: s.favorites }) as NutritionState),
+    persistOptions<NutritionState, NutritionPersisted>(
+      'nutrition',
+      NUTRITION_VERSION,
+      (s) => ({ entries: s.entries, products: s.products, recent: s.recent, lastGrams: s.lastGrams, meals: s.meals, water: s.water, favorites: s.favorites, recipes: s.recipes, draft: s.draft }),
+      (p, v) => migrateNutrition(p, v),
+    ),
   ),
 );

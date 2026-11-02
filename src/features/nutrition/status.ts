@@ -2,8 +2,12 @@ import type { FoodEntry, Macros } from '@/types';
 
 export const ZERO: Macros = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
 
+/**
+ * Сумма КБЖУ записей. Складываются неокруглённые снимки, округляется только итог (ккал — до целых, Б/Ж/У — до 0,1):
+ * ошибка округления не накапливается от числа записей.
+ */
 export function sumMacros(entries: Pick<FoodEntry, 'macros'>[]): Macros {
-  return entries.reduce(
+  const t = entries.reduce(
     (a, e) => ({
       kcal: a.kcal + e.macros.kcal,
       protein: a.protein + e.macros.protein,
@@ -12,8 +16,12 @@ export function sumMacros(entries: Pick<FoodEntry, 'macros'>[]): Macros {
     }),
     { ...ZERO },
   );
+  return { kcal: Math.round(t.kcal), protein: r1(t.protein), fat: r1(t.fat), carbs: r1(t.carbs) };
 }
 
+const r1 = (x: number) => Math.round(x * 10) / 10;
+
+/** КБЖУ порции для показа (ккал — целые, Б/Ж/У — 0,1). В записи дневника хранится неокруглённый снимок (macrosExact) */
 export function macrosFor(per100: Macros, grams: number): Macros {
   const k = grams / 100;
   const m: Macros = {
