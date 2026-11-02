@@ -25,9 +25,19 @@ export class FoodApiError extends Error {
   }
 }
 
-async function fetchJson(url: string): Promise<any> {
+/** Запрос отменён (новый запрос или уход с экрана) — не ошибка для показа */
+export class FoodSearchCancelled extends Error {
+  constructor() {
+    super('cancelled');
+  }
+}
+
+async function fetchJson(url: string, outer?: AbortSignal): Promise<any> {
+  if (outer?.aborted) throw new FoodSearchCancelled();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT);
+  const cancel = () => ctrl.abort();
+  outer?.addEventListener('abort', cancel);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
     if (!res.ok) {
@@ -41,10 +51,12 @@ async function fetchJson(url: string): Promise<any> {
     }
   } catch (e: any) {
     if (e instanceof FoodApiError) throw e;
+    if (outer?.aborted) throw new FoodSearchCancelled();
     if (e?.name === 'AbortError') throw new FoodApiError('timeout', 'Сервер не ответил вовремя');
     throw new FoodApiError('offline', 'Нет подключения к интернету');
   } finally {
     clearTimeout(t);
+    outer?.removeEventListener('abort', cancel);
   }
 }
 
@@ -114,6 +126,16 @@ export const sameGtin = (a: string, b: string) => a.replace(/^0+/, '') === b.rep
 /** Брендовый продукт USDA FoodData Central (значения на 100 г) → продукт; только при совпадении GTIN */
 export function mapFdcFood(f: any, code: string): FoodProduct | null {
   if (!f || typeof f.gtinUpc !== 'string' || !sameGtin(f.gtinUpc, code)) return null;
+  return mapFdcAny(f, code);
+}
+
+/** Продукт USDA из поиска по названию (без штрихкода) */
+export function mapFdcSearchFood(f: any): FoodProduct | null {
+  if (!f) return null;
+  return mapFdcAny(f, typeof f.gtinUpc === 'string' ? f.gtinUpc : undefined);
+}
+
+function mapFdcAny(f: any, code: string | undefined): FoodProduct | null {
   const by = (id: number, name: RegExp) => {
     const x = (f.foodNutrients ?? []).find((n: any) => n.nutrientId === id || n.nutrient?.id === id || name.test(String(n.nutrientName ?? n.nutrient?.name ?? '')));
     return num(x?.value ?? x?.amount);
@@ -135,7 +157,7 @@ export function mapFdcFood(f: any, code: string): FoodProduct | null {
     id: `usda:${f.fdcId ?? code}`,
     name: name.charAt(0) + name.slice(1).toLowerCase(),
     brand: brandOf(f.brandName || f.brandOwner),
-    barcode: code,
+    barcode: code || undefined,
     per100,
     serving: grams && grams > 0 && grams < 2000 ? { label: f.householdServingFullText || `${grams} г`, grams } : undefined,
     source: 'usda',
@@ -214,20 +236,21 @@ export async function lookupBarcode(code: string, type?: string): Promise<FoodPr
 /**
  * Поиск по названию: сначала новый поисковый сервис OFF (search-a-licious), при сбое — классический API.
  */
-export async function searchProducts(query: string, page = 1): Promise<FoodProduct[]> {
+export async function searchProducts(query: string, page = 1, signal?: AbortSignal): Promise<FoodProduct[]> {
   const q = query.trim();
   if (q.length < 2) return [];
   let raw: any[] | null = null;
   let lastErr: unknown;
   try {
-    const data = await fetchJson(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=30&page=${page}&langs=ru,en&fields=${FIELDS}`);
+    const data = await fetchJson(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=30&page=${page}&langs=ru,en&fields=${FIELDS}`, signal);
     if (data && Array.isArray(data.hits)) raw = data.hits;
   } catch (e) {
+    if (e instanceof FoodSearchCancelled) throw e;
     lastErr = e;
   }
   if (!raw) {
     try {
-      const data = await fetchJson(`${OFF}/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=30&page=${page}&fields=${FIELDS}`);
+      const data = await fetchJson(`${OFF}/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=30&page=${page}&fields=${FIELDS}`, signal);
       if (data && Array.isArray(data.products)) raw = data.products;
     } catch (e) {
       lastErr = e;
@@ -244,6 +267,14 @@ export async function searchProducts(query: string, page = 1): Promise<FoodProdu
     }
   }
   return out;
+}
+
+/** USDA FoodData Central по названию — только для запросов латиницей (база англоязычная) */
+export async function searchFdc(query: string, signal?: AbortSignal): Promise<FoodProduct[]> {
+  const q = query.trim();
+  if (q.length < 3 || !/[a-z]/i.test(q)) return [];
+  const data = await fetchJson(`${FDC}/foods/search?api_key=${encodeURIComponent(FDC_KEY)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=15&query=${encodeURIComponent(q)}`, signal);
+  return (Array.isArray(data?.foods) ? data.foods : []).map(mapFdcSearchFood).filter((p: FoodProduct | null): p is FoodProduct => !!p);
 }
 
 export function foodErrorText(e: unknown): string {
