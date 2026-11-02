@@ -1677,9 +1677,9 @@ const closeSheet = async (pg) => {
     try {
       await page.getByTestId('food-search').fill('тварог');
       await page.waitForTimeout(1500);
-      assert.ok(await page.getByLabel(/^Творог 5%/).first().isVisible(), 'опечатка «тварог» → творог, офлайн');
+      assert.ok(await page.getByLabel(/^Творог 5%.*ккал на 100 г$/).first().isVisible(), 'опечатка «тварог» → творог, офлайн');
       const before = (await nutritionState()).entries.length;
-      await page.getByLabel(/^Творог 5%/).first().click();
+      await page.getByLabel(/^Творог 5%.*ккал на 100 г$/).first().click();
       await page.waitForTimeout(800);
       await page.getByTestId('portion-add').click();
       await page.waitForTimeout(800);
