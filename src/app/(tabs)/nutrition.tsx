@@ -127,7 +127,7 @@ export default function Nutrition() {
       </Appear>
 
       <Appear i={2} style={{ marginTop: space.xl }}>
-        <Button title="Добавить еду" icon="add" size="lg" live onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
+        <Button title="Добавить еду" icon="add" size="lg" full onPress={() => setAddFor(nowMealFor(isToday))} accessibilityLabel="Добавить еду" />
         {!nut.entries.length && prevDay.length ? (
           <Pressable accessibilityRole="button" onPress={() => copyFrom(addDays(date, -1))} hitSlop={6} style={({ pressed }) => [styles.copyDay, pressed && { opacity: 0.6 }]}>
             <T v="small" style={{ fontWeight: '600' }}>

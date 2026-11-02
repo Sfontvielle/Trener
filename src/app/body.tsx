@@ -161,7 +161,7 @@ export default function BodyScreen() {
         ) : null}
         {fresh?.qualityNote ? <T v="small">{fresh.qualityNote}</T> : null}
         {recent.length && photoAnalysisAvailable() ? (
-          <Button title={busy ? 'Анализирую…' : fresh ? 'Обновить анализ фото' : 'Проанализировать фото'} icon="sparkles-outline" size="lg" live={!fresh && !busy} disabled={busy} onPress={runPhoto} />
+          <Button title={busy ? 'Анализирую…' : fresh ? 'Обновить анализ фото' : 'Проанализировать фото'} icon="sparkles-outline" size="lg" full disabled={busy} onPress={runPhoto} />
         ) : (
           <Button title="Добавить фото" icon="camera-outline" variant="secondary" onPress={() => router.push('/measurements')} />
         )}

@@ -119,7 +119,7 @@ export default function Progress() {
         <Appear i={0} style={{ marginTop: space.xl, gap: space.md }}>
           <T v="hero">Вес</T>
           <T v="bodyDim">Взвешивайся 3–4 раза в неделю утром — появится тренд, и калории начнут подстраиваться под тебя.</T>
-          <Button title="Записать вес" icon="add" size="lg" live onPress={() => router.push('/weight')} />
+          <Button title="Записать вес" icon="add" size="lg" full onPress={() => router.push('/weight')} />
         </Appear>
       )}
 

@@ -2,6 +2,7 @@ import React, { memo, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Platform,
   Pressable,
   ScrollView,
@@ -15,9 +16,9 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, space, type, TOUCH, themed } from '@/theme';
+import { colors, currentTheme, radius, space, type, TOUCH, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
-import { CtaGlow, Sheen, Tap, prefersReducedMotion } from './motion';
+import { Tap, prefersReducedMotion } from './motion';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -77,6 +78,10 @@ export function T({ v = 'body', color, style, children, ...rest }: TextProps & {
   );
 }
 
+/** Мягкая тень поверхностей в светлой теме (в тёмной уровни различаются только заливкой) */
+export const LIGHT_SHADOW = '0px 8px 24px rgba(14,20,27,0.08)';
+export const elevation = () => (currentTheme().scheme === 'light' ? { boxShadow: LIGHT_SHADOW } : null);
+
 export const Card = memo(function Card({
   children,
   style,
@@ -92,8 +97,8 @@ export const Card = memo(function Card({
   testID?: string;
   tone?: 'default' | 'accent' | 'warning' | 'danger' | 'flat';
 }) {
-  // Без рамок: карточка отделяется заливкой. Цветная рамка — только у опасного (здоровье), остальное — содержимым
-  const toneStyle = tone === 'danger' ? { borderWidth: 1, borderColor: colors.dangerLine } : tone === 'flat' ? { backgroundColor: colors.surface2 } : null;
+  // Без рамок: карточка отделяется заливкой (в светлой теме — ещё и мягкой тенью). Цветная рамка — только у опасного
+  const toneStyle = tone === 'danger' ? { borderWidth: 1, borderColor: colors.dangerLine } : tone === 'flat' ? { backgroundColor: colors.surface2 } : elevation();
   if (onPress) {
     return (
       <Tap accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} testID={testID} scaleTo={0.985} style={[styles.card, toneStyle, style]}>
@@ -119,7 +124,6 @@ export function Button({
   style,
   full,
   accessibilityLabel,
-  live,
   testID,
 }: {
   title: string;
@@ -132,16 +136,15 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   full?: boolean;
   accessibilityLabel?: string;
-  /** Главное действие экрана: мягкое свечение под кнопкой и редкий блик */
-  live?: boolean;
   testID?: string;
 }) {
-  // Одна главная кнопка — лаймовая; остальные — спокойная заливка без рамок («outline» выглядит как «secondary»)
+  // Одна главная кнопка — акцентная; остальные — спокойная заливка без рамок («outline» выглядит как «secondary»).
+  // Без свечений и бликов: главное действие выделено цветом и размером (дизайн-система §6, §9)
   const bg = variant === 'primary' ? colors.accent : variant === 'secondary' || variant === 'outline' ? colors.surface3 : variant === 'danger' ? colors.dangerDim : 'transparent';
   const fg = variant === 'primary' ? colors.onAccent : variant === 'danger' ? colors.danger : variant === 'ghost' ? colors.textDim : colors.text;
-  const h = size === 'lg' ? 56 : size === 'sm' ? 38 : 50;
-  const glowing = !!live && variant === 'primary' && !disabled && !loading;
-  const btn = (
+  // Высоты: главное действие 52, обычная 48, мини 38 (область нажатия добирается hitSlop до 50)
+  const h = size === 'lg' ? 52 : size === 'sm' ? 38 : 48;
+  return (
     <Tap
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
@@ -149,41 +152,31 @@ export function Button({
       testID={testID}
       disabled={disabled || loading}
       onPress={() => {
-        if (glowing) haptic.light();
-        else haptic.tap();
+        haptic.tap();
         onPress?.();
       }}
       hitSlop={size === 'sm' ? 6 : 0}
-      scaleTo={size === 'lg' ? 0.97 : 0.95}
+      scaleTo={0.97}
       style={[
         styles.btn,
         // minHeight: длинный текст (например «Далее: Тяга горизонтального блока…») переносится, а не обрезается
-        { backgroundColor: bg, minHeight: h, paddingVertical: 6, paddingHorizontal: size === 'sm' ? 14 : 20 },
+        { backgroundColor: bg, minHeight: h, paddingHorizontal: size === 'sm' ? 12 : 20 },
         full && { alignSelf: 'stretch' },
-        (disabled || loading) && { opacity: 0.45 },
-        glowing ? styles.btnLive : style,
+        (disabled || loading) && { opacity: 0.4 },
+        style,
       ]}
     >
-      {glowing ? <Sheen /> : null}
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
         <>
-          {icon ? <Icon name={icon} size={size === 'sm' ? 16 : 19} color={fg} /> : null}
-          <Text numberOfLines={2} style={[styles.btnText, { color: fg, fontSize: size === 'sm' ? 15 : 17, textAlign: 'center', flexShrink: 1 }]}>
+          {icon ? <Icon name={icon} size={size === 'sm' ? 16 : 20} color={fg} /> : null}
+          <T v="bodyStrong" color={fg} numberOfLines={2} style={{ fontSize: size === 'lg' ? 17 : size === 'sm' ? 15 : 16, lineHeight: size === 'sm' ? 20 : 22, textAlign: 'center', flexShrink: 1 }}>
             {title}
-          </Text>
+          </T>
         </>
       )}
     </Tap>
-  );
-  if (!glowing) return btn;
-  // Свечение живёт под кнопкой: внешние отступы и размеры — у обёртки
-  return (
-    <View style={[{ alignSelf: 'stretch' }, style]}>
-      <CtaGlow />
-      {btn}
-    </View>
   );
 }
 
@@ -196,6 +189,7 @@ export function IconButton({
   label,
   style,
   disabled,
+  testID,
 }: {
   name: IconName;
   onPress: () => void;
@@ -205,11 +199,14 @@ export function IconButton({
   label: string;
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
+  testID?: string;
 }) {
   return (
     <Tap
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      testID={testID}
       onPress={() => {
         haptic.tap();
         onPress();
@@ -237,6 +234,7 @@ export function Chip({
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
 }) {
+  // Чип — скруглённый прямоугольник 8 pt; выбранный — контрастный (как выбор в iOS), акцент остаётся для действия
   return (
     <Tap
       accessibilityRole="button"
@@ -245,42 +243,49 @@ export function Chip({
         haptic.tap();
         onPress?.();
       }}
-      scaleTo={0.94}
+      hitSlop={4}
+      scaleTo={0.96}
       style={[styles.chip, active && styles.chipActive, style]}
     >
-      {icon ? <Icon name={icon} size={15} color={active ? colors.bg : colors.textDim} /> : null}
-      <Text numberOfLines={1} style={[styles.chipText, active && { color: colors.bg }]}>
+      {icon ? <Icon name={icon} size={16} color={active ? colors.bg : colors.textDim} /> : null}
+      <T v="callout" numberOfLines={1} color={active ? colors.bg : colors.text} style={{ fontWeight: '500' }}>
         {label}
-      </Text>
+      </T>
     </Tap>
   );
 }
 
-export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0, fit = false }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number; fit?: boolean }) {
-  // Длинные подписи — «пилюли» по ширине текста с прокруткой (как в iOS), короткие — поровну на всю ширину;
-  // fit — все пилюли в одну строку без прокрутки, ширина пропорциональна подписи (три раздела вкладки)
-  const scroll = !fit && items.reduce((a, it) => a + it.label.length, 0) > 26;
-  // Подложка выбранной «пилюли» плавно переезжает к новой (пружина), а не перескакивает
-  const [ind] = useState(() => ({ x: new Animated.Value(0), w: new Animated.Value(0), o: new Animated.Value(0) }));
+/**
+ * Переключатель разделов (дизайн-система §9 SegmentedControl).
+ * До ~40 знаков — капсула на подложке: ширина сегмента по подписи, остаток делится поровну; при крупном шрифте подпись переносится,
+ * а не обрезается. Длиннее — ряд отдельных «пилюль» с прокруткой (как фильтры в iOS).
+ */
+export function Segmented<K extends string>({ items, value, onChange, style, bleed = 0 }: { items: { key: K; label: string; a11y?: string }[]; value: K; onChange: (k: K) => void; style?: StyleProp<ViewStyle>; bleed?: number }) {
+  const scroll = items.length > 5 || items.reduce((a, it) => a + it.label.length, 0) > 40;
+  const light = currentTheme().scheme === 'light';
+  // Подложка выбранного сегмента переезжает к новому за 180 мс; при «Уменьшении движения» — сразу на месте
+  const [ind] = useState(() => ({ x: new Animated.Value(0), y: new Animated.Value(0), w: new Animated.Value(0), h: new Animated.Value(0), o: new Animated.Value(0) }));
   // Прокручиваемый ряд держит выбранную «пилюлю» в поле зрения (переход по ссылке, смена вкладки)
   const ref = useRef<ScrollViewInstance>(null);
-  const geo = useRef({ view: 0, content: 0, shown: '', placed: '', items: {} as Record<string, { x: number; w: number }> });
+  const geo = useRef({ view: 0, content: 0, shown: '', placed: '', items: {} as Record<string, { x: number; y: number; w: number; h: number }> });
   const place = () => {
     const g = geo.current;
     const it = g.items[value];
-    if (!it || g.placed === `${value}:${it.x}:${it.w}`) return;
+    const sig = it ? `${value}:${it.x}:${it.y}:${it.w}:${it.h}` : '';
+    if (!it || g.placed === sig) return;
     const first = !g.placed;
-    g.placed = `${value}:${it.x}:${it.w}`;
+    g.placed = sig;
+    // Высота и вертикаль меняются только при переносе подписей — без анимации
+    ind.y.setValue(it.y);
+    ind.h.setValue(it.h);
     if (first || prefersReducedMotion()) {
       ind.x.setValue(it.x);
       ind.w.setValue(it.w);
       ind.o.setValue(1);
       return;
     }
-    Animated.parallel([
-      Animated.spring(ind.x, { toValue: it.x, useNativeDriver: false, speed: 18, bounciness: 5 }),
-      Animated.spring(ind.w, { toValue: it.w, useNativeDriver: false, speed: 18, bounciness: 5 }),
-    ]).start();
+    const t = { duration: 180, easing: Easing.inOut(Easing.quad), useNativeDriver: false };
+    Animated.parallel([Animated.timing(ind.x, { toValue: it.x, ...t }), Animated.timing(ind.w, { toValue: it.w, ...t })]).start();
   };
   const reveal = () => {
     place();
@@ -289,30 +294,37 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
     if (!scroll || !it || !g.view || !g.content || g.shown === value) return;
     g.shown = value;
     const x = Math.max(0, Math.min(it.x + it.w / 2 - g.view / 2, g.content - g.view));
-    ref.current?.scrollTo({ x, animated: true });
+    ref.current?.scrollTo({ x, animated: !prefersReducedMotion() });
   };
   useEffect(reveal);
-  const indicator = <Animated.View pointerEvents="none" style={[styles.segIndicator, { left: ind.x, width: ind.w, opacity: ind.o }]} />;
+  const indicator = (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.segIndicator, { backgroundColor: light ? colors.surface : colors.surface3 }, light && { boxShadow: '0px 1px 4px rgba(14,20,27,0.12)' }, { left: ind.x, top: ind.y, width: ind.w, height: ind.h, opacity: ind.o }]}
+    />
+  );
   const pills = items.map((it) => {
     const active = it.key === value;
     return (
       <Pressable
         key={it.key}
         onLayout={(e) => {
-          geo.current.items[it.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width };
+          const l = e.nativeEvent.layout;
+          geo.current.items[it.key] = { x: l.x, y: l.y, w: l.width, h: l.height };
           reveal();
         }}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
+        accessibilityLabel={it.a11y ?? it.label}
         onPress={() => {
           if (!active) haptic.tap();
           onChange(it.key);
         }}
-        style={({ pressed }) => [styles.segItem, scroll ? { paddingHorizontal: 16 } : fit ? { flexGrow: it.label.length + 4, flexBasis: 0, paddingHorizontal: 4 } : { flex: 1 }, pressed && !active && { opacity: 0.6 }]}
+        style={({ pressed }) => [styles.segItem, scroll ? styles.segPill : styles.segFlex, pressed && !active && { opacity: 0.6 }]}
       >
-        <Text numberOfLines={1} style={[styles.segText, active && { color: colors.text }]}>
+        <T v="callout" numberOfLines={scroll ? 1 : 2} color={active ? colors.text : colors.textDim} style={{ fontWeight: '600', textAlign: 'center' }}>
           {it.label}
-        </Text>
+        </T>
       </Pressable>
     );
   });
@@ -332,7 +344,7 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
           reveal();
         }}
         style={[style, bleed ? { marginHorizontal: -bleed } : null]}
-        contentContainerStyle={[styles.seg, bleed ? { paddingHorizontal: bleed } : null]}
+        contentContainerStyle={[styles.segRow, bleed ? { paddingHorizontal: bleed } : null]}
         accessibilityRole="tablist"
       >
         {indicator}
@@ -348,13 +360,16 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
   );
 }
 
+/** Заголовок секции: headline слева, необязательное текстовое действие справа (SectionHeader из дизайн-системы) */
 export function SectionTitle({ title, action, onAction, style }: { title: string; action?: string; onAction?: () => void; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.section, style]}>
-      <T v="caption">{title}</T>
+      <T v="headline" accessibilityRole="header" style={{ flexShrink: 1 }}>
+        {title}
+      </T>
       {action ? (
-        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button">
-          <T v="small" color={colors.text} style={{ fontWeight: '600' }}>
+        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" accessibilityLabel={action}>
+          <T v="callout" style={{ fontWeight: '600' }}>
             {action}
           </T>
         </Pressable>
@@ -363,21 +378,22 @@ export function SectionTitle({ title, action, onAction, style }: { title: string
   );
 }
 
+/** Пустое состояние: что здесь будет и одно действие */
 export function EmptyState({ icon, title, text, action, onAction, style }: { icon: IconName; title: string; text?: string; action?: string; onAction?: () => void; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.empty, style]}>
       <View style={styles.emptyIcon}>
-        <Icon name={icon} size={26} color={colors.accent} />
+        <Icon name={icon} size={28} color={colors.textDim} />
       </View>
-      <T v="h3" style={{ textAlign: 'center' }}>
+      <T v="headline" style={{ textAlign: 'center' }}>
         {title}
       </T>
       {text ? (
-        <T v="small" style={{ textAlign: 'center', maxWidth: 300 }}>
+        <T v="callout" style={{ textAlign: 'center', maxWidth: 320 }}>
           {text}
         </T>
       ) : null}
-      {action ? <Button title={action} onPress={onAction} size="sm" style={{ marginTop: 6 }} /> : null}
+      {action ? <Button title={action} onPress={onAction} variant="secondary" style={{ marginTop: space.xs, minWidth: 180 }} /> : null}
     </View>
   );
 }
@@ -387,13 +403,13 @@ export function Banner({ icon = 'information-circle', text, tone = 'info', actio
   const bg = tone === 'warning' ? colors.warningDim : tone === 'danger' ? colors.dangerDim : tone === 'accent' ? colors.accentDim : colors.surface2;
   return (
     <View style={[styles.banner, { backgroundColor: bg }]}>
-      <Icon name={icon} size={18} color={c} />
-      <T v="small" color={tone === 'info' ? colors.textDim : colors.text} style={{ flex: 1 }}>
+      <Icon name={icon} size={20} color={c} />
+      <T v="callout" color={tone === 'info' ? colors.textDim : colors.text} style={{ flex: 1 }}>
         {text}
       </T>
       {action ? (
-        <Pressable onPress={onAction} hitSlop={10} accessibilityRole="button" style={{ flexShrink: 1, maxWidth: '45%' }}>
-          <T v="small" color={tone === 'info' ? colors.text : c} style={{ fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit>
+        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" style={{ flexShrink: 1, maxWidth: '45%' }}>
+          <T v="callout" color={tone === 'info' ? colors.text : c} style={{ fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit>
             {action}
           </T>
         </Pressable>
@@ -406,15 +422,16 @@ export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[{ height: StyleSheet.hairlineWidth, backgroundColor: colors.border }, style]} />;
 }
 
-/** Скелетон для состояний загрузки */
+/** Скелетон для состояний загрузки: плашка по форме будущей строки; при «Уменьшении движения» — без мерцания */
 export function Skeleton({ height = 16, width = '100%', style }: { height?: number; width?: number | `${number}%`; style?: StyleProp<ViewStyle> }) {
-  const a = useState(() => new Animated.Value(0.4))[0];
+  const a = useState(() => new Animated.Value(1))[0];
   useEffect(() => {
-    const loop = Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 1, duration: 700, useNativeDriver: true }), Animated.timing(a, { toValue: 0.4, duration: 700, useNativeDriver: true })]));
+    if (prefersReducedMotion()) return;
+    const loop = Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 0.55, duration: 800, useNativeDriver: true }), Animated.timing(a, { toValue: 1, duration: 800, useNativeDriver: true })]));
     loop.start();
     return () => loop.stop();
   }, [a]);
-  return <Animated.View style={[{ height, width, borderRadius: 8, backgroundColor: colors.surface3, opacity: a }, style]} />;
+  return <Animated.View accessibilityLabel="Загрузка" style={[{ height, width, borderRadius: radius.xs, backgroundColor: colors.surface2, opacity: a }, style]} />;
 }
 
 export function Stat({ label, value, unit, sub, color, style }: { label: string; value: string; unit?: string; sub?: string; color?: string; style?: StyleProp<ViewStyle> }) {
@@ -445,14 +462,13 @@ const styles = themed({
     padding: space.lg,
   },
   btn: {
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    paddingVertical: 6,
   },
-  btnText: { fontWeight: '700', letterSpacing: -0.2 },
-  btnLive: { overflow: 'hidden', alignSelf: 'stretch' },
   iconBtn: {
     width: TOUCH,
     height: TOUCH,
@@ -464,21 +480,23 @@ const styles = themed({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 38,
-    paddingHorizontal: 16,
-    borderRadius: radius.pill,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
     backgroundColor: colors.surface2,
   },
-  // Выбранная «пилюля» — светлая (как выбор в iOS), лайм остаётся для главного действия экрана
+  // Выбранный чип — контрастный (как выбор в iOS), акцент остаётся для главного действия экрана
   chipActive: { backgroundColor: colors.text },
-  chipText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
-  // Переключатель — отдельные «пилюли» без общей подложки и рамки; выбранная — светлее
-  seg: { flexDirection: 'row', gap: 6 },
-  segItem: { height: 38, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  segIndicator: { position: 'absolute', top: 0, height: 38, borderRadius: radius.pill, backgroundColor: colors.surface3 },
-  segText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
-  section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xl, marginBottom: space.md },
-  empty: { alignItems: 'center', gap: 10, paddingVertical: space.xxl, paddingHorizontal: space.lg },
-  emptyIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md },
+  // Капсула на подложке; выбранный сегмент — светлее (в светлой теме — белый с тенью)
+  seg: { flexDirection: 'row', alignItems: 'stretch', padding: 3, borderRadius: radius.pill, backgroundColor: colors.surface2 },
+  segRow: { flexDirection: 'row', gap: 6 },
+  segItem: { minHeight: 34, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 4 },
+  // Ширина по подписи, свободное место — поровну: длинная подпись не рвётся посреди слова
+  segFlex: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
+  segPill: { minHeight: 36, paddingHorizontal: 16 },
+  segIndicator: { position: 'absolute', borderRadius: radius.pill },
+  section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm, marginTop: space.xl, marginBottom: space.xs },
+  empty: { alignItems: 'center', gap: space.xs, paddingVertical: space.xxl, paddingHorizontal: space.lg },
+  emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, paddingHorizontal: space.md, borderRadius: radius.md },
 });

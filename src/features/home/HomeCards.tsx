@@ -87,7 +87,7 @@ export function TodayCard({ chip, title, meta, cta, ctaIcon = 'play', onCta, onM
         )
       ) : null}
       <View style={{ marginTop: space.md }}>
-        <Button title={cta} icon={ctaIcon} size="lg" live={ctaLive} variant={ctaLive ? 'primary' : 'secondary'} onPress={onCta} />
+        <Button title={cta} icon={ctaIcon} size="lg" full variant={ctaLive ? 'primary' : 'secondary'} onPress={onCta} />
       </View>
     </View>
   );

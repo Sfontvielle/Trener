@@ -114,7 +114,7 @@ export default function CheckIn() {
             </T>
           ) : null}
         </Appear>
-        <Button title="Готово" size="lg" live onPress={() => router.back()} style={{ marginTop: space.xxl }} />
+        <Button title="Готово" size="lg" full onPress={() => router.back()} style={{ marginTop: space.xxl }} />
       </Screen>
     );
   }
@@ -186,7 +186,7 @@ export default function CheckIn() {
           title={`Сохранить · ${CATEGORY_LABEL[cat].toLowerCase()} готовность`}
           size="lg"
           icon="checkmark"
-          live
+          full
           onPress={() => {
             save({ ...c, createdAt: Date.now() });
             if (logWeight) useBody.getState().addWeight(d, Math.round(kg * 10) / 10);

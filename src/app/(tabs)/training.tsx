@@ -99,7 +99,6 @@ export default function Training() {
           ]}
           value={seg}
           onChange={setSeg}
-          fit
         />
       </View>
       <FadeIn key={seg} style={{ flex: 1, paddingHorizontal: space.lg }} from={6}>

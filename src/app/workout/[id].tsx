@@ -148,7 +148,7 @@ export default function SessionDetail() {
             title="Повторить"
             icon="repeat"
             size="lg"
-            live
+            full
             onPress={() => {
               haptic.tap();
               repeatSession(s);

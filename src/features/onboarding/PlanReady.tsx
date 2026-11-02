@@ -198,7 +198,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
         ) : null}
       </Appear>
 
-      <Button title="Открыть мой план" size="lg" live onPress={onStart} accessibilityLabel={`Открыть мой план и начать с ${BRAND}`} />
+      <Button title="Открыть мой план" size="lg" full onPress={onStart} accessibilityLabel={`Открыть мой план и начать с ${BRAND}`} />
     </View>
   );
 }

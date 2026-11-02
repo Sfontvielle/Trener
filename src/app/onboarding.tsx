@@ -329,7 +329,7 @@ export default function Onboarding() {
 
       {/* как на эталонах — главная кнопка внизу экрана; на странице имени — сразу под полем (над клавиатурой) */}
       <View style={{ marginTop: space.xxl }}>
-        <Button title={cur === 'lifestyle' ? 'Завершить анкету' : 'Продолжить'} size="lg" live={canNext} disabled={!canNext} onPress={next} />
+        <Button title={cur === 'lifestyle' ? 'Завершить анкету' : 'Продолжить'} size="lg" full disabled={!canNext} onPress={next} />
       </View>
     </Screen>
   );

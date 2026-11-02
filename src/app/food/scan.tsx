@@ -168,12 +168,12 @@ export default function Scan() {
               </T>
             </View>
             {phase.kind === 'error' ? (
-              <Button title="Повторить поиск" icon="refresh" live onPress={() => void lookup(phase.code)} />
+              <Button title="Повторить поиск" icon="refresh" full onPress={() => void lookup(phase.code)} />
             ) : (
               <Button
                 title={phase.name ? 'Добавить с этикетки' : 'Создать продукт'}
                 icon="add-circle-outline"
-                live
+                full
                 onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code, name: phase.kind === 'not_found' ? (phase.name ?? '') : '' } })}
               />
             )}

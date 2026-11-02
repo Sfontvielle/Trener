@@ -24,8 +24,8 @@ import { BRAND } from '@/config/brand';
 import { afterModalClose } from '@/components/modalGate';
 
 type FoodTab = 'fav' | 'frequent' | 'recent' | 'mine' | 'base';
-const TABS: { key: FoodTab; label: string }[] = [
-  { key: 'fav', label: '★' },
+const TABS: { key: FoodTab; label: string; a11y?: string }[] = [
+  { key: 'fav', label: '★', a11y: 'Избранное' },
   { key: 'frequent', label: 'Частые' },
   { key: 'recent', label: 'Недавние' },
   { key: 'mine', label: 'Мои' },

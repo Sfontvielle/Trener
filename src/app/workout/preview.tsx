@@ -63,7 +63,7 @@ export default function Preview() {
         </T>
       </Appear>
       <Appear i={1} style={{ marginTop: space.xl }}>
-        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" live onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
+        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" full onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
       </Appear>
       <Appear i={2} style={styles.list}>
         {rows.map(({ ex, rec }, i) => (
