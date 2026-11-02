@@ -156,7 +156,7 @@ function PortionBody({ target, onDone }: { target: PortionTarget; onClose: () =>
 
       {target.mode === 'add' ? (
         <View style={styles.actions}>
-          <Button title={cartCount ? `В корзину · ${cartCount + 1}` : 'В корзину'} variant="secondary" size="lg" disabled={!valid} onPress={toCart} style={{ flex: 1 }} testID="portion-cart" />
+          <Button title="В корзину" accessibilityLabel={cartCount ? `В корзину, там уже ${cartCount}` : 'В корзину'} variant="secondary" size="lg" disabled={!valid} onPress={toCart} style={{ flex: 1 }} testID="portion-cart" />
           <Button title={`Добавить в ${MEAL_TO[meal]}`} size="lg" disabled={!valid} onPress={add} style={{ flex: 1.5 }} testID="portion-add" />
         </View>
       ) : (

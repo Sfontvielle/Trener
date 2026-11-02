@@ -152,7 +152,8 @@ export const useNutrition = create<NutritionState>()(
           const base = s.draft && s.draft.date === date ? s.draft : { date, meal, items: [] };
           const i = base.items.findIndex((x) => x.product.id === it.product.id);
           const items = i >= 0 ? base.items.map((x, k) => (k === i ? it : x)) : [...base.items, it];
-          return { draft: { ...base, meal: base.items.length ? base.meal : meal, items } };
+          // Приём пищи корзины — последний выбранный: кнопка внизу всегда говорит, куда всё добавится
+          return { draft: { ...base, meal, items } };
         }),
       draftUpdate: (index, item) => set((s) => (s.draft ? { draft: { ...s.draft, items: s.draft.items.map((x, k) => (k === index ? item : x)) } } : {})),
       draftRemove: (index) =>

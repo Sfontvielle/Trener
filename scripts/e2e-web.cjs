@@ -1616,6 +1616,116 @@ const closeSheet = async (pg) => {
     await shot('nutrition-diary');
   });
 
+  const nutritionState = () => page.evaluate(() => JSON.parse(localStorage.getItem('form.nutrition')).state);
+  const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+  await check('60. Повторный продукт — 3 действия: «+» у обеда → продукт в «Недавних» → «Добавить в обед» (порция прошлого раза)', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const before = (await nutritionState()).entries.length;
+    await page.getByTestId('meal-lunch').click(); // 1
+    await page.waitForTimeout(1000);
+    const first = page.getByLabel(/ккал на 100 г$/).first();
+    const name = (await first.getAttribute('aria-label')).split(',')[0];
+    await first.click(); // 2
+    await page.waitForTimeout(800);
+    const st0 = await nutritionState();
+    const pid = st0.recent[0];
+    await page.getByTestId('portion-add').click(); // 3
+    await page.waitForTimeout(900);
+    assert.match(page.url(), /\/nutrition/, 'вернулись в дневник');
+    const st = await nutritionState();
+    assert.equal(st.entries.length, before + 1, 'запись добавлена');
+    const e = st.entries[st.entries.length - 1];
+    assert.equal(e.meal, 'lunch');
+    assert.ok(e.name.startsWith(name), `${e.name} ~ ${name}`);
+    assert.equal(e.grams, st0.lastGrams[pid] ?? e.grams, 'порция прошлого раза');
+  });
+
+  await check('61. Корзина: 3 продукта одним добавлением в ужин; «Отменить» убирает все три', async () => {
+    await page.goto(`${URL}/food/add?meal=dinner`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    const before = (await nutritionState()).entries.length;
+    for (let i = 0; i < 3; i++) {
+      await page.getByLabel(/^В корзину: /).first().click();
+      await page.waitForTimeout(300);
+    }
+    assert.match(await page.getByTestId('food-cart').innerText(), /3 продукта/);
+    const draft = (await nutritionState()).draft;
+    assert.equal(draft.items.length, 3, 'корзина сохранена в хранилище');
+    await page.getByTestId('cart-commit').click();
+    await page.waitForTimeout(900);
+    const st = await nutritionState();
+    assert.equal(st.entries.length, before + 3, '3 записи одним действием');
+    assert.ok(st.entries.slice(-3).every((e) => e.meal === 'dinner'), 'все — в ужин');
+    assert.equal(st.draft, null, 'корзина очищена');
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.equal((await nutritionState()).entries.length, before, '«Отменить» убрал все три');
+  });
+
+  await check('62. Без сети: поиск по базовым и своим продуктам с опечаткой, добавление работает', async () => {
+    // Оба экрана загружаются до отключения сети: dev-сервер отдаёт экраны по запросу, в сборке они уже внутри
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByTestId('meal-snack').click();
+    await page.waitForTimeout(1200);
+    await ctx.setOffline(true);
+    try {
+      await page.getByTestId('food-search').fill('тварог');
+      await page.waitForTimeout(1500);
+      assert.ok(await page.getByLabel(/^Творог 5%/).first().isVisible(), 'опечатка «тварог» → творог, офлайн');
+      const before = (await nutritionState()).entries.length;
+      await page.getByLabel(/^Творог 5%/).first().click();
+      await page.waitForTimeout(800);
+      await page.getByTestId('portion-add').click();
+      await page.waitForTimeout(800);
+      assert.equal((await nutritionState()).entries.length, before + 1, 'добавлено без сети');
+    } finally {
+      await ctx.setOffline(false);
+    }
+  });
+
+  await check('63. Свой продукт с весом 1 шт: порция «2 шт» → в дневнике «2 шт, 80 г»; правка порции → «Отменить»', async () => {
+    await page.goto(`${URL}/food/add?meal=snack`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByText('Свой продукт', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    await page.getByLabel('Название', { exact: true }).fill('Батончик e2e');
+    await page.getByLabel('Белки, г', { exact: true }).fill('20');
+    await page.getByLabel('Жиры, г', { exact: true }).fill('15');
+    await page.getByLabel('Углев., г', { exact: true }).fill('45');
+    await page.getByLabel('Вес 1 шт, г', { exact: true }).fill('40');
+    await page.getByText('Сохранить продукт', { exact: true }).click();
+    await page.waitForTimeout(1200);
+    await page.getByRole('tab', { name: /^шт/ }).click();
+    await page.waitForTimeout(300);
+    // 100 г по умолчанию = 2,5 шт; минус полштуки → 2 шт = 80 г; 395 ккал/100 г → 316 ккал
+    await page.getByTestId('portion-qty').getByLabel(/^Уменьшить/).click();
+    await page.waitForTimeout(300);
+    assert.match(await page.getByTestId('portion-macros').getAttribute('aria-label'), /На порцию 80 г: 316 ккал/);
+    await page.getByTestId('portion-add').click();
+    await page.waitForTimeout(900);
+    const e = (await nutritionState()).entries.slice(-1)[0];
+    assert.equal(e.grams, 80);
+    assert.deepEqual(e.unit, { id: 'piece', qty: 2, label: 'шт' });
+    assert.ok(await page.getByText('2 шт, 80 г').first().isVisible(), 'в дневнике — как ввели');
+    // Правка: 1,5 шт → «Отменить» возвращает 2 шт
+    await page.getByLabel(/^Батончик e2e, 2 шт/).first().click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('portion-qty').getByLabel(/^Уменьшить/).click();
+    await page.getByTestId('portion-save').click();
+    await page.waitForTimeout(700);
+    assert.equal((await nutritionState()).entries.find((x) => x.id === e.id).grams, 60);
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.equal((await nutritionState()).entries.find((x) => x.id === e.id).grams, 80, 'правка отменена');
+  });
+
   await check('14. Тема сохраняется после перезапуска', async () => {
     await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);

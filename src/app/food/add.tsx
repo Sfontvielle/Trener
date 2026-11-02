@@ -1,298 +1,370 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { FlatList, Platform, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Header, Screen } from '@/components/Screen';
-import { Banner, Button, Chip, Icon, Segmented, Skeleton, T } from '@/components/ui';
-import { Field, NumberStepper } from '@/components/inputs';
+import { Screen } from '@/components/Screen';
+import { Banner, Button, Icon, Segmented, Skeleton, T, elevation } from '@/components/ui';
+import { AppHeader, ListRow, Group } from '@/components/ds';
+import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
-import { useNutrition, mealForHour, MEAL_LABEL } from '@/stores/nutrition';
-import { usePlan } from '@/stores/plan';
-import { useProfile } from '@/stores/profile';
-import { allergenIn, foodAvoidance, healthOf } from '@/features/profile/health';
-import { searchLocalFoods, LOCAL_FOODS } from '@/data/foods';
-import { FoodApiError, foodErrorText, lookupBarcode, searchProducts } from '@/services/foodApi';
-import { macrosFor, remaining, sumMacros } from '@/features/nutrition/status';
-import { frequentProducts, lastPortion } from '@/features/nutrition/quick';
-import { today } from '@/utils/date';
-import { parseDecimal } from '@/utils/format';
+import { useNutrition, mealForHour, type SavedMeal } from '@/stores/nutrition';
+import { LOCAL_FOODS } from '@/data/foods';
+import { FoodApiError, foodErrorText, lookupBarcode } from '@/services/foodApi';
+import { useFoodSearch } from '@/features/nutrition/useFoodSearch';
+import { lastPortion } from '@/features/nutrition/quick';
+import { PortionSheet, SourceIcon, MEAL_TO, type PortionTarget } from '@/features/nutrition/PortionSheet';
+import { macrosExact, verificationOf } from '@/features/nutrition/schema';
+import { fmtValue, parseDecimal } from '@/utils/format';
+import { addDays, plural, today } from '@/utils/date';
 import { uid } from '@/utils/id';
 import { haptic } from '@/services/haptics';
-import { BRAND } from '@/config/brand';
 import { afterModalClose } from '@/components/modalGate';
 
-type FoodTab = 'fav' | 'frequent' | 'recent' | 'mine' | 'base';
-const TABS: { key: FoodTab; label: string; a11y?: string }[] = [
-  { key: 'fav', label: '★', a11y: 'Избранное' },
-  { key: 'frequent', label: 'Частые' },
+type Tab = 'recent' | 'fav' | 'mine';
+const TABS: { key: Tab; label: string }[] = [
   { key: 'recent', label: 'Недавние' },
+  { key: 'fav', label: 'Избранное' },
   { key: 'mine', label: 'Мои' },
-  { key: 'base', label: 'Базовые' },
 ];
-const TAB_HINT: Record<FoodTab, string> = {
-  fav: 'Избранное — звёздочка в карточке продукта',
-  frequent: 'Ешь регулярно — порция как в прошлый раз',
-  recent: 'Недавние',
-  mine: 'Мои продукты и блюда',
-  base: 'Базовые продукты',
-};
 
+type Row = { type: 'h'; key: string; title: string; note?: string } | { type: 'p'; key: string; p: FoodProduct } | { type: 'meal'; key: string; m: SavedMeal } | { type: 'sk'; key: string };
+
+/**
+ * Добавление еды — один поток (NUTRITION_SPEC.md §1, макет 03-food-search): Недавние · Избранное · Мои, поиск по
+ * всем базам, штрихкод, свой продукт. Тап по продукту — лист порции; «+» в строке — сразу в корзину с привычной
+ * порцией. Корзина добавляет несколько продуктов одним действием и переживает закрытие приложения.
+ */
 export default function AddFood() {
   const params = useLocalSearchParams<{ date?: string; productId?: string; meal?: MealSlot | ''; manual?: string; barcode?: string; enterBarcode?: string; name?: string }>();
   const date = params.date || today();
+  const meal: MealSlot = (params.meal as MealSlot) || (date === today() ? mealForHour(new Date().getHours()) : 'snack');
+  const insets = useSafeAreaInsets();
   const products = useNutrition((s) => s.products);
   const recentIds = useNutrition((s) => s.recent);
+  const favIds = useNutrition((s) => s.favorites);
+  const entries = useNutrition((s) => s.entries);
+  const lastGrams = useNutrition((s) => s.lastGrams);
+  const savedMeals = useNutrition((s) => s.meals);
+  const draft = useNutrition((s) => s.draft);
+  const cart = draft && draft.date === date ? draft : null;
   const [q, setQ] = useState('');
-  // Результат онлайн-поиска привязан к запросу: «загрузка» = результат ещё не для текущего запроса
-  const [result, setResult] = useState<{ q: string; items: FoodProduct[]; error: string | null }>({ q: '', items: [], error: null });
-  // Возврат со сканера: продукт уже в кэше
-  const [selected, setSelected] = useState<FoodProduct | null>(() => (params.productId ? products[params.productId] ?? LOCAL_FOODS.find((f) => f.id === params.productId) ?? null : null));
+  const [tabPick, setTab] = useState<Tab | null>(null);
+  const [portion, setPortion] = useState<PortionTarget | null>(() => {
+    const p = params.productId ? products[params.productId] ?? LOCAL_FOODS.find((f) => f.id === params.productId) : undefined;
+    return p ? { mode: 'add', product: p, date, meal } : null;
+  });
   const [barcodeOpen, setBarcodeOpen] = useState(params.enterBarcode === '1');
   const [customOpen, setCustomOpen] = useState(params.manual === '1');
   const [custom, setCustom] = useState<{ barcode?: string; name?: string }>({});
-  const reqId = useRef(0);
-
-  const recent = useMemo(() => recentIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [recentIds, products]);
-  const cachedMatches = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (t.length < 2) return [];
-    return Object.values(products).filter((p) => p.source !== 'local' && `${p.name} ${p.brand ?? ''}`.toLowerCase().includes(t)).slice(0, 10);
-  }, [q, products]);
-  const local = useMemo(() => searchLocalFoods(q, 12), [q]);
-  const entries = useNutrition((s) => s.entries);
-  const lastGrams = useNutrition((s) => s.lastGrams);
-  // Частые продукты определяются автоматически по дневнику (2+ раза за 3 недели)
-  const frequent = useMemo(() => frequentProducts(entries, products, lastGrams, date, 30).map((f) => f.product), [entries, products, lastGrams, date]);
-  const mine = useMemo(() => Object.values(products).filter((p) => p.source === 'custom'), [products]);
-  const favIds = useNutrition((s) => s.favorites);
-  const favs = useMemo(() => favIds.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p), [favIds, products]);
-  const [tabPick, setTab] = useState<FoodTab | null>(null);
-  const tab: FoodTab = tabPick ?? (favs.length ? 'fav' : frequent.length ? 'frequent' : recent.length ? 'recent' : 'base');
-
+  const [cartOpen, setCartOpen] = useState(false);
+  const search = useFoodSearch(q);
+  // Экран мог открыться по ссылке (сканер, уведомление) — тогда «назад» некуда: возвращаемся в дневник
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/nutrition'));
   const query = q.trim();
-  const online = query.length >= 3;
-  const remote = online && result.q === query ? result.items : [];
-  const error = online && result.q === query ? result.error : null;
-  const loading = online && result.q !== query;
 
-  useEffect(() => {
-    if (query.length < 3) return;
-    // Если введены только цифры — это штрихкод
-    const my = ++reqId.current;
-    const timer = setTimeout(async () => {
-      try {
-        const res = /^\d{8,14}$/.test(query) ? [await lookupBarcode(query)] : await searchProducts(query);
-        if (reqId.current === my) setResult({ q: query, items: res, error: null });
-      } catch (e) {
-        if (reqId.current === my) setResult({ q: query, items: [], error: foodErrorText(e) });
+  const find = (id: string) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id);
+  // Сколько раз ели за 30 дней — для подписи «Обычно 180 г, ели 6 раз»
+  const eaten30 = useMemo(() => {
+    const from = addDays(today(), -30);
+    const m = new Map<string, number>();
+    for (const e of entries) if (e.date >= from) m.set(e.productId, (m.get(e.productId) ?? 0) + 1);
+    return m;
+  }, [entries]);
+  const recent = useMemo(() => recentIds.map(find).filter((p): p is FoodProduct => !!p).slice(0, 40), [recentIds, products]); // eslint-disable-line react-hooks/exhaustive-deps
+  const favs = useMemo(() => favIds.map(find).filter((p): p is FoodProduct => !!p), [favIds, products]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mine = useMemo(() => Object.values(products).filter((p) => p.source === 'custom' || p.source === 'recipe').sort((a, b) => a.name.localeCompare(b.name, 'ru')), [products]);
+  const tab: Tab = tabPick ?? (recent.length ? 'recent' : favs.length ? 'fav' : 'recent');
+
+  const rows: Row[] = [];
+  if (query.length < 2) {
+    if (tab === 'recent') {
+      if (recent.length) recent.forEach((p) => rows.push({ type: 'p', key: `r-${p.id}`, p }));
+      else {
+        rows.push({ type: 'h', key: 'h-base', title: 'Базовые продукты', note: 'ккал на 100 г' });
+        LOCAL_FOODS.slice(0, 40).forEach((p) => rows.push({ type: 'p', key: `b-${p.id}`, p }));
       }
-    }, 450);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const sections: { key: string; title: string; data: FoodProduct[] }[] = [];
-  if (q.trim().length < 2) {
-    const data = tab === 'fav' ? favs : tab === 'frequent' ? frequent : tab === 'recent' ? recent.slice(0, 30) : tab === 'mine' ? mine : LOCAL_FOODS.slice(0, 40);
-    sections.push({ key: tab, title: TAB_HINT[tab], data });
+    } else if (tab === 'fav') favs.forEach((p) => rows.push({ type: 'p', key: `f-${p.id}`, p }));
+    else {
+      if (savedMeals.length) {
+        rows.push({ type: 'h', key: 'h-meals', title: 'Мои блюда' });
+        savedMeals.forEach((m) => rows.push({ type: 'meal', key: `m-${m.id}`, m }));
+      }
+      if (mine.length) {
+        rows.push({ type: 'h', key: 'h-mine', title: 'Мои продукты и рецепты', note: 'ккал на 100 г' });
+        mine.forEach((p) => rows.push({ type: 'p', key: `c-${p.id}`, p }));
+      }
+    }
   } else {
-    const seen = new Set<string>();
-    const dedupe = (arr: FoodProduct[]) => arr.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
-    const mine = dedupe([...cachedMatches, ...local]);
-    if (mine.length) sections.push({ key: 'local', title: 'Из твоих и базовых', data: mine });
-    const r = dedupe(remote);
-    if (r.length) sections.push({ key: 'remote', title: 'Open Food Facts', data: r });
+    // Сохранённые и базовые — сразу; найденные в сети — отдельной группой ниже, по мере ответа
+    const isNet = (p: FoodProduct) => (p.source === 'openfoodfacts' || p.source === 'usda') && !products[p.id];
+    const local = search.items.filter((r) => !isNet(r.product));
+    const net = search.items.filter((r) => isNet(r.product));
+    if (local.length) {
+      rows.push({ type: 'h', key: 'h-local', title: 'Мои и базовые продукты', note: 'ккал на 100 г' });
+      local.slice(0, 30).forEach((r) => rows.push({ type: 'p', key: `l-${r.product.id}`, p: r.product }));
+    }
+    if (net.length || search.pending.length) {
+      rows.push({ type: 'h', key: 'h-net', title: 'Open Food Facts и USDA', note: search.pending.length ? 'ищу…' : undefined });
+      net.slice(0, 30).forEach((r) => rows.push({ type: 'p', key: `n-${r.product.id}`, p: r.product }));
+      if (search.pending.length && !net.length) [0, 1].forEach((i) => rows.push({ type: 'sk', key: `sk-${i}` }));
+    }
   }
-  const flat: ({ type: 'h'; title: string; key: string } | { type: 'p'; p: FoodProduct; key: string })[] = [];
-  sections.forEach((s) => {
-    flat.push({ type: 'h', title: s.title, key: `h-${s.key}` });
-    s.data.forEach((p) => flat.push({ type: 'p', p, key: `${s.key}-${p.id}` }));
-  });
+
+  const netError = query.length >= 3 && search.done ? search.errors[0]?.error : undefined;
+  const nothing = query.length >= 2 && search.done && !search.items.length;
+  const inCart = (id: string) => !!cart?.items.some((i) => i.product.id === id);
+  const toggleCart = (p: FoodProduct) => {
+    const st = useNutrition.getState();
+    const i = cart?.items.findIndex((x) => x.product.id === p.id) ?? -1;
+    haptic.tap();
+    if (i >= 0) st.draftRemove(i);
+    else st.draftAdd(date, cart?.meal ?? meal, { product: p, grams: lastPortion(p.id, lastGrams, entries, p.serving).grams });
+  };
+  const commitCart = () => {
+    const c = useNutrition.getState().draft;
+    if (!c) return;
+    const ids = useNutrition.getState().draftCommit();
+    haptic.success();
+    toast(`${ids.length} ${plural(ids.length, 'продукт', 'продукта', 'продуктов')} в ${MEAL_TO[c.meal]}`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().deleteEntries(ids) });
+    leave();
+  };
+  const addMeal = (m: SavedMeal) => {
+    const ids = useNutrition.getState().addSavedMeal(m.id, meal, date);
+    haptic.success();
+    toast(`«${m.name}» в ${MEAL_TO[meal]}`, 'checkmark-circle', { label: 'Отменить', onPress: () => useNutrition.getState().deleteEntries(ids) });
+    leave();
+  };
+  const cartKcal = cart ? Math.round(cart.items.reduce((a, i) => a + macrosExact(i.product.per100, i.grams).kcal, 0)) : 0;
+
+  const sub = (p: FoodProduct): string => {
+    const n = eaten30.get(p.id) ?? 0;
+    const lp = lastPortion(p.id, lastGrams, entries);
+    const g = lp.source === 'last' ? lp.grams : undefined;
+    if (n >= 2 && g) return `Обычно ${fmtValue(g)} г, ели ${n} ${plural(n, 'раз', 'раза', 'раз')}`;
+    if (g) return `Последний раз ${fmtValue(g)} г`;
+    if (p.source === 'local') return 'Базовый продукт';
+    if (p.source === 'recipe') return 'Мой рецепт';
+    if (p.source === 'custom') return 'Мой продукт, с этикетки';
+    return [p.brand, verificationOf(p) === 'database' ? (p.source === 'usda' ? 'USDA' : 'Open Food Facts') : undefined].filter(Boolean).join(' · ');
+  };
 
   return (
     <Screen scroll={false} keyboard>
-      <Header title="Добавить еду" subtitle={date === today() ? 'Сегодня' : date} />
+      <AppHeader title={`Добавить в ${MEAL_TO[meal]}`} subtitle={date === today() ? undefined : date} back />
       <View style={styles.search}>
         <Icon name="search" size={18} color={colors.muted} />
-        <TextInput value={q} onChangeText={setQ} placeholder="Название, бренд или штрихкод" placeholderTextColor={colors.muted} style={styles.input} autoFocus={Platform.OS !== 'web' && !params.productId && params.manual !== '1'} returnKeyType="search" selectionColor={colors.accent} clearButtonMode="while-editing" />
+        <TextInput
+          value={q}
+          onChangeText={setQ}
+          placeholder="Название, бренд или штрихкод"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          autoFocus={Platform.OS !== 'web' && !params.productId && params.manual !== '1'}
+          returnKeyType="search"
+          selectionColor={colors.accent}
+          clearButtonMode="while-editing"
+          accessibilityLabel="Поиск продукта"
+          testID="food-search"
+        />
         {q ? (
-          <Pressable onPress={() => setQ('')} hitSlop={10} accessibilityLabel="Очистить">
+          <Pressable onPress={() => setQ('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Очистить поиск">
             <Icon name="close-circle" size={18} color={colors.muted} />
           </Pressable>
         ) : null}
       </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-        <Button title="Штрихкод" icon="barcode-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => (Platform.OS === 'web' ? setBarcodeOpen(true) : router.push({ pathname: '/food/scan', params: { date, meal: params.meal ?? '' } }))} />
+      <View style={styles.tools}>
+        <Button title="Сканировать" icon="barcode-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => (Platform.OS === 'web' ? setBarcodeOpen(true) : router.push({ pathname: '/food/scan', params: { date, meal } }))} />
         <Button title="Свой продукт" icon="create-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => setCustomOpen(true)} />
       </View>
-      {q.trim().length < 2 ? <Segmented items={TABS} value={tab} onChange={setTab} style={{ marginTop: 10 }} /> : null}
-      {error ? (
-        <View style={{ marginTop: 10 }}>
-          <Banner tone="warning" icon="cloud-offline-outline" text={error} />
+      {query.length < 2 ? <Segmented items={TABS} value={tab} onChange={setTab} style={{ marginTop: space.sm }} /> : null}
+      {netError ? (
+        <View style={{ marginTop: space.sm }}>
+          <Banner
+            tone="warning"
+            icon={netError instanceof FoodApiError && netError.kind === 'offline' ? 'cloud-offline-outline' : 'alert-circle-outline'}
+            text={netError instanceof FoodApiError && netError.kind === 'offline' ? (Platform.OS === 'web' ? foodErrorText(netError) : 'Нет сети — ищу в сохранённых и базовых продуктах') : netError instanceof FoodApiError && netError.kind === 'timeout' ? 'База продуктов не ответила вовремя' : 'База продуктов вернула ошибку'}
+            action={netError instanceof FoodApiError && netError.kind === 'offline' ? undefined : 'Повторить'}
+            onAction={() => setQ((x) => `${x} `)}
+          />
         </View>
       ) : null}
       <FlatList
-        style={{ marginTop: 6 }}
-        data={flat}
+        style={{ marginTop: space.xs }}
+        data={rows}
         keyExtractor={(x) => x.key}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        initialNumToRender={20}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        renderItem={({ item }) =>
+        initialNumToRender={16}
+        contentContainerStyle={{ paddingBottom: (cart ? 140 : 24) + insets.bottom }}
+        renderItem={({ item, index }) =>
           item.type === 'h' ? (
-            <T v="caption" style={{ marginTop: 14, marginBottom: 6 }}>
-              {item.title}
-            </T>
+            <View style={styles.groupTitle}>
+              <T v="footnote">{item.title}</T>
+              {item.note ? <T v="footnote" color={colors.muted}>{item.note}</T> : null}
+            </View>
+          ) : item.type === 'sk' ? (
+            <View style={[styles.row, edge(rows, index)]}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Skeleton height={14} width="62%" />
+                <Skeleton height={12} width="38%" />
+              </View>
+              <Skeleton height={14} width={32} />
+            </View>
+          ) : item.type === 'meal' ? (
+            <SavedMealRow m={item.m} onAdd={() => addMeal(item.m)} style={edge(rows, index)} />
           ) : (
-            <ProductRow p={item.p} onPress={() => setSelected(item.p)} />
+            <ProductRow p={item.p} sub={sub(item.p)} inCart={inCart(item.p.id)} style={edge(rows, index)} onPress={() => setPortion({ mode: 'add', product: item.p, date, meal: cart?.meal ?? meal })} onQuick={() => toggleCart(item.p)} />
           )
         }
-        ListFooterComponent={
-          q.trim().length < 2 && !sections[0]?.data.length ? (
-            <View style={{ alignItems: 'center', gap: 8, marginTop: 20 }}>
-              <T v="small" style={{ textAlign: 'center' }}>
-                {tab === 'frequent' ? `Здесь появятся продукты, которые ты ешь чаще всего — ${BRAND} запомнит их сам.` : tab === 'mine' ? 'Добавь свой продукт или блюдо с КБЖУ на 100 г — оно будет здесь.' : 'Пока пусто.'}
+        ListEmptyComponent={
+          query.length < 2 ? (
+            <View style={styles.empty}>
+              <T v="callout" style={{ textAlign: 'center' }}>
+                {tab === 'fav' ? 'Звёздочка в листе порции добавляет продукт в избранное — он будет здесь.' : tab === 'mine' ? 'Добавь свой продукт с этикетки — он будет здесь и найдётся без интернета.' : 'Здесь появятся продукты, которые ты добавлял.'}
               </T>
-              {tab === 'mine' ? <Button title="Свой продукт" size="sm" variant="secondary" onPress={() => setCustomOpen(true)} /> : null}
+              {tab === 'mine' ? <Button title="Свой продукт" icon="create-outline" variant="secondary" onPress={() => setCustomOpen(true)} /> : null}
             </View>
-          ) : loading ? (
-            <View style={{ gap: 8, marginTop: 12 }}>
-              <T v="caption">Ищу в базе продуктов…</T>
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} height={56} style={{ borderRadius: 12 }} />
-              ))}
-            </View>
-          ) : q.trim().length >= 3 && !remote.length && !error ? (
-            <View style={{ alignItems: 'center', gap: 8, marginTop: 20 }}>
-              <T v="small" style={{ textAlign: 'center' }}>
-                В базе ничего не найдено. Попробуй другое название или бренд — или добавь продукт вручную с этикетки.
+          ) : nothing ? (
+            <View style={styles.empty} testID="food-nothing">
+              <T v="callout" style={{ textAlign: 'center' }}>
+                Ничего не нашлось по «{query}». Проверь написание, попробуй бренд или добавь продукт с этикетки.
               </T>
-              <Button title="Добавить вручную" size="sm" variant="secondary" onPress={() => setCustomOpen(true)} />
+              <Button title="Свой продукт" icon="create-outline" variant="secondary" onPress={() => setCustomOpen(true)} />
             </View>
           ) : undefined
         }
       />
-      <PortionSheet key={selected?.id ?? 'none'} product={selected} date={date} initialMeal={params.meal || undefined} onClose={() => setSelected(null)} onAdded={() => { setSelected(null); router.back(); }} />
-      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); afterModalClose(() => setSelected(p)); }} onCreate={(code, nm) => { setBarcodeOpen(false); setCustom({ barcode: code, name: nm }); afterModalClose(() => setCustomOpen(true)); }} />
-      <CustomProductSheet visible={customOpen} initialName={custom.name || params.name || q} barcode={custom.barcode || params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); afterModalClose(() => setSelected(p)); }} />
+
+      {cart ? (
+        <View style={[styles.cart, elevation(), { paddingBottom: insets.bottom + space.sm }]} testID="food-cart">
+          <Pressable accessibilityRole="button" accessibilityLabel={`Корзина: ${cart.items.length} ${plural(cart.items.length, 'продукт', 'продукта', 'продуктов')}, ${cartKcal} ккал. Открыть`} onPress={() => setCartOpen(true)} style={styles.cartLine}>
+            <T v="callout">
+              В корзине{' '}
+              <T v="bodyStrong">
+                {cart.items.length} {plural(cart.items.length, 'продукт', 'продукта', 'продуктов')}
+              </T>
+            </T>
+            <T v="callout">
+              <T v="bodyStrong">{fmtValue(cartKcal)}</T> ккал
+            </T>
+          </Pressable>
+          <Button title={`Добавить в ${MEAL_TO[cart.meal]}`} size="lg" full onPress={commitCart} testID="cart-commit" />
+        </View>
+      ) : null}
+
+      <PortionSheet
+        target={portion}
+        onClose={() => setPortion(null)}
+        onDone={(how) => {
+          setPortion(null);
+          if (how === 'added') leave();
+        }}
+      />
+      <CartSheet visible={cartOpen} onClose={() => setCartOpen(false)} />
+      <BarcodeSheet visible={barcodeOpen} onClose={() => setBarcodeOpen(false)} onFound={(p) => { setBarcodeOpen(false); afterModalClose(() => setPortion({ mode: 'add', product: p, date, meal })); }} onCreate={(code, nm) => { setBarcodeOpen(false); setCustom({ barcode: code, name: nm }); afterModalClose(() => setCustomOpen(true)); }} />
+      <CustomProductSheet visible={customOpen} initialName={custom.name || params.name || q} barcode={custom.barcode || params.barcode} onClose={() => setCustomOpen(false)} onCreated={(p) => { setCustomOpen(false); afterModalClose(() => setPortion({ mode: 'add', product: p, date, meal })); }} />
     </Screen>
   );
 }
 
-const ProductRow = React.memo(function ProductRow({ p, onPress }: { p: FoodProduct; onPress: () => void }) {
+/** Строки списка между заголовками — одна группа: скругление у первой и последней, без линии под последней */
+function edge(rows: Row[], i: number): ViewStyle {
+  const first = i === 0 || rows[i - 1].type === 'h';
+  const last = i === rows.length - 1 || rows[i + 1].type === 'h';
+  return {
+    ...(first ? { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg } : null),
+    ...(last ? { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, borderBottomWidth: 0 } : null),
+  };
+}
+
+const ProductRow = React.memo(function ProductRow({ p, sub, inCart, onPress, onQuick, style }: { p: FoodProduct; sub: string; inCart: boolean; onPress: () => void; onQuick: () => void; style?: ViewStyle }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={p.name} style={({ pressed }) => [styles.row, pressed && { opacity: 0.75 }]}>
-      <View style={{ flex: 1 }}>
-        <T v="body" numberOfLines={2} style={{ fontSize: 15, fontWeight: '600' }}>
-          {p.name}
-        </T>
-        <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
-          {p.brand ? `${p.brand} · ` : ''}на 100 г: Б {p.per100.protein} · Ж {p.per100.fat} · У {p.per100.carbs}
-        </T>
-      </View>
-      <View style={{ alignItems: 'flex-end' }}>
-        <T v="body" style={{ fontWeight: '800', fontSize: 15 }}>
+    <View style={[styles.row, style]}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${p.name}${sub ? `, ${sub}` : ''}, ${Math.round(p.per100.kcal)} ккал на 100 г`} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]}>
+        <SourceIcon p={p} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T v="bodyStrong" numberOfLines={2}>
+            {p.name}
+          </T>
+          {sub ? (
+            <T v="footnote" numberOfLines={1}>
+              {sub}
+            </T>
+          ) : null}
+        </View>
+        <T v="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
           {Math.round(p.per100.kcal)}
         </T>
-        <T v="small" style={{ fontSize: 11 }}>
-          ккал
-        </T>
-      </View>
-    </Pressable>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={inCart ? `Убрать «${p.name}» из корзины` : `В корзину: ${p.name}`} accessibilityState={{ selected: inCart }} onPress={onQuick} hitSlop={8} style={[styles.quick, inCart && { backgroundColor: colors.text }]}>
+        <Icon name={inCart ? 'checkmark' : 'add'} size={18} color={inCart ? colors.bg : colors.text} />
+      </Pressable>
+    </View>
   );
 });
 
-function PortionSheet({ product, date, onClose, onAdded, initialMeal }: { product: FoodProduct | null; date: string; onClose: () => void; onAdded: () => void; initialMeal?: MealSlot }) {
-  const lastGrams = useNutrition((s) => s.lastGrams);
-  const entries = useNutrition((s) => s.entries);
-  const target = usePlan((s) => s.target);
-  const profile = useProfile((s) => s.profile);
-  // Порция по умолчанию — последняя (запомненная или из дневника), а не 100 г
-  const portion = product ? lastPortion(product.id, lastGrams, entries, product.serving) : null;
-  const [g, setG] = useState(() => portion?.grams ?? 100);
-  const [meal, setMeal] = useState<MealSlot>(() => initialMeal ?? mealForHour(new Date().getHours()));
-  if (!product) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
-  const m = macrosFor(product.per100, g);
-  const rem = target ? remaining(target, sumMacros(entries.filter((e) => e.date === date))) : null;
-  const presets = [...new Set([portion?.source === 'last' ? portion.grams : undefined, product.serving?.grams, 50, 100, 150, 200, 250, 350].filter((x): x is number => !!x && x > 0))].slice(0, 7);
-  const avoid = profile ? foodAvoidance(profile) : null;
-  const allergen = avoid ? allergenIn(`${product.name} ${product.brand ?? ''}`, avoid.allergyWords) : undefined;
-  const forbidden = !allergen && profile ? allergenIn(product.name, healthOf(profile).forbiddenFoods) : undefined;
+function SavedMealRow({ m, onAdd, style }: { m: SavedMeal; onAdd: () => void; style?: ViewStyle }) {
+  const products = useNutrition((s) => s.products);
+  const kcal = Math.round(m.items.reduce((a, it) => {
+    const p = products[it.productId] ?? LOCAL_FOODS.find((f) => f.id === it.productId);
+    return a + (p ? macrosExact(p.per100, it.grams).kcal : 0);
+  }, 0));
   return (
-    <Sheet visible={!!product} onClose={onClose} title={product.name} subtitle={product.brand ?? (product.source === 'local' ? 'Базовый продукт' : product.source === 'custom' ? 'Свой продукт' : product.source === 'usda' ? 'USDA FoodData Central' : 'Open Food Facts')}>
-      <View style={{ gap: space.md }}>
-        <FavStar id={product.id} />
-        {allergen ? <Banner tone="danger" icon="warning-outline" text={`В профиле указано: «${allergen}». Проверь состав на упаковке — название может не отражать все ингредиенты.`} /> : null}
-        {forbidden ? <Banner tone="warning" icon="ban-outline" text={`«${forbidden}» в списке запрещённых продуктов профиля.`} /> : null}
-        {portion?.source === 'last' ? (
-          <T v="small" testID="last-portion">
-            Последний раз: <T v="small" color={colors.text} style={{ fontWeight: '800' }}>{portion.grams} г</T>
-          </T>
-        ) : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {presets.map((x) => (
-            <Chip key={x} label={product.serving && x === product.serving.grams ? `${product.serving.label} · ${x} г` : `${x} г`} active={g === x} onPress={() => setG(x)} />
-          ))}
-        </View>
-        <NumberStepper value={g} onChange={setG} step={10} min={1} max={3000} unit="г" />
-        <View style={styles.macroBox}>
-          <MacroCell label="Ккал" v={m.kcal} rem={rem?.kcal} />
-          <MacroCell label="Белки" v={m.protein} rem={rem?.protein} />
-          <MacroCell label="Жиры" v={m.fat} rem={rem?.fat} />
-          <MacroCell label="Углев." v={m.carbs} rem={rem?.carbs} />
-          <MacroCell label="Клетч." v={m.fiber} />
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {(Object.keys(MEAL_LABEL) as MealSlot[]).map((k) => (
-            <Chip key={k} label={MEAL_LABEL[k]} active={meal === k} onPress={() => setMeal(k)} />
-          ))}
-        </View>
-        <Button
-          title={`Добавить · ${m.kcal} ккал`}
-          icon="add"
-          size="lg"
-          onPress={() => {
-            useNutrition.getState().addEntry(product, g, meal, date);
-            haptic.success();
-            toast(`${product.name} — ${g} г`);
-            onAdded();
-          }}
-        />
+    <Pressable accessibilityRole="button" accessibilityLabel={`Добавить блюдо «${m.name}»: ${m.items.length} ${plural(m.items.length, 'продукт', 'продукта', 'продуктов')}, ${kcal} ккал`} onPress={onAdd} style={({ pressed }) => [styles.row, styles.rowMain, style, pressed && { opacity: 0.6 }]}>
+      <Icon name="bookmark-outline" size={16} color={colors.muted} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <T v="bodyStrong" numberOfLines={1}>
+          {m.name}
+        </T>
+        <T v="footnote" numberOfLines={1}>
+          {m.items.map((i) => i.name).join(', ')}
+        </T>
       </View>
-    </Sheet>
-  );
-}
-
-function FavStar({ id }: { id: string }) {
-  const fav = useNutrition((s) => s.favorites.includes(id));
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={fav ? 'Убрать из избранного' : 'В избранное'} onPress={() => { haptic.tap(); useNutrition.getState().toggleFavorite(id); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }} hitSlop={8}>
-      <Icon name={fav ? 'star' : 'star-outline'} size={18} color={fav ? colors.fat : colors.textDim} />
-      <T v="small" style={{ fontWeight: '700' }} color={fav ? colors.text : colors.textDim}>
-        {fav ? 'В избранном' : 'В избранное'}
+      <T v="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
+        {fmtValue(kcal)}
       </T>
     </Pressable>
   );
 }
 
-function MacroCell({ label, v, rem }: { label: string; v: number | undefined; rem?: number }) {
-  const over = rem !== undefined && v !== undefined && v > rem + (label === 'Ккал' ? 50 : 5) && rem >= 0;
+/** Корзина: что добавится одним действием; можно убрать продукт */
+function CartSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const draft = useNutrition((s) => s.draft);
   return (
-    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-      <T v="caption" style={{ fontSize: 10 }}>
-        {label}
-      </T>
-      <T v="num" style={{ fontSize: 18 }} color={over ? colors.warning : colors.text}>
-        {v === undefined ? '—' : Math.round(v)}
-      </T>
-      {rem !== undefined ? (
-        <T v="small" style={{ fontSize: 10 }}>
-          ост. {Math.max(0, Math.round(rem))}
-        </T>
+    <Sheet visible={visible && !!draft} onClose={onClose} title="Корзина" subtitle={draft ? `Добавится в ${MEAL_TO[draft.meal]}` : undefined}>
+      {draft ? (
+        <View style={{ gap: space.md }}>
+          <Group>
+            {draft.items.map((it, i) => (
+              <ListRow
+                key={it.product.id}
+                title={it.product.name}
+                subtitle={`${it.unit ? `${String(it.unit.qty).replace('.', ',')} ${it.unit.label}, ` : ''}${fmtValue(it.grams)} г`}
+                value={`${Math.round(macrosExact(it.product.per100, it.grams).kcal)} ккал`}
+                right={
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Убрать «${it.product.name}»`} onPress={() => useNutrition.getState().draftRemove(i)} hitSlop={8} style={styles.quick}>
+                    <Icon name="remove" size={18} color={colors.text} />
+                  </Pressable>
+                }
+              />
+            ))}
+          </Group>
+          <Button
+            title="Очистить корзину"
+            variant="ghost"
+            onPress={() => {
+              const prev = useNutrition.getState().draft;
+              useNutrition.getState().draftClear();
+              onClose();
+              if (prev) toast('Корзина очищена', 'trash-outline', { label: 'Отменить', onPress: () => useNutrition.setState({ draft: prev }) });
+            }}
+          />
+        </View>
       ) : null}
-    </View>
+    </Sheet>
   );
 }
 
@@ -301,18 +373,19 @@ function BarcodeSheet({ visible, onClose, onFound, onCreate }: { visible: boolea
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [missing, setMissing] = useState<{ name?: string } | null>(null);
-  const cache = useNutrition((s) => s.cacheProduct);
   const find = async () => {
     setBusy(true);
     setErr(null);
     setMissing(null);
     try {
-      const p = await lookupBarcode(code);
-      cache(p);
+      // Сначала свои продукты — найдутся и без сети
+      const own = Object.values(useNutrition.getState().products).find((p) => p.barcode && p.barcode.replace(/^0+/, '') === code.replace(/^0+/, ''));
+      const p = own ?? (await lookupBarcode(code));
+      useNutrition.getState().cacheProduct(p);
       onFound(p);
       setCode('');
     } catch (e) {
-      setErr(foodErrorText(e));
+      setErr(e instanceof FoodApiError && e.kind === 'not_found' && !e.partial ? 'Этого штрихкода нет в базах' : foodErrorText(e));
       if (e instanceof FoodApiError && e.kind === 'not_found') setMissing({ name: e.partial?.name });
     } finally {
       setBusy(false);
@@ -324,9 +397,9 @@ function BarcodeSheet({ visible, onClose, onFound, onCreate }: { visible: boolea
         <Field placeholder="4600000000000" keyboardType="number-pad" value={code} onChangeText={(t) => setCode(t.replace(/\D/g, ''))} maxLength={14} />
         {err ? <Banner tone="warning" text={err} /> : null}
         {missing ? (
-          <Button title={missing.name ? 'Добавить с этикетки' : 'Создать продукт с этим кодом'} icon="add-circle-outline" onPress={() => onCreate(code, missing.name)} />
+          <Button title={missing.name ? 'Добавить с этикетки' : 'Создать продукт с этим кодом'} icon="add-circle-outline" full onPress={() => onCreate(code, missing.name)} />
         ) : (
-          <Button title="Найти" icon="search" loading={busy} disabled={code.length < 8} onPress={find} />
+          <Button title="Найти" icon="search" full loading={busy} disabled={code.length < 8} onPress={find} />
         )}
       </View>
     </Sheet>
@@ -336,8 +409,7 @@ function BarcodeSheet({ visible, onClose, onFound, onCreate }: { visible: boolea
 function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode }: { visible: boolean; onClose: () => void; onCreated: (p: FoodProduct) => void; initialName: string; barcode?: string }) {
   // Открыт сразу (из сканера) — название подставляется с первого кадра
   const [name, setName] = useState(() => (visible ? initialName.replace(/^\d+$/, '') : ''));
-  const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
-  // При открытии листа подставляем то, что искали
+  const [v, setV] = useState({ kcal: '', protein: '', fat: '', carbs: '', fiber: '', piece: '' });
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {
     setWasVisible(visible);
@@ -351,29 +423,41 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
   const f = num(v.fat);
   const c = num(v.carbs);
   const kcal = v.kcal ? num(v.kcal) : Math.round(p * 4 + f * 9 + c * 4);
-  const valid = name.trim().length > 1 && kcal > 0 && p <= 100 && f <= 100 && c <= 100;
+  const piece = v.piece.trim() ? num(v.piece) : 0;
+  const valid = name.trim().length > 1 && kcal > 0 && kcal <= 950 && p <= 100 && f <= 100 && c <= 100 && piece >= 0 && piece <= 3000;
   return (
     <Sheet visible={visible} onClose={onClose} title="Свой продукт" subtitle={barcode ? `Штрихкод ${barcode} · данные с этикетки, на 100 г` : 'Данные с этикетки, на 100 г'}>
       <View style={{ gap: space.md }}>
         <Field label="Название" value={name} onChangeText={setName} placeholder="Например: Сырники мамины" />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: space.xs }}>
           <Field style={{ flex: 1 }} label="Белки, г" keyboardType="decimal-pad" value={v.protein} onChangeText={(t) => setV({ ...v, protein: t })} />
           <Field style={{ flex: 1 }} label="Жиры, г" keyboardType="decimal-pad" value={v.fat} onChangeText={(t) => setV({ ...v, fat: t })} />
           <Field style={{ flex: 1 }} label="Углев., г" keyboardType="decimal-pad" value={v.carbs} onChangeText={(t) => setV({ ...v, carbs: t })} />
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Field style={{ flex: 1 }} label="Ккал (пусто — посчитаем)" keyboardType="decimal-pad" value={v.kcal} onChangeText={(t) => setV({ ...v, kcal: t })} placeholder={String(kcal)} />
+        <View style={{ flexDirection: 'row', gap: space.xs }}>
+          <Field style={{ flex: 1 }} label="Ккал" keyboardType="decimal-pad" value={v.kcal} onChangeText={(t) => setV({ ...v, kcal: t })} placeholder={`${kcal} — посчитаем`} />
           <Field style={{ flex: 1 }} label="Клетчатка, г" keyboardType="decimal-pad" value={v.fiber} onChangeText={(t) => setV({ ...v, fiber: t })} placeholder="если есть" />
         </View>
+        <Field label="Вес 1 шт, г" keyboardType="decimal-pad" value={v.piece} onChangeText={(t) => setV({ ...v, piece: t })} placeholder="если продаётся штуками — вводить «2 шт»" />
         <Button
           title="Сохранить продукт"
           icon="checkmark"
+          size="lg"
+          full
           disabled={!valid}
           onPress={() => {
             const fib = v.fiber.trim() ? num(v.fiber) : undefined;
-            const prod: FoodProduct = { id: `custom:${uid()}`, name: name.trim(), per100: fib !== undefined && fib <= 100 ? { kcal, protein: p, fat: f, carbs: c, fiber: fib } : { kcal, protein: p, fat: f, carbs: c }, source: 'custom', barcode: barcode || undefined };
+            const prod: FoodProduct = {
+              id: `custom:${uid()}`,
+              name: name.trim(),
+              per100: fib !== undefined && fib <= 100 ? { kcal, protein: p, fat: f, carbs: c, fiber: fib } : { kcal, protein: p, fat: f, carbs: c },
+              source: 'custom',
+              verification: 'label',
+              barcode: barcode || undefined,
+              ...(piece > 0 ? { units: [{ id: 'piece' as const, label: 'шт', grams: piece }] } : null),
+            };
             useNutrition.getState().cacheProduct(prod);
-            setV({ kcal: '', protein: '', fat: '', carbs: '', fiber: '' });
+            setV({ kcal: '', protein: '', fat: '', carbs: '', fiber: '', piece: '' });
             // Своя база: в следующий раз этот штрихкод найдётся сразу, без интернета
             if (barcode) toast('Сохранено в твою базу — по штрихкоду найдётся сразу', 'checkmark-circle');
             onCreated(prod);
@@ -385,9 +469,15 @@ function CustomProductSheet({ visible, onClose, onCreated, initialName, barcode 
 }
 
 const styles = themed({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 50, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: 12 },
-  input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, height: '100%' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface, marginBottom: 6, minHeight: 56 },
-  macroBox: { flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: radius.md, paddingVertical: 12 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: space.xs, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: space.sm },
+  // outlineWidth: в веб-превью без рамки фокуса браузера (на iPhone её нет)
+  input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 17, height: '100%', outlineWidth: 0 },
+  tools: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
+  groupTitle: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.xs, paddingHorizontal: space.xxs },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 56, paddingVertical: space.xs, paddingHorizontal: space.md, backgroundColor: colors.surface, borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
+  quick: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center', gap: space.sm, marginTop: space.xl, paddingHorizontal: space.md },
+  cart: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: space.sm, paddingHorizontal: space.md, gap: space.sm, backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
+  cartLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', minHeight: 32 },
 });
-

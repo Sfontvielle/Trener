@@ -38,7 +38,6 @@ import { sleepMinutesOf } from '@/features/science/recovery';
 import { buildJournal, dayMode } from '@/features/journal/build';
 import { workoutDebrief } from '@/features/training/debrief';
 import { healthContext } from '@/features/health/model';
-import { AddFoodSheet } from '@/features/nutrition/AddFoodSheet';
 import { formatDayLong, today, weekdayIndex } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { haptic } from '@/services/haptics';
@@ -97,7 +96,6 @@ export default function Home() {
   const readiness = useReadiness();
   const tw = useTodayWorkout();
   const nut = useDayNutrition();
-  const [addFood, setAddFood] = useState(false);
   const [measureOpen, setMeasureOpen] = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
@@ -233,7 +231,7 @@ export default function Home() {
         </Appear>
 
         <Appear i={1} style={{ marginTop: space.lg }}>
-          <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => setAddFood(true)} />
+          <Hero tw={tw} active={active} debrief={debrief} coach={coach} evening={mode === 'evening'} onAddFood={() => router.push({ pathname: '/food/add', params: { date: d, meal: mealForHour(now.getHours()) } })} />
         </Appear>
 
         {/* Плитки 2×2: калории, белки, шаги, восстановление — только данные пользователя и Apple Health */}
@@ -330,7 +328,6 @@ export default function Home() {
         </Appear>
       </ScrollView>
 
-      <AddFoodSheet visible={addFood} onClose={() => setAddFood(false)} date={d} meal={mealForHour(now.getHours())} />
       <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">
         <TrainingCalendar initiallyOpen today={d} src={daySrc} onSelect={(x) => { setDiaryOpen(false); afterModalClose(() => setDayOpen(x)); }} />
       </Sheet>
