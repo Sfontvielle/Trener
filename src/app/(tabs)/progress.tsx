@@ -25,6 +25,7 @@ import { BRAND } from '@/config/brand';
 import { useLabs } from '@/stores/labs';
 import { healthFlags } from '@/features/labs/analysis';
 import { analyzeBody, combineBodyFat, mergeZones, withoutStrengths, ZONE_LABEL } from '@/features/progress/body';
+import { NutritionAnalytics } from '@/features/nutrition/AnalyticsSection';
 
 const fmt1 = (x: number) => String(Math.round(x * 10) / 10).replace('.', ',');
 
@@ -128,6 +129,9 @@ export default function Progress() {
           {story ?? 'Пока мало данных за этот период — записывай вес, замеры и тренировки.'}
         </T>
       </Appear>
+
+      {/* Питание за тот же период: средние по учтённым дням, калории по дням, связь с весом */}
+      <NutritionAnalytics days={Number(cmpDays) as 7 | 30 | 90} />
 
       {/* Переходы — одним списком */}
       <Appear i={4} style={[styles.list, { marginTop: space.xl }]}>

@@ -180,6 +180,9 @@ export default function AddFood() {
         <Button title="Свой продукт" icon="create-outline" variant="secondary" size="sm" style={{ flex: 1 }} onPress={() => setCustomOpen(true)} />
       </View>
       {query.length < 2 ? <Segmented items={TABS} value={tab} onChange={setTab} style={{ marginTop: space.sm }} /> : null}
+      {query.length < 2 && tab === 'mine' ? (
+        <Button title="Новый рецепт" icon="restaurant-outline" variant="ghost" size="sm" onPress={() => router.push('/food/recipe')} style={{ alignSelf: 'flex-start', marginTop: space.xs }} testID="new-recipe" />
+      ) : null}
       {netError ? (
         <View style={{ marginTop: space.sm }}>
           <Banner

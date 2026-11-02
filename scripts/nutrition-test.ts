@@ -16,6 +16,9 @@ import {
   verificationOf,
 } from '../src/features/nutrition/schema';
 import { sumMacros } from '../src/features/nutrition/status';
+import { isCountedDay, nutritionPeriod, weightLinkText } from '../src/features/nutrition/analytics';
+import type { NutritionTarget, WeightEntry } from '../src/types';
+import { addDays } from '../src/utils/date';
 
 // Фикстура хранилища v1 — в том виде, в каком его писало приложение до фазы C (macrosFor с округлением)
 const V1 = {
@@ -151,4 +154,57 @@ test('Рецепт: клетчатка неизвестна, если её не�
     now: 1,
   });
   assert.equal(r.per100.fiber, undefined);
+});
+
+// ── Аналитика 7 / 30 / 90 ────────────────────────────────────────────────
+
+const TARGET = { kcal: 2500, protein: 150, fat: 80, carbs: 290, fiber: 35 } as unknown as NutritionTarget;
+const TODAY = '2026-11-02';
+const E = (date: string, meal: FoodEntry['meal'], kcal: number, extra: Partial<FoodEntry['macros']> = {}): FoodEntry => ({ id: `${date}-${meal}-${kcal}`, date, productId: 'x', name: 'x', grams: 100, macros: { kcal, protein: kcal / 20, fat: kcal / 40, carbs: kcal / 10, ...extra }, meal, createdAt: 1 });
+
+test('Учтённый день: ≥ 2 приёмов или ≥ 800 ккал', () => {
+  assert.equal(isCountedDay([]), false);
+  assert.equal(isCountedDay([E(TODAY, 'breakfast', 300)]), false, 'один перекус — не учтён');
+  assert.equal(isCountedDay([E(TODAY, 'breakfast', 300), E(TODAY, 'lunch', 200)]), true, 'два приёма');
+  assert.equal(isCountedDay([E(TODAY, 'lunch', 500), E(TODAY, 'lunch', 300)]), true, 'один приём, но 800 ккал');
+  assert.equal(isCountedDay([E(TODAY, 'lunch', 799.9)]), false);
+});
+
+test('Период: средние только по учтённым дням, сегодня не входит, дни без записей — null', () => {
+  const entries = [
+    E(addDays(TODAY, -1), 'breakfast', 1000), E(addDays(TODAY, -1), 'dinner', 1500), // учтён: 2500
+    E(addDays(TODAY, -2), 'lunch', 2000), // учтён по ккал: 2000
+    E(addDays(TODAY, -3), 'snack', 300), // не учтён
+    E(TODAY, 'breakfast', 900), E(TODAY, 'lunch', 900), // сегодня — не в средних
+    E(addDays(TODAY, -40), 'lunch', 5000), // вне периода
+  ];
+  const p = nutritionPeriod({ entries, target: TARGET, weights: [], days: 7, today: TODAY });
+  assert.equal(p.counted, 2);
+  assert.equal(p.logged, 3, 'дни с записями до сегодня');
+  assert.equal(p.avg!.kcal, 2250);
+  assert.equal(Math.round(p.pct!.kcal * 100), 90);
+  assert.equal(p.perDay.length, 7);
+  assert.deepEqual(p.perDay[p.perDay.length - 1], { date: TODAY, kcal: 1800, counted: false });
+  assert.equal(p.perDay[0].kcal, null);
+  assert.equal(p.avg!.fiber, null, 'клетчатки нет ни в одном дне');
+  assert.equal(nutritionPeriod({ entries: [], target: TARGET, weights: [], days: 30, today: TODAY }).avg, null);
+});
+
+test('Связь с весом: нужно 14 учтённых дней и 4 взвешивания; иначе — сколько не хватает', () => {
+  const entries: FoodEntry[] = [];
+  for (let i = 1; i <= 20; i++) entries.push(E(addDays(TODAY, -i), 'breakfast', 1200), E(addDays(TODAY, -i), 'dinner', 1050));
+  const few: WeightEntry[] = [3, 10].map((i) => ({ date: addDays(TODAY, -i), kg: 80 } as WeightEntry));
+  const short = nutritionPeriod({ entries: entries.slice(0, 20), target: TARGET, weights: few, days: 30, today: TODAY });
+  assert.deepEqual(short.weight, { ok: false, needDays: 4, needWeighIns: 2 });
+  assert.equal(weightLinkText(short.weight), 'Недостаточно данных, чтобы связать питание с весом: нужно ещё 4 дня с записями и ещё 2 взвешивания.');
+  // 20 учтённых дней по 2250 ккал (на 250 меньше цели), вес снижается
+  const ws: WeightEntry[] = Array.from({ length: 10 }, (_, k) => ({ date: addDays(TODAY, -28 + k * 3), kg: 81 - k * 0.12 } as WeightEntry));
+  const ok = nutritionPeriod({ entries, target: TARGET, weights: ws, days: 30, today: TODAY });
+  assert.equal(ok.weight.ok, true);
+  if (ok.weight.ok) {
+    assert.equal(ok.weight.avgKcalDelta, -250);
+    assert.ok(ok.weight.kgPerWeek < 0, `${ok.weight.kgPerWeek}`);
+  }
+  assert.match(weightLinkText(ok.weight), /^Вы ели в среднем на 250 ккал меньше цели, вес снижается примерно на 0,\d+ кг в неделю\.$/);
+  assert.equal(weightLinkText({ ok: true, avgKcalDelta: 20, kgPerWeek: 0.01, weighIns: 8 }), 'Вы ели примерно по цели, вес почти не меняется.');
 });

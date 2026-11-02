@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
+import { router } from 'expo-router';
+import { afterModalClose } from '@/components/modalGate';
 import type { FoodEntry, FoodProduct, FoodUnit, ISODate, MealSlot } from '@/types';
 import { colors, space, themed } from '@/theme';
 import { Banner, Button, Chip, Icon, IconButton, Segmented, T } from '@/components/ui';
@@ -44,7 +46,7 @@ function subtitleOf(p: FoodProduct): string {
   return [p.brand, `${status}${from}`].filter(Boolean).join(' · ');
 }
 
-function PortionBody({ target, onDone }: { target: PortionTarget; onClose: () => void; onDone?: (how: 'added' | 'cart' | 'saved' | 'deleted') => void }) {
+function PortionBody({ target, onClose, onDone }: { target: PortionTarget; onClose: () => void; onDone?: (how: 'added' | 'cart' | 'saved' | 'deleted') => void }) {
   const p = target.product;
   const units = unitsFor(p);
   const lastGrams = useNutrition((s) => s.lastGrams);
@@ -112,6 +114,9 @@ function PortionBody({ target, onDone }: { target: PortionTarget; onClose: () =>
         </View>
         <FavButton id={p.id} />
       </View>
+      {p.source === 'recipe' ? (
+        <Button title="Изменить рецепт" icon="create-outline" variant="ghost" size="sm" style={{ alignSelf: 'flex-start' }} onPress={() => { onClose(); afterModalClose(() => router.push({ pathname: '/food/recipe', params: { id: p.id.replace(/^recipe:/, '') } })); }} />
+      ) : null}
       {allergen ? <Banner tone="danger" icon="warning-outline" text={`В профиле указано: «${allergen}». Проверь состав на упаковке — название может не отражать все ингредиенты.`} /> : null}
       {forbidden ? <Banner tone="warning" icon="ban-outline" text={`«${forbidden}» в списке запрещённых продуктов профиля.`} /> : null}
 

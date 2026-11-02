@@ -1726,6 +1726,64 @@ const closeSheet = async (pg) => {
     assert.equal((await nutritionState()).entries.find((x) => x.id === e.id).grams, 80, 'правка отменена');
   });
 
+  await check('64. Рецепт: 2 продукта, вес готового и порции → КБЖУ на 100 г готового → порция в обед; правка рецепта не меняет запись', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByTestId('meal-lunch').click();
+    await page.waitForTimeout(1000);
+    await page.getByRole('tab', { name: 'Мои' }).click();
+    await page.getByTestId('new-recipe').click();
+    await page.waitForTimeout(1000);
+    await page.getByTestId('recipe-name').fill('Гречка с курицей e2e');
+    const addIng = async (q, name, grams, idx) => {
+      await page.getByText('Добавить', { exact: true }).first().click();
+      await page.waitForTimeout(700);
+      await page.getByTestId('ingredient-search').fill(q);
+      await page.waitForTimeout(800);
+      await page.getByLabel(new RegExp(`^${name},`)).first().click();
+      await page.waitForTimeout(700);
+      await page.getByTestId(`recipe-ing-${idx}`).locator('input').fill(String(grams));
+      await page.waitForTimeout(200);
+    };
+    await addIng('гречка', 'Гречка отварная', 200, 0);
+    await addIng('курица', 'Куриная грудка отварная', 150, 1);
+    await page.getByTestId('recipe-cooked').locator('input').fill('700');
+    await page.waitForTimeout(300);
+    // (200 × 1,10 + 150 × 1,37) = 425,5 ккал на 700 г готового: 61 ккал/100 г; порция 350 г — 213 ккал
+    const sum = await page.getByTestId('recipe-summary').innerText();
+    assert.match(sum, /На 100 г готового\s+61\s+ккал/, sum);
+    assert.match(sum, /Порция · 350 г\s+213\s+ккал/, sum);
+    await page.getByTestId('recipe-save').click();
+    await page.waitForTimeout(1000);
+    const st0 = await nutritionState();
+    const rec = st0.recipes.find((r) => r.name === 'Гречка с курицей e2e');
+    assert.ok(rec, 'рецепт сохранён');
+    await page.getByRole('tab', { name: 'Мои' }).click();
+    await page.getByLabel(/^Гречка с курицей e2e/).first().click();
+    await page.waitForTimeout(900);
+    await page.getByRole('tab', { name: /^порция/ }).click();
+    await page.waitForTimeout(300);
+    await page.getByTestId('portion-add').click();
+    await page.waitForTimeout(900);
+    const st = await nutritionState();
+    const e = st.entries.slice(-1)[0];
+    assert.equal(e.recipeId, rec.id);
+    assert.equal(e.meal, 'lunch');
+    assert.equal(Math.round(e.macros.kcal), 213);
+    assert.deepEqual(e.unit, { id: 'serving', qty: 1, label: 'порция' });
+    assert.ok(await page.getByText('1 порция, 350 г').first().isVisible(), 'в дневнике — порция');
+    // Правка рецепта (меньше порций) не трогает запись — снимок
+    await page.evaluate((id) => {
+      const raw = JSON.parse(localStorage.getItem('form.nutrition'));
+      raw.state.recipes = raw.state.recipes.map((r) => (r.id === id ? { ...r, per100: { ...r.per100, kcal: 999 } } : r));
+      localStorage.setItem('form.nutrition', JSON.stringify(raw));
+    }, rec.id);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    assert.equal(Math.round((await nutritionState()).entries.find((x) => x.id === e.id).macros.kcal), 213, 'снимок записи не изменился');
+  });
+
   await check('14. Тема сохраняется после перезапуска', async () => {
     await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
