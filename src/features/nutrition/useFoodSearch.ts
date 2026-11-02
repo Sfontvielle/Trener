@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNutrition } from '@/stores/nutrition';
 import { appFoodSearch, rankContext } from '@/services/food/providers';
-import type { SearchState } from '@/services/food/service';
+import { NETWORK_MIN, type SearchState } from '@/services/food/service';
 import { today } from '@/utils/date';
 
 const EMPTY: SearchState = { query: '', items: [], pending: [], errors: [], done: true };
@@ -10,11 +10,15 @@ const EMPTY: SearchState = { query: '', items: [], pending: [], errors: [], done
 const NETWORK_DELAY = 350;
 
 /**
- * Поиск продуктов для экрана. Свои и базовые продукты — сразу на каждый символ; базы в сети — после паузы в наборе.
- * Ввод не блокируется: пока идёт сетевой запрос, можно печатать дальше — старый запрос отменяется.
+ * Поиск продуктов для экрана. Свои и базовые продукты — сразу на каждый символ (синхронно); базы в сети — после
+ * паузы в наборе. Ввод не блокируется: пока идёт сетевой запрос, можно печатать дальше — старый запрос отменяется.
  */
 export function useFoodSearch(query: string): SearchState {
-  const [state, setState] = useState<SearchState>(EMPTY);
+  const q = query.trim();
+  // Свои продукты, избранное и дневник влияют на результаты и порядок — пересчёт при их изменении
+  const products = useNutrition((s) => s.products);
+  const favorites = useNutrition((s) => s.favorites);
+  const entries = useNutrition((s) => s.entries);
   const engine = useMemo(
     () =>
       appFoodSearch(
@@ -26,19 +30,23 @@ export function useFoodSearch(query: string): SearchState {
       ),
     [],
   );
+  // Движок читает хранилище через getState: products, favorites и entries в зависимостях — чтобы пересчитать при их смене
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const offline = useMemo(() => (q.length >= 2 ? engine.offline(q) : EMPTY), [engine, q, products, favorites, entries]);
+  const [net, setNet] = useState<SearchState | null>(null);
 
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < NETWORK_MIN) {
       engine.cancel();
-      setState(EMPTY);
       return;
     }
-    engine.search(q, setState, { network: false });
-    const t = setTimeout(() => engine.search(q, setState), NETWORK_DELAY);
+    const t = setTimeout(() => engine.search(q, setNet), NETWORK_DELAY);
     return () => clearTimeout(t);
-  }, [query, engine]);
+  }, [q, engine]);
 
   useEffect(() => () => engine.cancel(), [engine]);
-  return state;
+
+  if (net && net.query === q) return net;
+  // Пока идёт пауза в наборе — офлайн-результаты и признак «ищу в базах»
+  return q.length >= NETWORK_MIN ? { ...offline, pending: engine.networkIds, done: false } : offline;
 }

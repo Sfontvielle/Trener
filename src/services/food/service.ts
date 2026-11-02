@@ -47,6 +47,11 @@ export function createFoodSearch(providers: FoodProvider[], context: () => RankC
     current?.abort();
     const ctrl = new AbortController();
     current = ctrl;
+    run(raw, onUpdate, o, ctrl);
+    return ctrl;
+  }
+
+  function run(raw: string, onUpdate: (s: SearchState) => void, o: { network?: boolean }, ctrl: AbortController): void {
     const q = normalizeQuery(raw);
     const found: { product: FoodProduct; match: MatchKind }[] = [];
     const errors: SearchError[] = [];
@@ -67,7 +72,7 @@ export function createFoodSearch(providers: FoodProvider[], context: () => RankC
     };
     if (!q.tokens.length) {
       onUpdate({ query: q.raw, items: [], pending: [], errors: [], done: true });
-      return ctrl;
+      return;
     }
 
     // 1. Офлайн — сразу, с опечатками и синонимами
@@ -108,11 +113,20 @@ export function createFoodSearch(providers: FoodProvider[], context: () => RankC
           emit();
         });
     }
-    return ctrl;
+  }
+
+  /** Только офлайн-источники, синхронно и без побочных эффектов — для показа на каждый введённый символ */
+  function offline(raw: string): SearchState {
+    let out: SearchState = { query: raw.trim(), items: [], pending: [], errors: [], done: true };
+    run(raw, (st) => (out = st), { network: false }, new AbortController());
+    return out;
   }
 
   return {
     search,
+    offline,
+    /** Сетевые источники — для индикатора «ищу в базах» до начала запроса */
+    networkIds: providers.filter((p) => !p.offline).map((p) => p.id),
     /** Отменить текущий запрос (уход с экрана) */
     cancel: () => current?.abort(),
   };
