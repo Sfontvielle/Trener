@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Питание</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); margin: 8px -4px 0; }
+  .day { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 4px; border-radius: 12px; }
+  .day .n { width: 36px; height: 36px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; }
+  .day.today .n { background: var(--t1); color: var(--bg); }
+  .day .mark { width: 4px; height: 4px; border-radius: 2px; background: var(--t3); }
+  .day .mark.none { background: transparent; }
+  .summary { display: flex; align-items: flex-end; justify-content: space-between; margin: 20px 0 10px; }
+  .summary .side { text-align: right; display: grid; grid-template-columns: auto auto; column-gap: 10px; row-gap: 2px; }
+  .macros { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .meal-head { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 12px 10px 16px; }
+  .meal-head .grow { flex: 1; }
+  .food { position: relative; display: flex; align-items: center; gap: 12px; padding: 9px 16px; min-height: 52px; }
+  .food::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--sep); }
+  .meal + .meal { border-top: 0.5px solid var(--sep); }
+  .repeat { display: flex; align-items: center; gap: 10px; padding: 0 16px 14px; color: var(--t2); }
+  .water { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen" style="padding:0">
+  <div class="scroll" id="scroll">
+    <div class="app-header">
+      <div class="grow title1">Питание</div>
+      <div class="icon-btn filled"><i data-i="more"></i></div>
+    </div>
+
+    <!-- Последние 7 дней: сегодня справа, точка — есть записи -->
+    <div class="days">
+      <div class="day"><span class="caption t2">Вт</span><span class="n">27</span><span class="mark"></span></div>
+      <div class="day"><span class="caption t2">Ср</span><span class="n">28</span><span class="mark"></span></div>
+      <div class="day"><span class="caption t2">Чт</span><span class="n">29</span><span class="mark"></span></div>
+      <div class="day"><span class="caption t2">Пт</span><span class="n">30</span><span class="mark none"></span></div>
+      <div class="day"><span class="caption t2">Сб</span><span class="n">31</span><span class="mark"></span></div>
+      <div class="day"><span class="caption t2">Вс</span><span class="n">1</span><span class="mark"></span></div>
+      <div class="day today"><span class="caption">Пн</span><span class="n">2</span><span class="mark"></span></div>
+    </div>
+
+    <div class="summary">
+      <div>
+        <div class="footnote t2">Осталось</div>
+        <div><span class="display">1 811</span> <span class="callout unit">ккал</span></div>
+      </div>
+      <div class="side footnote">
+        <span class="t2">Съедено</span><span class="body-strong">1 079</span>
+        <span class="t2">Цель</span><span class="body-strong">2 890</span>
+      </div>
+    </div>
+    <div class="scale" data-v="0.373"></div>
+    <div class="macros">
+      <div class="macro"><span class="callout">Белки</span><div class="scale" data-v="0.648" style="--c:var(--protein)"></div><span class="v">94<span class="unit"> / 145 г</span></span></div>
+      <div class="macro"><span class="callout">Жиры</span><div class="scale" data-v="0.243" style="--c:var(--fat)"></div><span class="v">17<span class="unit"> / 70 г</span></span></div>
+      <div class="macro"><span class="callout">Углеводы</span><div class="scale" data-v="0.321" style="--c:var(--carbs)"></div><span class="v">135<span class="unit"> / 420 г</span></span></div>
+    </div>
+
+    <div class="group" style="margin-top:24px">
+      <div class="meal">
+        <div class="meal-head">
+          <span class="grow headline">Завтрак</span>
+          <span class="callout t2">545 ккал</span>
+          <span class="round-add"><i data-i="plus" class="sm"></i></span>
+        </div>
+        <div class="food"><div style="flex:1"><div class="body">Овсяные хлопья</div><div class="footnote t2">60 г</div></div><span class="body-strong">220</span></div>
+        <div class="food"><div style="flex:1"><div class="body">Творог 5%</div><div class="footnote t2">пачка, 180 г</div></div><span class="body-strong">218</span></div>
+        <div class="food"><div style="flex:1"><div class="body">Банан</div><div class="footnote t2">1 шт, 120 г</div></div><span class="body-strong">107</span></div>
+      </div>
+      <div class="meal">
+        <div class="meal-head">
+          <span class="grow headline">Обед</span>
+          <span class="callout t2">534 ккал</span>
+          <span class="round-add"><i data-i="plus" class="sm"></i></span>
+        </div>
+        <div class="food"><div style="flex:1"><div class="body">Куриная грудка отварная</div><div class="footnote t2">150 г</div></div><span class="body-strong">206</span></div>
+        <div class="food"><div style="flex:1"><div class="body">Рис белый отварной</div><div class="footnote t2">200 г</div></div><span class="body-strong">260</span></div>
+        <div class="food"><div style="flex:1"><div class="body">Овощи замороженные</div><div class="footnote t2">150 г</div></div><span class="body-strong">68</span></div>
+      </div>
+      <div class="meal">
+        <div class="meal-head">
+          <span class="grow headline">Ужин</span>
+          <span class="round-add"><i data-i="plus" class="sm"></i></span>
+        </div>
+        <div class="repeat"><i data-i="repeat" class="sm"></i><span class="callout">Повторить вчерашний ужин</span><span class="callout t3" style="margin-left:auto">612 ккал</span></div>
+      </div>
+      <div class="meal">
+        <div class="meal-head">
+          <span class="grow headline">Перекус</span>
+          <span class="round-add"><i data-i="plus" class="sm"></i></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="group water" style="padding:12px 12px 12px 16px">
+      <span style="color:var(--t2)"><i data-i="drop"></i></span>
+      <span class="grow body" style="flex:1">Вода</span>
+      <span class="body-strong">1,25<span class="callout unit"> из 2,75 л</span></span>
+      <span class="round-add"><i data-i="minus" class="sm"></i></span>
+      <span class="round-add" style="width:auto;padding:0 10px"><span class="footnote" style="font-weight:600">+250</span></span>
+    </div>
+  </div>
+</div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="home" class="lg"></i>Сегодня</div>
+  <div class="tab"><i data-i="dumbbell" class="lg"></i>Тренировки</div>
+  <div class="tab on"><i data-i="fork" class="lg"></i>Питание</div>
+  <div class="tab"><i data-i="chart" class="lg"></i>Прогресс</div>
+  <div class="tab"><i data-i="person" class="lg"></i>Профиль</div>
+  <div class="home-ind"></div>
+</nav>
+<script src="icons.js"></script>
+</body>
+</html>

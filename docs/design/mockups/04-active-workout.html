@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Активная тренировка</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .top { display: flex; align-items: center; min-height: 52px; }
+  .top .mid { flex: 1; text-align: center; }
+  .progress { height: 2px; background: var(--s3); border-radius: 1px; overflow: hidden; }
+  .progress div { height: 2px; width: 35%; background: var(--accent-ink); }
+  .ref { display: grid; grid-template-columns: 112px 1fr auto; row-gap: 8px; align-items: baseline; margin-top: 16px; }
+  .sets { margin-top: 20px; }
+  .sets .head, .set { display: grid; grid-template-columns: 36px 1fr 1fr 64px 44px; align-items: center; column-gap: 8px; }
+  .sets .head { padding: 0 12px 6px; }
+  .set { min-height: 56px; padding: 6px 12px; border-radius: 12px; }
+  .set .no { font-size: 15px; font-weight: 600; color: var(--t2); }
+  .set.done { color: var(--t2); }
+  .set.done .v { font-size: 20px; font-weight: 600; }
+  .set.current { background: var(--s1); min-height: 76px; }
+  .set.current .no { color: var(--t1); }
+  .box { height: 52px; border-radius: 12px; background: var(--s2); display: flex; align-items: baseline; justify-content: center; padding-top: 8px; font-size: 28px; font-weight: 600; letter-spacing: -0.3px; }
+  .box.small { font-size: 18px; padding-top: 14px; color: var(--t2); }
+  .set.next { color: var(--t3); }
+  .set.next .v { font-size: 20px; font-weight: 600; }
+  .ok { width: 36px; height: 36px; border-radius: 18px; display: flex; align-items: center; justify-content: center; }
+  .ok.done { background: var(--accent-fill); color: var(--on-accent); }
+  .ok.empty { border: 1.5px solid var(--sep); }
+  .add-set { display: flex; align-items: center; gap: 8px; color: var(--t2); padding: 12px; }
+  .technique { position: absolute; left: 0; right: 0; bottom: 106px; margin: 0 16px; display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 16px; border-radius: 12px; background: var(--s1); }
+  .panel { position: absolute; left: 0; right: 0; bottom: 0; height: 98px; padding: 10px 16px 34px; display: grid; grid-template-columns: 52px 1fr 52px; gap: 10px; border-top: 0.5px solid var(--sep); background: var(--bg); }
+  .nav-btn { height: 52px; border-radius: 12px; background: var(--s2); display: flex; align-items: center; justify-content: center; color: var(--t1); }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen no-tabs">
+  <div class="top">
+    <div class="icon-btn"><i data-i="x"></i></div>
+    <div class="mid"><div class="footnote t2">Упражнение 3 из 7</div></div>
+    <div class="footnote t2" style="width:44px;text-align:right">12:40</div>
+    <div class="icon-btn"><i data-i="more"></i></div>
+  </div>
+  <div class="progress"><div></div></div>
+
+  <div class="title1" style="margin-top:16px">Жим гантелей на наклонной</div>
+  <div class="callout t2" style="margin-top:4px">Грудь, передние дельты</div>
+
+  <div class="ref">
+    <span class="callout t2">Прошлый раз</span><span class="body-strong">24 кг × 10, 10, 9</span><span></span>
+    <span class="callout t2">RYNJI</span><span class="body-strong">26 кг × 8–10</span><span class="callout ink" style="font-weight:600">+2 кг</span>
+  </div>
+
+  <div class="sets">
+    <div class="head caption t2"><span>№</span><span>Вес, кг</span><span>Повторы</span><span>RIR</span><span></span></div>
+    <div class="set done"><span class="no">1</span><span class="v">26</span><span class="v">10</span><span class="v" style="font-size:17px">2</span><span class="ok done"><i data-i="check" class="sm"></i></span></div>
+    <div class="set current"><span class="no">2</span><div class="box">26</div><div class="box">9</div><div class="box small">—</div><span class="ok empty"></span></div>
+    <div class="set next"><span class="no">3</span><span class="v">26</span><span class="v">8–10</span><span></span><span class="ok empty"></span></div>
+    <div class="add-set"><i data-i="plus" class="sm"></i><span class="callout">Подход</span></div>
+  </div>
+</div>
+<div class="technique">
+  <span class="t2"><i data-i="info"></i></span>
+  <span class="body" style="flex:1">Техника и мышцы</span>
+  <span class="t3"><i data-i="chevUp" class="sm"></i></span>
+</div>
+<div class="panel">
+  <div class="nav-btn"><i data-i="chevL"></i></div>
+  <div class="primary"><i data-i="check" class="sm"></i>Записать подход 2</div>
+  <div class="nav-btn"><i data-i="chevR"></i></div>
+</div>
+<script src="icons.js"></script>
+</body>
+</html>

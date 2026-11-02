@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393" />
+<title>RYNJI — Добавить в обед</title>
+<link rel="stylesheet" href="rynji.css" />
+<style>
+  .nav { display: flex; align-items: center; min-height: 52px; gap: 4px; }
+  .nav .grow { flex: 1; text-align: center; }
+  .search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 12px; background: var(--s2); margin-top: 4px; }
+  .search .q { flex: 1; font-size: 17px; }
+  .caret { display: inline-block; width: 2px; height: 20px; background: var(--accent-ink); vertical-align: -4px; margin-left: 1px; }
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .group-title { display: flex; justify-content: space-between; align-items: baseline; margin: 20px 4px 8px; }
+  .food { display: flex; align-items: center; gap: 12px; }
+  .food .k { text-align: right; }
+  .add { width: 32px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--s3); color: var(--t1); flex: none; }
+  .add.in { background: var(--accent-fill); color: var(--on-accent); }
+  .sk { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .cart { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 34px; background: var(--s1); border-top: 0.5px solid var(--sep); border-radius: 24px 24px 0 0; box-shadow: var(--shadow); }
+  .cart .line { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="status"><span>9:41</span><span class="bars"><span class="caption">5G</span><span class="bat"></span></span></div>
+<div class="screen no-tabs" style="padding:0">
+  <div class="scroll" id="scroll" style="padding-bottom:160px">
+    <div class="nav">
+      <div class="icon-btn"><i data-i="chevL"></i></div>
+      <div class="grow body-strong">Добавить в обед</div>
+      <div style="width:44px"></div>
+    </div>
+    <div class="search">
+      <span class="t3"><i data-i="search" class="sm"></i></span>
+      <span class="q">творог<span class="caret"></span></span>
+      <span class="t3"><i data-i="x" class="sm"></i></span>
+    </div>
+    <div class="tools">
+      <div class="secondary"><i data-i="scan" class="sm"></i>Сканировать</div>
+      <div class="secondary"><i data-i="edit" class="sm"></i>Свой продукт</div>
+    </div>
+
+    <div class="group-title"><span class="footnote t2">Мои и базовые продукты</span><span class="footnote t3">ккал на 100 г</span></div>
+    <div class="group">
+      <div class="row food"><div class="grow"><div class="body-strong">Творог 5%</div><div class="footnote t2">Обычно 180 г, ели 6 раз</div></div><span class="k body-strong">121</span><span class="add in"><i data-i="check" class="sm"></i></span></div>
+      <div class="row food"><div class="grow"><div class="body-strong">Творог обезжиренный</div><div class="footnote t2">Базовый продукт</div></div><span class="k body-strong">71</span><span class="add"><i data-i="plus" class="sm"></i></span></div>
+      <div class="row food"><div class="grow"><div class="body-strong">Творог 9%</div><div class="footnote t2">Базовый продукт</div></div><span class="k body-strong">159</span><span class="add"><i data-i="plus" class="sm"></i></span></div>
+      <div class="row food"><div class="grow"><div class="body-strong">Творог зернёный 4%</div><div class="footnote t2">Мой продукт, с этикетки</div></div><span class="k body-strong">98</span><span class="add"><i data-i="plus" class="sm"></i></span></div>
+    </div>
+
+    <div class="group-title"><span class="footnote t2">Open Food Facts</span><span class="footnote t3">ищу…</span></div>
+    <div class="group">
+      <div class="row food"><div class="sk"><div class="skeleton" style="width:62%;height:14px"></div><div class="skeleton" style="width:38%;height:11px"></div></div><div class="skeleton" style="width:28px;height:14px"></div></div>
+      <div class="row food"><div class="sk"><div class="skeleton" style="width:74%;height:14px"></div><div class="skeleton" style="width:30%;height:11px"></div></div><div class="skeleton" style="width:28px;height:14px"></div></div>
+    </div>
+  </div>
+  <div class="cart">
+    <div class="line">
+      <span class="callout">В корзине <span class="body-strong">2 продукта</span></span>
+      <span class="callout t2"><span class="body-strong" style="color:var(--t1)">424</span> ккал</span>
+    </div>
+    <div class="primary">Добавить в обед</div>
+  </div>
+</div>
+<script src="icons.js"></script>
+</body>
+</html>
