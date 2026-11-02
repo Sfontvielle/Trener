@@ -28,7 +28,10 @@ const logBoxText = async (pg) => {
     return '';
   }
 };
+// E2E_ONLY=31,59 — прогнать только эти сценарии (для отладки; полный прогон — без переменной)
+const ONLY = (process.env.E2E_ONLY || '').split(',').map((x) => x.trim()).filter(Boolean);
 const check = async (name, fn) => {
+  if (ONLY.length && !ONLY.includes(name.split('.')[0])) return;
   try {
     await fn();
     for (const pg of pages) {
@@ -618,7 +621,7 @@ const closeSheet = async (pg) => {
     assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
     // Вода могла быть добавлена раньше (на «Сегодня») — проверяем прибавку, а не абсолютное значение
     const water = async () => {
-      const m = (await page.evaluate(() => document.body.innerText)).match(/Вода (\d+(?:,\d+)?) (мл|л)/);
+      const m = (await page.evaluate(() => document.body.innerText)).match(/Вода\s+(\d+(?:,\d+)?)\s*(мл|л)/);
       return m ? Math.round(Number(m[1].replace(',', '.')) * (m[2] === 'л' ? 1000 : 1)) : 0;
     };
     const before = await water();
@@ -716,20 +719,20 @@ const closeSheet = async (pg) => {
     assert.match(await page.evaluate(() => document.body.innerText), /Высокая|Нормальная|Сниженная|Низкая/, 'категория вместо %');
   });
 
-  await check('31. Тап по всей карточке «Завтрак» открывает «Добавить в Завтрак»; сводка с клетчаткой', async () => {
+  await check('31. «+» у «Завтрака» открывает добавление в завтрак; сводка — Б/Ж/У и клетчатка шкалами', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
     const t = await page.evaluate(() => document.body.innerText);
-    for (const k of ['Белки', 'Углеводы', 'Жиры', 'Клетчатка']) assert.match(t, new RegExp(k, 'i'), k);
-    const card = await page.getByTestId('meal-breakfast').boundingBox();
-    // Тап в середину нижней строки карточки, а не по маленькому «+»
-    await page.mouse.click(card.x + card.width * 0.4, card.y + card.height - 8);
+    for (const k of ['Осталось|Больше цели', 'Съедено', 'Цель', 'Белки', 'Углеводы', 'Жиры', 'Клетчатка']) assert.match(t, new RegExp(k, 'i'), k);
+    // Весь заголовок приёма пищи — кнопка «Добавить в Завтрак» (не только маленький «+»)
+    const head = await page.getByTestId('meal-breakfast').boundingBox();
+    await page.mouse.click(head.x + head.width * 0.3, head.y + head.height / 2);
+    await page.waitForTimeout(1000);
+    assert.match(page.url(), /food\/add/, 'открыт экран добавления');
+    assert.match(decodeURIComponent(page.url()), /meal=breakfast/, 'в завтрак');
+    await page.goBack();
     await page.waitForTimeout(800);
-    assert.ok(await page.getByText('Добавить в Завтрак', { exact: true }).isVisible(), 'лист «Добавить в Завтрак»');
-    for (const o of ['Поиск продукта', 'Сканировать штрихкод', 'Недавние', 'Частые продукты', 'Мои блюда']) assert.ok(await page.getByText(o, { exact: true }).count(), o);
-    await page.getByLabel('Закрыть').last().click();
-    await page.waitForTimeout(500);
   });
 
   await check('32. Календарь: тап по старой дате показывает именно этот день', async () => {
@@ -972,30 +975,31 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByTestId('water-amount').count(), 0, 'лист закрыт свайпом');
   });
 
-  await check('40. «Добавить в Завтрак»: лист со списком стягивается пальцем за содержимое', async () => {
+  await check('40. Питание → «Ещё»: лист со списком стягивается пальцем за содержимое', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
-    await page.getByTestId('meal-lunch').click();
+    await page.getByTestId('nutrition-more').click();
     await page.waitForTimeout(800);
-    const row = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    const anchor = () => page.getByText('Подробный расчёт', { exact: true });
+    const row = await anchor().boundingBox();
     assert.ok(row, 'лист открыт');
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
     // Короткое движение — лист следует за пальцем и возвращается
     await touch('touchStart', row.y + 5);
     for (let i = 1; i <= 3; i++) { await touch('touchMove', row.y + 5 + i * 15); await page.waitForTimeout(30); }
-    const mid = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    const mid = await anchor().boundingBox();
     assert.ok(mid && mid.y > row.y + 10, `следует за пальцем: ${row.y} → ${mid && mid.y}`);
     await touch('touchEnd', 0);
     await page.waitForTimeout(700);
-    const back = await page.getByText('Поиск продукта', { exact: true }).boundingBox();
+    const back = await anchor().boundingBox();
     assert.ok(back && Math.abs(back.y - row.y) < 3, 'вернулся без прыжка');
     await touch('touchStart', row.y + 5);
     for (let i = 1; i <= 14; i++) { await touch('touchMove', row.y + 5 + i * 30); await page.waitForTimeout(16); }
     await touch('touchEnd', 0);
     await page.waitForTimeout(900);
-    assert.equal(await page.getByText('Поиск продукта', { exact: true }).count(), 0, 'закрыт свайпом');
+    assert.equal(await anchor().count(), 0, 'закрыт свайпом');
   });
 
   await check('41. RYNJI COACH — СЕГОДНЯ: план дня, фокус и «Почему?» с данными и уверенностью', async () => {
@@ -1554,6 +1558,62 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByLabel('Пропущенная спина, Завтра, запланировано').isVisible(), 'перенесена на завтра');
     const st = await schedule();
     assert.equal(st.planned.find((x) => x.id === 'e2e_missed').status, 'planned');
+  });
+
+  await check('59. Дневник: неделя дней, запись задним числом, удаление свайпом → «Отменить», копирование дня → «Отменить»', async () => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const isoOf = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const day = (back) => isoOf(new Date(Date.now() - back * 86400000));
+    const [today, y1, y2] = [day(0), day(1), day(2)];
+    // Позавчера — запись, вчера — две; сегодня пусто
+    await page.evaluate(({ today, y1, y2 }) => {
+      const st = JSON.parse(localStorage.getItem('form.nutrition'));
+      st.state.entries = st.state.entries.filter((e) => ![today, y1, y2].includes(e.date));
+      const mk = (id, date, meal, name, grams, kcal) => ({ id, date, productId: `local:${id}`, name, grams, macros: { kcal, protein: 10, fat: 5, carbs: 20 }, meal, createdAt: Date.now() });
+      st.state.entries.push(mk('e2e_y2', y2, 'lunch', 'Гречка отварная', 200, 220));
+      st.state.entries.push(mk('e2e_y1a', y1, 'breakfast', 'Овсянка', 60, 210), mk('e2e_y1b', y1, 'dinner', 'Творог 5%', 180, 218));
+      localStorage.setItem('form.nutrition', JSON.stringify(st));
+    }, { today, y1, y2 });
+    const entries = () => page.evaluate(() => JSON.parse(localStorage.getItem('form.nutrition')).state.entries);
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    // Неделя: сегодня справа, точка — у дней с записями
+    assert.match(await page.getByTestId(`strip-${today}`).getAttribute('aria-label'), /сегодня/);
+    assert.match(await page.getByTestId(`strip-${y2}`).getAttribute('aria-label'), /есть записи/);
+    // Позавчера: сводка этого дня; «+» у перекуса открывает добавление в этот день
+    await page.getByTestId(`strip-${y2}`).click();
+    await page.waitForTimeout(600);
+    assert.match(await page.getByTestId('day-summary').getAttribute('aria-label'), /съедено 220 из/);
+    await page.getByTestId('meal-snack').click();
+    await page.waitForTimeout(900);
+    assert.match(decodeURIComponent(page.url()), new RegExp(`date=${y2}.*meal=snack|meal=snack.*date=${y2}`), 'добавление — в выбранный день');
+    await page.goBack();
+    await page.waitForTimeout(900);
+    // Вчера: удаление свайпом влево → «Отменить» возвращает запись
+    await page.getByTestId(`strip-${y1}`).click();
+    await page.waitForTimeout(600);
+    const row = await page.getByTestId('entry-e2e_y1b').boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: row.y + row.height / 2 }] });
+    await touch('touchStart', row.x + row.width - 30);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', row.x + row.width - 30 - i * 25); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.ok(!(await entries()).some((e) => e.id === 'e2e_y1b'), 'удалено свайпом');
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.ok((await entries()).some((e) => e.id === 'e2e_y1b'), '«Отменить» вернул запись');
+    // Сегодня: «Скопировать весь вчерашний день» → 2 записи; «Отменить» — снова пусто
+    await page.getByTestId(`strip-${today}`).click();
+    await page.waitForTimeout(600);
+    await page.getByTestId('copy-yesterday').click();
+    await page.waitForTimeout(500);
+    assert.equal((await entries()).filter((e) => e.date === today).length, 2, 'день скопирован');
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.equal((await entries()).filter((e) => e.date === today).length, 0, 'копирование отменено');
+    await shot('nutrition-diary');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

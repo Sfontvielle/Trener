@@ -11,6 +11,8 @@ export { Scale } from './Scale';
 export { StatRow } from './StatRow';
 export { scaleFill, statLabel } from './logic';
 export { ErrorState, LoadingSkeleton } from './States';
+export { WeeklyDateStrip } from './WeeklyDateStrip';
+export { SwipeRow } from './SwipeRow';
 export { EmptyState };
 /** Лист снизу: ручка, заголовок title2, прокрутка, футер с действиями; жесты и клавиатура — как у Sheet */
 export { Sheet as NativeSheet } from '../Sheet';

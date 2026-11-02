@@ -102,11 +102,15 @@ function ToastView() {
   useEffect(() => {
     if (!t) return;
     a.setValue(0);
+    // С действием («Отменить») — 8 секунд, чтобы успеть передумать (NUTRITION_SPEC.md §3); после — тост убирается
+    // совсем: невидимая кнопка не должна перехватывать нажатия вверху экрана
     Animated.sequence([
       Animated.timing(a, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(t.action ? 3600 : 2200),
+      Animated.delay(t.action ? 7600 : 2200),
       Animated.timing(a, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start();
+    ]).start(({ finished }) => {
+      if (finished && useDialog.getState().toast?.id === t.id) useDialog.setState({ toast: null });
+    });
   }, [t, a]);
   if (!t) return null;
   return (

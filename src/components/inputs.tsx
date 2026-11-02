@@ -71,10 +71,15 @@ export function NumberStepper({
   label,
   compact,
   inline,
+  large,
+  testID,
   style,
 }: {
   value: number;
   onChange: (v: number) => void;
+  /** Крупное поле (порция еды): высота 64, число — стиль display */
+  large?: boolean;
+  testID?: string;
   step?: number;
   min?: number;
   max?: number;
@@ -101,10 +106,10 @@ export function NumberStepper({
     haptic.tap();
     onChange(clamp(Math.round((value + d) * 1000) / 1000));
   };
-  const h = compact ? 40 : inline ? 44 : 48;
-  const fontSize = inline ? 24 : compact ? 18 : 20;
+  const h = large ? 64 : compact ? 40 : inline ? 44 : 48;
+  const fontSize = large ? 34 : inline ? 24 : compact ? 18 : 20;
   return (
-    <View style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
+    <View testID={testID} style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
       {label ? (
         <T v={inline ? 'body' : 'caption'} color={inline ? colors.textDim : undefined} style={inline ? { flex: 1 } : undefined}>
           {label}

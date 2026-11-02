@@ -15,7 +15,8 @@ interface NutritionState {
   /** Запомненная граммовка для продукта */
   lastGrams: Record<string, number>;
   addEntry: (p: FoodProduct, grams: number, meal: MealSlot, date: ISODate, unit?: FoodEntry['unit']) => FoodEntry;
-  updateEntry: (id: string, grams: number, unit?: FoodEntry['unit']) => void;
+  /** Изменить порцию (и приём пищи); прошлая версия записи возвращается для «Отменить» */
+  updateEntry: (id: string, grams: number, unit?: FoodEntry['unit'], meal?: MealSlot) => FoodEntry | undefined;
   removeEntry: (id: string) => void;
   cacheProduct: (p: FoodProduct) => void;
   /** Мои блюда: сохранённые комбинации продуктов */
@@ -93,10 +94,14 @@ export const useNutrition = create<NutritionState>()(
         }));
         return e;
       },
-      updateEntry: (id, grams, unit) =>
+      updateEntry: (id, grams, unit, meal) => {
+        const prev = get().entries.find((e) => e.id === id);
         set((s) => ({
-          entries: s.entries.map((e) => (e.id === id ? rescaleEntry(e, grams, s.products[e.productId], unit) : e)),
-        })),
+          entries: s.entries.map((e) => (e.id === id ? { ...rescaleEntry(e, grams, s.products[e.productId], unit), ...(meal ? { meal } : null) } : e)),
+          ...(prev ? { lastGrams: { ...s.lastGrams, [prev.productId]: grams } } : null),
+        }));
+        return prev;
+      },
       removeEntry: (id) => set((s) => ({ entries: s.entries.filter((e) => e.id !== id) })),
       cacheProduct: (p) => set((s) => ({ products: { ...s.products, [p.id]: normalizeProduct(p) } })),
       meals: [],
