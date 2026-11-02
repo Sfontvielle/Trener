@@ -31,7 +31,26 @@ type Variant = keyof typeof type;
  * Динамический шрифт iOS: текст растёт вместе с системной настройкой размера. Предел роста зависит от роли:
  * основной текст — до ×1,6 (читаемость важнее), заголовки уже крупные — до ×1,2–1,35, чтобы не ломать вёрстку.
  */
-export const MAX_SCALE: Record<Variant, number> = { hero: 1.12, display: 1.2, h1: 1.2, h2: 1.35, h3: 1.35, body: 1.6, bodyDim: 1.6, small: 1.6, caption: 1.5, num: 1.3 } as Record<Variant, number>;
+export const MAX_SCALE: Record<Variant, number> = {
+  display: 1.3, hero: 1.3, title1: 1.4, h1: 1.4, title2: 1.5, h2: 1.5, headline: 1.6, h3: 1.6, metric: 1.5, num: 1.3,
+  body: 2, bodyStrong: 2, bodyDim: 2, callout: 2, small: 2, footnote: 2, caption: 2, mono: 1.6,
+} as Record<Variant, number>;
+
+/** Минимальный размер текста в приложении (дизайн-система §3) */
+const MIN_FONT = 12;
+
+/**
+ * Правила шкалы поверх ручных стилей экранов: не мельче 12 pt и без сверхжирного 800 (максимум — 700).
+ * Пока экраны не переведены на новые стили, это убирает подписи 10–11 pt и «кричащие» начертания везде сразу.
+ */
+function normalize(st: TextStyle): TextStyle {
+  let out = st;
+  if (typeof st.fontSize === 'number' && st.fontSize < MIN_FONT) {
+    out = { ...out, fontSize: MIN_FONT, ...(typeof st.lineHeight === 'number' && st.lineHeight < MIN_FONT + 4 ? { lineHeight: MIN_FONT + 4 } : null) };
+  }
+  if (st.fontWeight === '800') out = { ...out, fontWeight: '700' };
+  return out;
+}
 
 // Веб-проверка вёрстки при крупном шрифте: localStorage 'rynji.fontScale' = 1.5 (имитация настройки iPhone)
 const SIM_SCALE = (() => {
@@ -50,9 +69,9 @@ function simulate(st: TextStyle, k: number): TextStyle {
 
 export function T({ v = 'body', color, style, children, ...rest }: TextProps & { v?: Variant; color?: string }) {
   const max = MAX_SCALE[v] ?? 1.4;
-  const st: StyleProp<TextStyle> = [type[v] as TextStyle, color ? { color } : null, style];
+  const flat = normalize(StyleSheet.flatten([type[v] as TextStyle, color ? { color } : null, style]) ?? {});
   return (
-    <Text {...rest} style={SIM_SCALE > 1 ? simulate(StyleSheet.flatten(st) ?? {}, Math.min(SIM_SCALE, max)) : st} maxFontSizeMultiplier={max}>
+    <Text {...rest} style={SIM_SCALE > 1 ? simulate(flat, Math.min(SIM_SCALE, max)) : flat} maxFontSizeMultiplier={max}>
       {children}
     </Text>
   );

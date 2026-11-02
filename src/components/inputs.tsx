@@ -298,7 +298,7 @@ const styles = themed({
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   numField: { minHeight: 44, borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: 'transparent' },
-  stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },
   track: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.surface3, padding: 3 },

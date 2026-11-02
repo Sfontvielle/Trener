@@ -1151,7 +1151,7 @@ const styles = themed({
   rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
   setRowCurrent: { backgroundColor: colors.surface2, paddingVertical: 8, borderRadius: radius.md },
-  inputCurrent: { height: 56, fontSize: 30, fontWeight: '800' },
+  inputCurrent: { height: 56, fontSize: 30, fontWeight: '700' },
   ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.surface3, marginBottom: 4, maxWidth: '100%' },
   navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },

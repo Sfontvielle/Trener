@@ -111,29 +111,46 @@ export function applyPalette(scheme: SchemeName, accent: AccentName): boolean {
   return true;
 }
 
-export const radius = { xs: 8, sm: 12, md: 16, lg: 22, xl: 28, pill: 999 } as const;
-/** Больше воздуха: поля экрана 20, между смысловыми блоками — 28–40 */
-export const space = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 20, xl: 28, xxl: 40 } as const;
+/** Скругления (5 значений): 8 — чип, 12 — кнопка/поле/строка, 16 — группа/карточка, 24 — верх листа */
+export const radius = { xs: 8, sm: 12, md: 12, lg: 16, xl: 24, pill: 999 } as const;
+/** Шкала отступов 4/8/12/16/24/32: поля экрана 16, между секциями 24, перед крупным разделом 32 */
+export const space = { xxs: 4, xs: 8, sm: 12, md: 16, lg: 16, xl: 24, xxl: 32 } as const;
 
 const family = Platform.select({ ios: 'System', default: undefined });
 const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, Menlo, monospace' });
 
 /**
- * Типографика в духе iOS: крупные заголовки, спокойный основной текст, подписи — обычным регистром
- * (без капса и разрядки), серым. Акцент — размером и жирностью, а не цветом и рамками.
+ * Типографика Precision Performance (docs/design/RYNJI_DESIGN_SYSTEM.md §3): системный SF Pro, начертания 400–700,
+ * табличные цифры, минимум 12 pt. Подписи — обычным регистром. Старые имена (hero, h1–h3, small, caption, num)
+ * — псевдонимы новой шкалы, пока экраны не переведены на новые имена.
  */
+const display = { fontFamily: family, fontSize: 34, lineHeight: 40, fontWeight: '600', letterSpacing: -0.4, fontVariant: ['tabular-nums'], color: colors.text } as const;
+const title1 = { fontFamily: family, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.3, color: colors.text } as const;
+const title2 = { fontFamily: family, fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: -0.2, color: colors.text } as const;
+const headline = { fontFamily: family, fontSize: 19, lineHeight: 24, fontWeight: '600', letterSpacing: -0.1, color: colors.text } as const;
+const body = { fontFamily: family, fontSize: 16, lineHeight: 22, fontWeight: '400', color: colors.text } as const;
+const callout = { fontFamily: family, fontSize: 15, lineHeight: 20, fontWeight: '400', color: colors.textDim } as const;
+const footnote = { fontFamily: family, fontSize: 13, lineHeight: 18, fontWeight: '400', color: colors.textDim } as const;
+
 export const type = themed({
-  /** Главный акцент экрана — одно слово или имя тренировки */
-  hero: { fontFamily: family, fontSize: 50, lineHeight: 54, fontWeight: '800', letterSpacing: -1.6, color: colors.text },
-  display: { fontFamily: family, fontSize: 40, fontWeight: '800', letterSpacing: -1.1, color: colors.text },
-  h1: { fontFamily: family, fontSize: 32, fontWeight: '800', letterSpacing: -0.8, color: colors.text },
-  h2: { fontFamily: family, fontSize: 22, fontWeight: '700', letterSpacing: -0.4, color: colors.text },
-  h3: { fontFamily: family, fontSize: 18, fontWeight: '700', letterSpacing: -0.3, color: colors.text },
-  body: { fontFamily: family, fontSize: 16, fontWeight: '500', color: colors.text },
-  bodyDim: { fontFamily: family, fontSize: 16, fontWeight: '500', color: colors.textDim },
-  small: { fontFamily: family, fontSize: 14, fontWeight: '500', color: colors.textDim },
-  caption: { fontFamily: family, fontSize: 13, fontWeight: '600', color: colors.textDim },
-  num: { fontFamily: family, fontWeight: '800', fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.5 },
+  display,
+  title1,
+  title2,
+  headline,
+  body,
+  bodyStrong: { ...body, fontWeight: '600' },
+  callout,
+  footnote,
+  caption: { fontFamily: family, fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.1, color: colors.textDim },
+  metric: { fontFamily: family, fontSize: 22, lineHeight: 26, fontWeight: '600', letterSpacing: -0.2, fontVariant: ['tabular-nums'], color: colors.text },
+  // ── Псевдонимы старых имён ──
+  hero: display,
+  h1: title1,
+  h2: title2,
+  h3: headline,
+  bodyDim: { ...body, color: colors.textDim },
+  small: callout,
+  num: { fontFamily: family, fontWeight: '600', fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.3 },
   mono: { fontFamily: mono, fontVariant: ['tabular-nums'] },
 });
 

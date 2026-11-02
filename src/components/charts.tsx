@@ -142,7 +142,7 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
             return (
               <React.Fragment key={f}>
                 <Line x1={pad.l} x2={w - pad.r} y1={y} y2={y} stroke={colors.border} strokeWidth={1} strokeDasharray="3 4" />
-                <SvgText x={w - pad.r + 6} y={y + 4} fill={colors.muted} fontSize={11}>
+                <SvgText x={w - pad.r + 6} y={y + 4} fill={colors.muted} fontSize={12}>
                   {v.toFixed(1)}
                 </SvgText>
               </React.Fragment>
@@ -161,10 +161,10 @@ export function TrendChart({ points, height = 170, unit = 'кг', labels, band, 
           ) : null}
           {labels ? (
             <>
-              <SvgText x={pad.l} y={height - 4} fill={colors.muted} fontSize={11}>
+              <SvgText x={pad.l} y={height - 4} fill={colors.muted} fontSize={12}>
                 {labels[0]}
               </SvgText>
-              <SvgText x={w - pad.r} y={height - 4} fill={colors.muted} fontSize={11} textAnchor="end">
+              <SvgText x={w - pad.r} y={height - 4} fill={colors.muted} fontSize={12} textAnchor="end">
                 {labels[1]}
               </SvgText>
             </>
