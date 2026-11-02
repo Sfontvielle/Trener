@@ -6,7 +6,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Card, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Ring } from '@/components/charts';
-import { Ambient, Appear, Progress, Tap, useCountUp } from '@/components/motion';
+import { Appear, Progress, Tap, useCountUp } from '@/components/motion';
 import { Sheet } from '@/components/Sheet';
 import { Field, NumberStepper } from '@/components/inputs';
 import { confirm, toast } from '@/components/Dialog';
@@ -89,7 +89,6 @@ export default function Nutrition() {
   const pct = nut.eaten.kcal / target.kcal;
   return (
     <Screen tabBar>
-      <Ambient tone={left < 0 ? 'warn' : 'accent'} height={420} />
       <View style={styles.head}>
         <T v="h1" style={{ flex: 1 }}>
           Питание

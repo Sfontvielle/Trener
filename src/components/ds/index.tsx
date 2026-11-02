@@ -12,6 +12,8 @@ export { StatRow } from './StatRow';
 export { scaleFill, statLabel } from './logic';
 export { ErrorState, LoadingSkeleton } from './States';
 export { EmptyState };
+/** Лист снизу: ручка, заголовок title2, прокрутка, футер с действиями; жесты и клавиатура — как у Sheet */
+export { Sheet as NativeSheet } from '../Sheet';
 
 /** Заголовок секции: headline и необязательное действие справа */
 export const SectionHeader = SectionTitle;

@@ -11,7 +11,7 @@ import { haptic } from '@/services/haptics';
 import { GlassSurface } from '@/components/Glass';
 
 type MciName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-/** Значки — как на эталоне 01_home: контурные, у выбранной вкладки — лаймовые с полоской под подписью */
+/** Значки контурные 24 pt; выбранная вкладка — основным цветом текста с полосой акцента сверху */
 const TABS: Record<string, { label: string; icon: IconName | MciName; mci?: boolean }> = {
   index: { label: 'Главная', icon: 'home-outline' },
   training: { label: 'Тренировки', icon: 'barbell-outline' },
@@ -21,7 +21,7 @@ const TABS: Record<string, { label: string; icon: IconName | MciName; mci?: bool
 };
 
 /**
- * Своя нижняя панель: две вкладки, «+» по центру, две вкладки. SDK 58: панель получает состояние вкладок,
+ * Своя нижняя панель: пять равных вкладок. SDK 58: панель получает состояние вкладок,
  * emitter (событие tabPress) и navigateToTab — без объекта navigation.
  */
 function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
@@ -51,15 +51,16 @@ function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
         }}
         style={styles.item}
       >
+        {/* Выбранная вкладка: цвет основного текста и полоса акцента 2 pt над значком (дизайн-система §9 BottomTabBar) */}
+        <View style={[styles.mark, focused && { backgroundColor: colors.accent }]} />
         <View>
-          {meta.mci ? <MaterialCommunityIcons name={meta.icon as MciName} size={24} color={focused ? colors.accent : colors.textDim} /> : <Icon name={meta.icon as IconName} size={23} color={focused ? colors.accent : colors.textDim} />}
+          {meta.mci ? <MaterialCommunityIcons name={meta.icon as MciName} size={24} color={focused ? colors.text : colors.muted} /> : <Icon name={meta.icon as IconName} size={24} color={focused ? colors.text : colors.muted} />}
           {/* Идёт тренировка — точка на вкладке «Тренировки» */}
           {r.name === 'training' && hasActive ? <View style={styles.dot} testID="active-workout-dot" /> : null}
         </View>
-        <T v="small" style={{ fontSize: 10.5, fontWeight: '700', color: focused ? colors.accent : colors.textDim }} numberOfLines={1}>
+        <T v="caption" maxFontSizeMultiplier={1.2} color={focused ? colors.text : colors.muted} style={{ lineHeight: 14, fontWeight: focused ? '600' : '500' }} numberOfLines={1}>
           {meta.label}
         </T>
-        <View style={[styles.underline, focused && { backgroundColor: colors.accent }]} />
       </Pressable>
     );
   };
@@ -96,7 +97,7 @@ const styles = themed({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderStrong,
   },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 8 },
-  underline: { width: 26, height: 3, borderRadius: 2, marginTop: 2, backgroundColor: 'transparent' },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', gap: 3, paddingTop: 10 },
+  mark: { position: 'absolute', top: 0, width: 24, height: 2, borderRadius: 1, backgroundColor: 'transparent' },
   dot: { position: 'absolute', top: -2, right: -6, width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg },
 });

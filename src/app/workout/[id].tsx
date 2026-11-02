@@ -5,7 +5,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, Card, Divider, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Field } from '@/components/inputs';
-import { Ambient, Appear } from '@/components/motion';
+import { Appear } from '@/components/motion';
 import { Sheet } from '@/components/Sheet';
 import { afterModalClose } from '@/components/modalGate';
 import { confirm, toast } from '@/components/Dialog';
@@ -111,7 +111,6 @@ export default function SessionDetail() {
 
   return (
     <Screen keyboard>
-      <Ambient height={380} />
       <Header
         title={fresh ? 'Тренировка завершена' : ''}
         onBack={() => (fresh ? router.replace('/') : router.back())}

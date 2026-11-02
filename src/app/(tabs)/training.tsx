@@ -7,7 +7,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
 import { haptic } from '@/services/haptics';
-import { Ambient, Appear, FadeIn, Progress, Tap, prefersReducedMotion } from '@/components/motion';
+import { Appear, FadeIn, Progress, Tap, prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
 import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/weekAgenda';
 import { usePlan } from '@/stores/plan';
@@ -69,7 +69,6 @@ export default function Training() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
-      <Ambient height={360} />
       <View style={{ paddingHorizontal: space.lg, gap: space.md, marginBottom: space.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {/* Крупный системный шрифт: заголовок ужимается, а кнопки справа остаются на экране */}

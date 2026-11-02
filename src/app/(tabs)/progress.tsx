@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Card, Icon, IconButton, Segmented, T } from '@/components/ui';
-import { Ambient, Appear } from '@/components/motion';
+import { Appear } from '@/components/motion';
 import { TrendChart } from '@/components/charts';
 import { useBody } from '@/stores/body';
 import { useWorkouts } from '@/stores/workouts';
@@ -75,7 +75,6 @@ export default function Progress() {
   };
   return (
     <Screen tabBar>
-      <Ambient height={420} />
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: space.sm }}>
         <T v="h1" style={{ flex: 1 }}>
           Прогресс

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
 import { KeyboardScrollProvider, useKeyboardAwareScroll } from './keyboard';
+import { prefersReducedMotion } from './motion';
 
 /**
  * Нижний лист (bottom sheet) в стиле iOS: затемнение, выезд снизу, закрытие по тапу на фон, крестику
@@ -129,16 +130,20 @@ export function Sheet({
       live.current.closing = false;
       live.current.atTop = true;
       drag.setValue(0);
-      Animated.spring(anim, { toValue: 1, damping: 26, stiffness: 240, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
+      // Дизайн-система §6: пружина damping 26 / stiffness 260 (≈280 мс); при «Уменьшении движения» — проявление 120 мс
+      if (prefersReducedMotion()) Animated.timing(anim, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+      else Animated.spring(anim, { toValue: 1, damping: 26, stiffness: 260, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
     },
     (done) => {
       live.current.closing = true;
-      Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => done());
+      Animated.timing(anim, { toValue: 0, duration: prefersReducedMotion() ? 120 : 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => done());
     },
   );
 
   if (!mounted) return null;
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [height, 0] });
+  // «Уменьшение движения»: лист не выезжает, а проявляется на месте
+  const calm = prefersReducedMotion();
+  const translateY = calm ? 0 : anim.interpolate({ inputRange: [0, 1], outputRange: [height, 0] });
   // Фон светлеет по мере того, как лист уводят вниз
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, Math.max(200, sheetH)], outputRange: [1, 0.15], extrapolate: 'clamp' }));
   const maxH = Math.max(240, (height - pad) * maxHeightPct - (pad ? insets.top : 0));
@@ -183,7 +188,7 @@ export function Sheet({
             live.current.sheetH = h;
             setSheetH(h);
           }}
-          style={[styles.sheet, { maxHeight: maxH, transform: [{ translateY }, { translateY: drag }] }]}
+          style={[styles.sheet, { maxHeight: maxH, opacity: calm ? anim : 1, transform: [{ translateY }, { translateY: drag }] }]}
           {...gestures.body}
         >
           <View {...gestures.head}>
@@ -193,11 +198,11 @@ export function Sheet({
           {title ? (
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
-                <T v="h2" numberOfLines={2}>
+                <T v="title2" accessibilityRole="header" numberOfLines={2}>
                   {title}
                 </T>
                 {subtitle ? (
-                  <T v="small" style={{ marginTop: 2 }}>
+                  <T v="callout" style={{ marginTop: 2 }}>
                     {subtitle}
                   </T>
                 ) : null}
@@ -228,6 +233,6 @@ const styles = themed({
     alignSelf: 'center',
   },
   grabZone: { paddingTop: 8, paddingBottom: 12, marginHorizontal: -space.lg, alignItems: 'center' },
-  grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong },
+  grabber: { width: 36, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginBottom: space.md },
 });

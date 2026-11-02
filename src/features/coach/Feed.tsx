@@ -37,7 +37,7 @@ export function CoachFeed({ items, onAction, onDismiss, onAsk, limit = VISIBLE, 
         const urgent = it.tone === 'urgent';
         const warn = it.tone === 'warning';
         return (
-          <FadeIn key={it.id} delay={60 * i}>
+          <FadeIn key={it.id}>
             <View style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 {urgent || warn ? <View style={[styles.dot, { backgroundColor: urgent ? colors.danger : colors.warning }]} /> : null}

@@ -189,7 +189,7 @@ const styles = themed({
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 72, paddingHorizontal: 18, paddingVertical: 14, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border, overflow: 'hidden' },
-  cardOn: { borderColor: colors.accent, backgroundColor: colors.accentDim, shadowColor: colors.accent, shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
+  cardOn: { borderColor: colors.accent, backgroundColor: colors.accentDim },
   cardImage: { width: 112, height: 104, marginVertical: -14, marginRight: -18 },
   sex: { flex: 1, aspectRatio: 0.82, alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
   freq: { flexDirection: 'row', alignItems: 'center', gap: 30, paddingHorizontal: 28, height: 92, borderRadius: radius.xl, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },

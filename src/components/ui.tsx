@@ -69,7 +69,8 @@ function simulate(st: TextStyle, k: number): TextStyle {
 }
 
 export function T({ v = 'body', color, style, children, ...rest }: TextProps & { v?: Variant; color?: string }) {
-  const max = MAX_SCALE[v] ?? 1.4;
+  // Свой предел роста (например, подписи таб-бара) важнее предела по роли текста
+  const max = rest.maxFontSizeMultiplier ?? MAX_SCALE[v] ?? 1.4;
   const flat = normalize(StyleSheet.flatten([type[v] as TextStyle, color ? { color } : null, style]) ?? {});
   return (
     <Text {...rest} style={SIM_SCALE > 1 ? simulate(flat, Math.min(SIM_SCALE, max)) : flat} maxFontSizeMultiplier={max}>
@@ -248,7 +249,7 @@ export function Chip({
       style={[styles.chip, active && styles.chipActive, style]}
     >
       {icon ? <Icon name={icon} size={16} color={active ? colors.bg : colors.textDim} /> : null}
-      <T v="callout" numberOfLines={1} color={active ? colors.bg : colors.text} style={{ fontWeight: '500' }}>
+      <T v="callout" numberOfLines={2} color={active ? colors.bg : colors.text} style={{ fontWeight: '500', flexShrink: 1 }}>
         {label}
       </T>
     </Tap>
@@ -481,7 +482,9 @@ const styles = themed({
     alignItems: 'center',
     gap: 6,
     minHeight: 36,
+    maxWidth: '100%',
     paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: radius.xs,
     backgroundColor: colors.surface2,
   },

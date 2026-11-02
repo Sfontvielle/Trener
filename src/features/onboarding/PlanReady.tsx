@@ -205,10 +205,10 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
 
 const styles = themed({
   wait: { minHeight: 520, alignItems: 'center', justifyContent: 'center', gap: 22, paddingHorizontal: space.md },
-  ringOuter: { width: 150, height: 150, borderRadius: 75, borderWidth: 3, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', shadowColor: colors.accent, shadowOpacity: 0.7, shadowRadius: 26, shadowOffset: { width: 0, height: 0 } },
+  ringOuter: { width: 150, height: 150, borderRadius: 75, borderWidth: 3, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   ringInner: { width: 118, height: 118, borderRadius: 59, borderWidth: 1, borderColor: colors.accentLine, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentDim },
   readyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  badge: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, shadowColor: colors.accent, shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 0 } },
+  badge: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent },
   card: { gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   bar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
   dot: { width: 8, height: 8, borderRadius: 4 },

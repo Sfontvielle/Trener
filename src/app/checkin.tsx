@@ -5,7 +5,7 @@ import type { DailyCheckIn } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Banner, Button, Icon, T } from '@/components/ui';
-import { Ambient, Appear, FadeIn } from '@/components/motion';
+import { Appear, FadeIn } from '@/components/motion';
 import { Field, NumberStepper, Toggle } from '@/components/inputs';
 import { DurationWheel } from '@/components/WheelPicker';
 import { useHealth } from '@/stores/health';
@@ -61,7 +61,6 @@ export default function CheckIn() {
   if (saved) {
     return (
       <Screen>
-        <Ambient tone={cat === 'high' || cat === 'normal' ? 'accent' : 'warn'} />
         <Header title="Готовность" />
         <Appear i={0} style={{ marginTop: space.xl, gap: space.sm }}>
           <T v="caption">Сегодня</T>
@@ -122,7 +121,6 @@ export default function CheckIn() {
   const fromHealth = c.sleepSource === 'health';
   return (
     <Screen keyboard>
-      <Ambient />
       <Header title="Утренний чек-ин" />
       <View style={{ gap: space.xl }}>
         {/* Сон — крупно; колесо — по тапу (из Apple Health вводить ничего не нужно) */}

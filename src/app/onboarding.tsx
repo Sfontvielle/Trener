@@ -5,7 +5,7 @@ import type { Equipment, GoalType } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Chip, T } from '@/components/ui';
-import { Ambient, FadeIn } from '@/components/motion';
+import { FadeIn } from '@/components/motion';
 import { Wheel } from '@/components/WheelPicker';
 import { RulerPicker } from '@/components/RulerPicker';
 import { ChoiceCard, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
@@ -139,7 +139,6 @@ export default function Onboarding() {
   if (stage === Q_STAGES) {
     return (
       <Screen>
-        <Ambient tone="calm" height={520} />
         <PlanReady profile={profile} onStart={finish} onBack={() => setStage(Q_STAGES - 1, 0)} />
       </Screen>
     );
@@ -150,7 +149,6 @@ export default function Onboarding() {
 
   return (
     <Screen keyboard contentStyle={cur === 'name' ? undefined : { flexGrow: 1 }}>
-      <Ambient tone="calm" height={520} />
       <StageHeader stage={stage + 1} total={Q_STAGES} progress={progress} onBack={stage > 0 || page > 0 ? back : undefined} />
 
       <FadeIn key={`${stage}-${page}`} from={14} style={{ gap: space.xl, marginTop: space.xl, flex: 1 }}>

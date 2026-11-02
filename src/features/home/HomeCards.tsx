@@ -54,13 +54,8 @@ export function TodayCard({ chip, title, meta, cta, ctaIcon = 'play', onCta, onM
               <Stop offset="0.5" stopColor={colors.surface} stopOpacity={0.55} />
               <Stop offset="1" stopColor={colors.surface} stopOpacity={0} />
             </LinearGradient>
-            <LinearGradient id="todayGlow" x1="0" y1="1" x2="0" y2="0">
-              <Stop offset="0" stopColor={BRAND_LIME} stopOpacity={0.14} />
-              <Stop offset="0.6" stopColor={BRAND_LIME} stopOpacity={0} />
-            </LinearGradient>
           </Defs>
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#todayShade)" />
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#todayGlow)" />
         </Svg>
       </View>
       <View style={styles.chip}>

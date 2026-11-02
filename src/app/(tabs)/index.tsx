@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T } from '@/components/ui';
-import { Ambient, Appear, Progress, Tap, type AmbientTone } from '@/components/motion';
+import { Appear, Progress, Tap } from '@/components/motion';
 import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -189,7 +189,6 @@ export default function Home() {
   };
 
   // Цвет фонового света — состояние дня: тренировка, отдых или «поберечься»
-  const tone: AmbientTone = active ? 'accent' : tw.kind === 'rest' ? 'calm' : readiness && readiness.band !== 'go' ? 'warn' : 'accent';
   const runFeed = (it: FeedItem, a: FeedAction) => {
     if (a.kind === 'route') router.push(a.route as never);
     else if (a.kind === 'measure') setMeasureOpen(true);
@@ -213,7 +212,6 @@ export default function Home() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Ambient tone={tone} />
       <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: space.lg, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl }} showsVerticalScrollIndicator={false}>
         {/* Шапка (эталон 01_home): логотип, колокольчик — сигналы тренера. Профиль — нижняя вкладка */}
         <View style={styles.header}>
