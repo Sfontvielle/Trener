@@ -621,7 +621,7 @@ test('Т13. Темы: системная/тёмная/светлая, акцен
   assert.equal(resolveScheme('light', 'dark'), 'light');
   const dark = paletteFor('dark', 'lime');
   const light = paletteFor('light', 'lime');
-  assert.equal(dark.accent, '#C8F53C');
+  assert.equal(dark.accent, '#B5F56B');
   assert.notEqual(light.bg, dark.bg);
   assert.equal(light.surface, '#FFFFFF');
   assert.notEqual(light.accent, dark.accent, 'на светлом фоне акцент затемнён (читаемость)');

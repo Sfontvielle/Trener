@@ -1,132 +1,19 @@
 import { Platform, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+import { ACCENT_LABEL, ACCENT_SWATCH, paletteFor, type AccentName, type Palette, type SchemeName } from './tokens';
 
 /**
- * Система тем FORM.
+ * Система тем RYNJI. Значения цветов — в ./tokens (Precision Performance, docs/design/RYNJI_DESIGN_SYSTEM.md).
  *
  * Палитра = схема (тёмная / светлая) × акцент (лайм / синий / оранжевый). Тёмная + лайм — default.
- * Светлая тема — отдельная палитра, а не инверсия: мягкий серо-белый фон, белые карточки,
- * почти чёрный текст и затемнённый акцент (лайм на белом нечитаем как текст).
  *
  * `colors` — живой объект: при смене темы его значения меняются на месте. Стили, созданные через
  * `themed()`, регистрируются: для каждого цвета запоминается токен, и при смене темы значение
  * подставляется заново. Инлайн-стили читают `colors.*` при рендере и обновляются сами.
  */
 
-export type SchemeName = 'dark' | 'light';
-export type AccentName = 'lime' | 'blue' | 'orange';
+export type { AccentName, Palette, SchemeName };
+export { ACCENT_LABEL, ACCENT_SWATCH, paletteFor };
 export type ThemePref = 'system' | SchemeName;
-
-export interface Palette {
-  bg: string;
-  surface: string;
-  surface2: string;
-  surface3: string;
-  border: string;
-  borderStrong: string;
-  text: string;
-  textDim: string;
-  muted: string;
-  accent: string;
-  accentPressed: string;
-  accentDim: string;
-  accentLine: string;
-  onAccent: string;
-  warning: string;
-  warningDim: string;
-  warningLine: string;
-  danger: string;
-  dangerDim: string;
-  dangerLine: string;
-  secondaryMuscle: string;
-  stabilizerMuscle: string;
-  muscleIdle: string;
-  muscleNeutral: string;
-  protein: string;
-  fat: string;
-  carbs: string;
-  overlay: string;
-  tabBar: string;
-  doneRow: string;
-  barSoft: string;
-}
-
-type AccentSet = Pick<Palette, 'accent' | 'accentPressed' | 'accentDim' | 'accentLine' | 'onAccent' | 'doneRow' | 'barSoft'>;
-
-// Спокойная тёмная тема: настоящий чёрный фон (OLED), поверхности различаются заливкой, а не рамками
-const DARK_BASE: Omit<Palette, keyof AccentSet> = {
-  bg: '#000000',
-  surface: '#121214',
-  surface2: '#1B1B1E',
-  surface3: '#27272B',
-  border: '#1E1E22',
-  borderStrong: '#303035',
-  text: '#F5F5F0',
-  textDim: '#9C9CA2',
-  muted: '#64646A',
-  warning: '#F7B23B',
-  warningDim: 'rgba(247,178,59,0.14)',
-  warningLine: 'rgba(247,178,59,0.42)',
-  danger: '#FF5D52',
-  dangerDim: 'rgba(255,93,82,0.14)',
-  dangerLine: 'rgba(255,93,82,0.45)',
-  secondaryMuscle: '#FF9F2E',
-  stabilizerMuscle: '#8E7CFF',
-  muscleIdle: '#2B2F35',
-  muscleNeutral: '#3A3F46',
-  protein: '#7CC4FF',
-  fat: '#F7B23B',
-  carbs: '#C8F53C',
-  overlay: 'rgba(0,0,0,0.66)',
-  tabBar: 'rgba(8,8,9,0.94)',
-};
-
-const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
-  bg: '#F1F2EE',
-  surface: '#FFFFFF',
-  surface2: '#F5F6F2',
-  surface3: '#E8EAE4',
-  border: '#E1E3DD',
-  borderStrong: '#CBCFC7',
-  text: '#121412',
-  textDim: '#5B6168',
-  muted: '#8C9298',
-  warning: '#C27500',
-  warningDim: 'rgba(194,117,0,0.12)',
-  warningLine: 'rgba(194,117,0,0.4)',
-  danger: '#D63A30',
-  dangerDim: 'rgba(214,58,48,0.1)',
-  dangerLine: 'rgba(214,58,48,0.4)',
-  secondaryMuscle: '#F08A1C',
-  stabilizerMuscle: '#6E5CE6',
-  muscleIdle: '#DADDD6',
-  muscleNeutral: '#C9CDC4',
-  protein: '#2D8BE0',
-  fat: '#C27500',
-  carbs: '#6E9E00',
-  overlay: 'rgba(16,18,16,0.38)',
-  tabBar: 'rgba(255,255,255,0.97)',
-};
-
-const ACCENTS: Record<SchemeName, Record<AccentName, AccentSet>> = {
-  dark: {
-    lime: { accent: '#C8F53C', accentPressed: '#B2DD2A', accentDim: 'rgba(200,245,60,0.12)', accentLine: 'rgba(200,245,60,0.3)', onAccent: '#0B0D06', doneRow: 'rgba(200,245,60,0.06)', barSoft: 'rgba(200,245,60,0.42)' },
-    blue: { accent: '#4DA3FF', accentPressed: '#3A8EEA', accentDim: 'rgba(77,163,255,0.15)', accentLine: 'rgba(77,163,255,0.4)', onAccent: '#04111F', doneRow: 'rgba(77,163,255,0.08)', barSoft: 'rgba(77,163,255,0.45)' },
-    orange: { accent: '#FF8A3D', accentPressed: '#EB7628', accentDim: 'rgba(255,138,61,0.15)', accentLine: 'rgba(255,138,61,0.4)', onAccent: '#1C0B02', doneRow: 'rgba(255,138,61,0.08)', barSoft: 'rgba(255,138,61,0.45)' },
-  },
-  light: {
-    lime: { accent: '#4C8A00', accentPressed: '#3F7400', accentDim: 'rgba(110,170,0,0.13)', accentLine: 'rgba(76,138,0,0.38)', onAccent: '#FFFFFF', doneRow: 'rgba(110,170,0,0.09)', barSoft: 'rgba(76,138,0,0.4)' },
-    blue: { accent: '#0B6AD6', accentPressed: '#0858B4', accentDim: 'rgba(11,106,214,0.1)', accentLine: 'rgba(11,106,214,0.36)', onAccent: '#FFFFFF', doneRow: 'rgba(11,106,214,0.07)', barSoft: 'rgba(11,106,214,0.4)' },
-    orange: { accent: '#D2600E', accentPressed: '#B4500A', accentDim: 'rgba(210,96,14,0.11)', accentLine: 'rgba(210,96,14,0.38)', onAccent: '#FFFFFF', doneRow: 'rgba(210,96,14,0.07)', barSoft: 'rgba(210,96,14,0.4)' },
-  },
-};
-
-export const ACCENT_LABEL: Record<AccentName, string> = { lime: 'Салатовый', blue: 'Синий', orange: 'Оранжевый' };
-/** Образец для выбора акцента (одинаковый в обеих схемах) */
-export const ACCENT_SWATCH: Record<AccentName, string> = { lime: '#C8F53C', blue: '#4DA3FF', orange: '#FF8A3D' };
-
-export function paletteFor(scheme: SchemeName, accent: AccentName = 'lime'): Palette {
-  return { ...(scheme === 'light' ? LIGHT_BASE : DARK_BASE), ...ACCENTS[scheme][accent] };
-}
 
 export function resolveScheme(pref: ThemePref | undefined, system: 'light' | 'dark' | null | undefined): SchemeName {
   if (pref === 'light' || pref === 'dark') return pref;
@@ -160,7 +47,7 @@ export const semantic = {
 // смене темы падала с Render Error. Поэтому для каждой темы строится НОВАЯ копия стилей, а доступ
 // styles.x идёт через геттер, возвращающий копию для текущей темы.
 
-// Акцентные токены — первыми: в тёмной теме «углеводы» совпадают с лаймом, а статичные стили почти всегда про акцент
+// Акцентные токены — первыми: статичные стили чаще всего про акцент. Значения в палитре уникальны (см. tokens.ts)
 const ACCENT_KEYS: (keyof Palette)[] = ['accent', 'accentPressed', 'accentDim', 'accentLine', 'onAccent', 'doneRow', 'barSoft'];
 const TOKENS = [...ACCENT_KEYS, ...(Object.keys(colors) as (keyof Palette)[]).filter((k) => !ACCENT_KEYS.includes(k))];
 const BASE = paletteFor('dark', 'lime');

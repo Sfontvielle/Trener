@@ -13,7 +13,8 @@ import { haptic } from '@/services/haptics';
  *   3. двойной зелёный импульс: две волны и вспышка света подряд («тук-тук»).
  * «Уменьшение движения» и автотесты в браузере — сразу готовый знак. onDone — когда знак собран.
  */
-export const BRAND_LIME = '#C8F53C';
+/** Фирменный лайм = акцент тёмной темы (src/theme/tokens.ts) */
+export const BRAND_LIME = '#B5F56B';
 const automation = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as { webdriver?: boolean }).webdriver;
 const native = Platform.OS !== 'web';
 

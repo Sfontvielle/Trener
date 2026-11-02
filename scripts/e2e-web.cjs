@@ -1564,8 +1564,8 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1200);
     await page.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    // Фон светлой темы (#F1F2EE) после полной перезагрузки страницы
-    const light = await page.evaluate(() => [...document.querySelectorAll('div')].some((d) => getComputedStyle(d).backgroundColor === 'rgb(241, 242, 238)'));
+    // Фон светлой темы (#F3F5F8) после полной перезагрузки страницы
+    const light = await page.evaluate(() => [...document.querySelectorAll('div')].some((d) => getComputedStyle(d).backgroundColor === 'rgb(243, 245, 248)'));
     assert.ok(light, 'светлый фон после перезапуска');
   });
 

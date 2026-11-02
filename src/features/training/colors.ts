@@ -5,7 +5,7 @@ import type { WorkoutColor } from '@/types';
  * Хранится ключ, а не HEX: палитру можно поменять, не трогая сохранённые тренировки.
  */
 export const WORKOUT_COLORS: Record<WorkoutColor, string> = {
-  lime: '#C8F53C',
+  lime: '#B5F56B',
   blue: '#4DA3FF',
   orange: '#FF9F43',
   violet: '#A78BFA',
