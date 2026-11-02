@@ -498,7 +498,8 @@ const styles = themed({
   segFlex: { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' },
   segPill: { minHeight: 36, paddingHorizontal: 16 },
   segIndicator: { position: 'absolute', borderRadius: radius.pill },
-  section: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm, marginTop: space.xl, marginBottom: space.xs },
+  // При крупном шрифте действие переносится под заголовок, а не выталкивается за край
+  section: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', columnGap: space.sm, rowGap: space.xxs, marginTop: space.xl, marginBottom: space.xs },
   empty: { alignItems: 'center', gap: space.xs, paddingVertical: space.xxl, paddingHorizontal: space.lg },
   emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', marginBottom: space.xs },
   banner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, paddingHorizontal: space.md, borderRadius: radius.md },

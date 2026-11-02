@@ -114,8 +114,8 @@ export default function HealthMonitorScreen() {
       )}
 
       <Card style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <T v="caption" style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <T v="caption" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 140 }}>
             Артериальное давление
           </T>
           <Button title="Записать" icon="add" size="sm" variant="secondary" onPress={() => setBpOpen(true)} />

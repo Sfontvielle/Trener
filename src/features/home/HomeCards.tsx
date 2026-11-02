@@ -253,9 +253,10 @@ export function MacroCard({ eaten, target, onOpen }: { eaten: Macros; target: Ma
         </View>
         <View style={{ flex: 1, gap: 10 }}>
           {parts.map((p) => (
-            <View key={p.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            // При крупном шрифте число уходит под название, а не за край карточки
+            <View key={p.key} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 2 }}>
               <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: p.color }} />
-              <T v="body" style={{ flex: 1 }}>
+              <T v="body" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 64 }}>
                 {p.label}
               </T>
               <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }}>

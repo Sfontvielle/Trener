@@ -55,10 +55,10 @@ export default function Health() {
         {READS.map((r) => (
           <View key={r.label} style={styles.row}>
             <Icon name={r.icon} size={18} color={colors.accent} />
-            <T v="body" style={{ flex: 1, fontWeight: '600' }}>
+            <T v="body" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 120, fontWeight: '600' }}>
               {r.label}
             </T>
-            <T v="small" style={{ fontSize: 12 }}>
+            <T v="small" style={{ fontSize: 12, flexShrink: 1 }}>
               {r.why}
             </T>
           </View>
@@ -154,7 +154,7 @@ function Metric({ label, value, sub, warn }: { label: string; value: string; sub
 }
 
 const styles = themed({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44, flexWrap: 'wrap' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metric: { flexBasis: '47%', flexGrow: 1, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface2, gap: 2 },
 });

@@ -154,9 +154,10 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
             <View key={m.label} style={{ flex: m.kcal, backgroundColor: m.color }} />
           ))}
         </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        {/* Ширина колонки — по содержимому: при крупном шрифте колонки переносятся, а не вылезают за край */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {macro.map((m) => (
-            <View key={m.label} style={{ flex: 1, gap: 2 }}>
+            <View key={m.label} style={{ flexGrow: 1, flexBasis: 'auto', minWidth: 88, gap: 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={[styles.dot, { backgroundColor: m.color }]} />
                 <T v="small">{m.label}</T>

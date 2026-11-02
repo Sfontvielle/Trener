@@ -68,7 +68,7 @@ export function NutritionCard({ eaten, target, onOpen }: { eaten: Macros; target
             <T v="small" numberOfLines={1} style={{ fontSize: 12 }}>
               {m.label}
             </T>
-            <T v="body" numberOfLines={1} style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+            <T v="body" numberOfLines={2} style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }}>
               {Math.round(eaten[m.key])}
               <T v="small">{target ? ` / ${Math.round(target[m.key])} г` : ' г'}</T>
             </T>
