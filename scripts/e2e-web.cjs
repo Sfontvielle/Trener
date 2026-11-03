@@ -300,21 +300,21 @@ const closeSheet = async (pg) => {
     }
     await page.waitForTimeout(1500);
     const text = await page.evaluate(() => document.body.innerText);
-    assert.match(text, /1\/\d/);
-    const n = await page.getByLabel(/^Завершить подход \d$/).count();
+    assert.match(text, /Упражнение 1 из \d/);
+    const n = await page.getByLabel(/^Записать подход \d$/).count();
     assert.equal(n, 1);
   });
 
   await check('7. Назад к предыдущему упражнению — подходы сохраняются', async () => {
-    await page.getByLabel(/^Завершить подход 1$/).click();
+    await page.getByLabel(/^Записать подход 1$/).click();
     await page.waitForTimeout(500);
     await page.getByText('Пропустить').click().catch(() => {});
     await page.getByLabel('Следующее упражнение').click();
     await page.waitForTimeout(600);
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^2\/\d/);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 2 из \d/);
     await page.getByLabel('Предыдущее упражнение').click();
     await page.waitForTimeout(600);
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/\d/);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 1 из \d/);
     assert.equal(await page.getByLabel('Отменить выполнение подхода').count(), 1);
   });
 
@@ -325,7 +325,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1800);
     await page.goto(`${URL}/workout/active`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^2\/\d/);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 2 из \d/);
     await page.getByLabel('Предыдущее упражнение').click();
     await page.waitForTimeout(600);
     assert.equal(await page.getByLabel('Отменить выполнение подхода').count(), 1);
@@ -345,14 +345,14 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1500);
     const tech = await page.getByLabel('Техника выполнения').boundingBox();
     assert.equal(await page.getByLabel('Техника выполнения').getAttribute('aria-expanded'), 'false', 'раздел техники свёрнут');
-    const cta = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
+    const cta = await page.getByLabel(/^Записать подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
     assert.ok(tech && cta && tech.y < cta.y, `миниатюра техники — в карточке над панелью: ${tech && tech.y} < ${cta && cta.y}`);
     assert.ok(cta.y + cta.height <= 956, `главная кнопка на экране: y=${cta.y}`);
     assert.ok(await page.getByTestId('exercise-muscles').isVisible(), 'мышцы под названием');
     assert.equal(await page.getByTestId('technique-inline').count(), 0, 'без блока техники на экране');
     const main = await page.evaluate(() => document.body.innerText);
     assert.ok(!/Положение тела|Частые ошибки/.test(main), 'техника не на основном экране');
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^\d+\/\d+$/);
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение \d+ из \d+$/);
     await shot('workout');
   });
 
@@ -378,7 +378,7 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек «появится позже»');
     assert.match(await page.getByTestId('technique-inline').innerText(), /Положение тела/);
     const panel = await page.getByTestId('technique-inline').boundingBox();
-    const sets = await page.getByLabel(/^Завершить подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
+    const sets = await page.getByLabel(/^Записать подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
     assert.ok(panel && sets, 'подходы и раздел на одном экране');
     await page.getByLabel('Техника выполнения').click();
     await page.waitForTimeout(500);
@@ -573,9 +573,9 @@ const closeSheet = async (pg) => {
 
   await check('26. Последний подход → «Завершить тренировку» → подтверждение → итог с «Поднято, кг» и калориями', async () => {
     for (let i = 0; i < 6; i++) {
-      const b = page.getByLabel(/^Завершить подход \d+$/);
+      const b = page.getByLabel(/^Записать подход \d+$/);
       if (!(await b.count())) break;
-      const last = (await b.first().getAttribute('aria-label')) === 'Завершить подход 2';
+      const last = (await b.first().getAttribute('aria-label')) === 'Записать подход 2';
       await b.first().click();
       await page.waitForTimeout(250);
       if (last) break; // после последнего подхода «Пропустить» не нажимаем: отдыха быть не должно
@@ -833,8 +833,8 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Завершить подход» → таймера отдыха нет совсем → RIR одним тапом
-    await page.getByLabel(/^Завершить подход 1$/).first().click();
+    // Рабочий подход: один тап «Записать подход» → таймера отдыха нет совсем → RIR одним тапом
+    await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(500);
     assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
     assert.equal(await page.getByLabel('Таймер отдыха', { exact: true }).count(), 0, 'и кнопки таймера отдыха нет');
@@ -843,6 +843,8 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(300);
     assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
     // Заметка к упражнению (вместо кнопки таймера): сохраняется и видна под названием
+    await page.getByLabel('Действия с упражнением').first().click();
+    await page.waitForTimeout(600);
     await page.getByLabel('Заметка к упражнению', { exact: true }).click();
     await page.waitForTimeout(600);
     await page.getByPlaceholder(/сиденье на 4/).fill('Сиденье на 4');
@@ -1209,15 +1211,15 @@ const closeSheet = async (pg) => {
   });
 
   await check('47. Суперсет: подход A → сразу B → снова A (без таймера отдыха); меню «Убрать / Суперсет со следующим»', async () => {
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/);
-    await page.getByLabel(/^Завершить подход 1$/).click();
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 1 из 3$/);
+    await page.getByLabel(/^Записать подход 1$/).click();
     await page.waitForTimeout(1000);
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^2\/3$/, 'после A1 — сразу B');
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 2 из 3$/, 'после A1 — сразу B');
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'без отдыха между участниками');
-    await page.getByLabel(/^Завершить подход 1$/).click();
+    await page.getByLabel(/^Записать подход 1$/).click();
     await page.waitForTimeout(1000);
     assert.equal(await page.getByLabel('Пропустить отдых').count(), 0, 'после круга отдых сам не запускается');
-    assert.match(await page.getByTestId('exercise-position').innerText(), /^1\/3$/, 'и снова A');
+    assert.match(await page.getByTestId('exercise-position').innerText(), /^Упражнение 1 из 3$/, 'и снова A');
     await page.getByLabel('Действия с упражнением').click();
     await page.waitForTimeout(700);
     await page.getByText('Убрать из суперсета', { exact: true }).click();
@@ -1433,10 +1435,10 @@ const closeSheet = async (pg) => {
     const r0 = a.exercises[0].recommendation;
     if (r0 && r0.action !== 'new' && r0.weight > 0) {
       assert.ok(await page.getByTestId('last-result').isVisible(), 'прошлый раз');
-      assert.match(await page.getByTestId('rynji-suggestion').innerText(), /RYNJI: [\d,]+ кг × \d+–\d+/);
+      assert.match(await page.getByTestId('rynji-suggestion').innerText(), /RYNJI\s+[\d,]+ кг × \d+–\d+/);
       assert.equal(a.exercises[0].sets.find((x) => !x.warmup).weight, r0.weight, 'подход заполнен предложением');
     }
-    await page.getByLabel(/^Завершить подход 1$/).first().click();
+    await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(700);
     await page.getByLabel('Тренировка: время, калории, завершение').click();
     await page.waitForTimeout(700);
