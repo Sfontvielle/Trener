@@ -25,7 +25,7 @@ export function StageHeader({ stage, total, progress, onBack }: { stage: number;
         ) : null}
       </View>
       <View style={{ flex: 1, alignItems: 'center', gap: 12 }}>
-        <T v="body" style={{ fontWeight: '700', fontVariant: ['tabular-nums'] }} accessibilityLabel={`Этап ${stage} из ${total}`}>
+        <T v="bodyStrong" style={{ fontVariant: ['tabular-nums'] }} accessibilityLabel={`Этап ${stage} из ${total}`}>
           {`${stage} из ${total}`}
         </T>
         <Progress value={progress} color={colors.accent} track={colors.surface3} height={5} style={{ width: '100%' }} />
@@ -38,11 +38,11 @@ export function StageHeader({ stage, total, progress, onBack }: { stage: number;
 export function StageTitle({ title, sub }: { title: string; sub?: string }) {
   return (
     <View style={{ gap: 10, alignItems: 'center' }}>
-      <T v="h1" accessibilityRole="header" style={{ textAlign: 'center', fontSize: 30, lineHeight: 36 }}>
+      <T v="title1" accessibilityRole="header" style={{ textAlign: 'center' }}>
         {title}
       </T>
       {sub ? (
-        <T v="bodyDim" style={{ textAlign: 'center' }}>
+        <T v="body" color={colors.textDim} style={{ textAlign: 'center' }}>
           {sub}
         </T>
       ) : null}
@@ -66,11 +66,11 @@ export function ChoiceCard({ title, sub, icon, active, onPress, image, tall }: {
     >
       {icon ? <Icon name={icon} size={24} color={active ? colors.accent : colors.text} /> : null}
       <View style={{ flex: 1, gap: 4, paddingVertical: 2 }}>
-        <T v="h3" style={{ fontSize: tall ? 21 : 18 }}>
+        <T v="headline">
           {title}
         </T>
         {sub ? (
-          <T v="small" color={colors.textDim} style={{ fontSize: 14 }}>
+          <T v="callout" color={colors.textDim}>
             {sub}
           </T>
         ) : null}
@@ -98,7 +98,7 @@ export function SexCards({ value, onChange }: { value: Sex | undefined; onChange
             style={({ pressed }) => [styles.sex, active && styles.cardOn, pressed && { transform: [{ scale: 0.97 }] }]}
           >
             <MaterialCommunityIcons name={sx === 'male' ? 'gender-male' : 'gender-female'} size={50} color={active ? colors.accent : colors.text} />
-            <T v="h3" style={{ fontSize: 18 }}>
+            <T v="headline">
               {sx === 'male' ? 'Мужчина' : 'Женщина'}
             </T>
           </Pressable>
@@ -121,18 +121,18 @@ export function FrequencyPicker({ value, onChange, min = 2, max = 6 }: { value: 
         <Pressable onPress={() => set((value ?? min + 1) - 1)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Реже" disabled={value === min}>
           <Icon name="remove" size={30} color={value === min ? colors.muted : colors.text} />
         </Pressable>
-        <T v="hero" style={{ fontSize: 48, minWidth: 60, textAlign: 'center', fontVariant: ['tabular-nums'] }} color={value ? colors.text : colors.muted} testID="q-freq-value">
+        <T v="display" style={{ fontSize: 48, lineHeight: 56, minWidth: 60, textAlign: 'center' }} color={value ? colors.text : colors.muted} testID="q-freq-value">
           {value ?? '—'}
         </T>
         <Pressable onPress={() => set((value ?? min) + (value ? 1 : 1))} hitSlop={10} accessibilityRole="button" accessibilityLabel="Чаще" disabled={value === max}>
           <Icon name="add" size={30} color={value === max ? colors.muted : colors.text} />
         </Pressable>
       </View>
-      <T v="bodyDim">{value ? daysWord(value) : 'раз в неделю'}</T>
+      <T v="body" color={colors.textDim}>{value ? daysWord(value) : 'раз в неделю'}</T>
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
         {opts.map((n) => (
           <Pressable key={n} onPress={() => set(n)} accessibilityRole="radio" accessibilityState={{ selected: value === n }} accessibilityLabel={`${n} ${daysWord(n)}`} style={({ pressed }) => [styles.chip, value === n && styles.cardOn, pressed && { opacity: 0.7 }]}>
-            <T v="h3" style={{ fontSize: 18 }}>
+            <T v="headline">
               {n}
             </T>
           </Pressable>
@@ -149,7 +149,7 @@ export function Dropdown<V extends string | number>({ label, value, options, onC
   const cur = options.find((o) => o.v === value);
   return (
     <View style={{ gap: 10 }}>
-      <T v="body" style={{ fontWeight: '700', fontSize: 16 }}>
+      <T v="bodyStrong">
         {label}
       </T>
       <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`${label}: ${cur ? cur.label : 'не выбрано'}`} testID={testID} style={({ pressed }) => [styles.drop, pressed && { opacity: 0.8 }]}>
@@ -158,7 +158,7 @@ export function Dropdown<V extends string | number>({ label, value, options, onC
             {cur ? cur.label : placeholder}
           </T>
           {cur?.sub ? (
-            <T v="small" color={colors.textDim}>
+            <T v="callout" color={colors.textDim}>
               ({cur.sub})
             </T>
           ) : null}

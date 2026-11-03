@@ -93,6 +93,27 @@ export const Anatomy = memo(function Anatomy({
   );
 });
 
+const LOWER: MuscleSlug[] = ['quadriceps', 'hamstring', 'gluteal', 'calves', 'adductors', 'tibialis'];
+
+/**
+ * Мини-схема для миниатюр в списках: сторона фигуры, где основные мышцы, кадр — верх или низ тела
+ * (по основным мышцам), квадратом на всю миниатюру. Основные — акцентом, вспомогательные — своим цветом.
+ */
+export const MiniFigure = memo(function MiniFigure({ primary, secondary, size }: { primary: MuscleSlug[]; secondary: MuscleSlug[]; size: number }) {
+  const fillOf = useMemo(() => {
+    const m = new Map<string, string>();
+    secondary.forEach((s) => m.set(s, colors.secondaryMuscle));
+    primary.forEach((s) => m.set(s, colors.accent));
+    return m;
+  }, [primary, secondary]);
+  const front = primary.some((m) => !BACK_ONLY.includes(m)) || !primary.some((m) => !FRONT_ONLY.includes(m));
+  const lower = primary.filter((m) => LOWER.includes(m)).length * 2 > primary.length;
+  // Мужская фигура: спереди x 0–724, сзади x 724–1448; верх — от трапеций до таза, низ — от поясницы до икр
+  const x0 = front ? 0 : 724;
+  const y0 = lower ? 600 : 140;
+  return <Figure side={front ? 'front' : 'back'} sex="male" scale={1} width={size} height={size} viewBox={`${x0 + 30} ${y0} 664 664`} fillOf={fillOf} />;
+});
+
 const VIEWBOX = {
   male: { front: '0 0 724 1448', back: '724 0 724 1448' },
   female: { front: '-50 -40 734 1538', back: '756 0 774 1448' },
@@ -100,10 +121,10 @@ const VIEWBOX = {
 const NEUTRAL = new Set(['head', 'hair', 'hands', 'feet', 'ankles', 'knees', 'neck']);
 
 /** Фигура из SVG-контуров мышц (react-native-body-highlighter, MIT) без обработчиков нажатий */
-const Figure = memo(function Figure({ side, sex, scale, fillOf }: { side: 'front' | 'back'; sex: Sex; scale: number; fillOf: Map<string, string> }) {
+const Figure = memo(function Figure({ side, sex, scale, fillOf, width, height, viewBox }: { side: 'front' | 'back'; sex: Sex; scale: number; fillOf: Map<string, string>; width?: number; height?: number; viewBox?: string }) {
   const parts: BodyPart[] = sex === 'female' ? (side === 'front' ? bodyFemaleFront : bodyFemaleBack) : side === 'front' ? bodyFront : bodyBack;
   return (
-    <Svg viewBox={VIEWBOX[sex][side]} width={200 * scale} height={400 * scale}>
+    <Svg viewBox={viewBox ?? VIEWBOX[sex][side]} width={width ?? 200 * scale} height={height ?? 400 * scale}>
       <G stroke={colors.bg} strokeWidth={2.5}>
         {parts.flatMap((part) => {
           const fill = fillOf.get(part.slug ?? '') ?? (NEUTRAL.has(part.slug ?? '') ? colors.muscleNeutral : colors.muscleIdle);

@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T } from '@/components/ui';
+import { PrimaryAction } from '@/components/ds';
 import { Appear, Progress } from '@/components/motion';
 import { WeekStrip } from '@/features/profile/PlanSummary';
 import { GOAL_SHORT, computeNutritionTarget } from '@/features/nutrition/targets';
@@ -67,7 +68,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
   if (!profile || !calc) {
     return (
       <View style={{ gap: space.lg, marginTop: space.xxl }}>
-        <T v="h2">Не все ответы заполнены</T>
+        <T v="title2">Не все ответы заполнены</T>
         <Button title="Вернуться к анкете" variant="secondary" onPress={onBack} />
       </View>
     );
@@ -83,7 +84,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
             {phase === 0 ? <MaterialCommunityIcons name="arm-flex" size={46} color={colors.accent} /> : <MaterialCommunityIcons name="dumbbell" size={46} color={colors.accent} />}
           </View>
         </View>
-        <T v="h2" style={{ textAlign: 'center' }}>
+        <T v="title2" style={{ textAlign: 'center' }}>
           {ph.title}
         </T>
         <View style={{ gap: 10, alignSelf: 'center' }}>
@@ -96,7 +97,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
         </View>
         <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: space.md }}>
           <Progress value={done / ph.items.length} color={colors.accent} track={colors.surface3} height={8} style={{ flex: 1 }} />
-          <T v="small" style={{ fontVariant: ['tabular-nums'], width: 40, textAlign: 'right' }}>
+          <T v="callout" style={{ fontVariant: ['tabular-nums'], width: 40, textAlign: 'right' }}>
             {Math.round((done / ph.items.length) * 100)}%
           </T>
         </View>
@@ -116,10 +117,10 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
         <View style={styles.badge}>
           <Icon name="checkmark" size={30} color={colors.onAccent} />
         </View>
-        <T v="h1" accessibilityRole="header" style={{ textAlign: 'center', fontSize: 30 }}>
+        <T v="title1" accessibilityRole="header" style={{ textAlign: 'center' }}>
           Твой план готов!
         </T>
-        <T v="bodyDim" style={{ textAlign: 'center' }}>
+        <T v="body" color={colors.textDim} style={{ textAlign: 'center' }}>
           {profile.name}, мы учли твою цель ({GOAL_SHORT[profile.goal].toLowerCase()}), параметры, опыт и образ жизни
         </T>
         <View style={{ alignSelf: 'stretch', gap: 8, marginTop: space.sm }}>
@@ -142,10 +143,10 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
       <Appear i={1} style={styles.card}>
         <T v="caption">Питание на день</T>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <T v="hero" testID="plan-kcal">
+          <T v="display" testID="plan-kcal">
             {fmtNum(target.kcal)}
           </T>
-          <T v="h3" color={colors.textDim}>
+          <T v="headline" color={colors.textDim}>
             ккал
           </T>
         </View>
@@ -160,9 +161,9 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
             <View key={m.label} style={{ flexGrow: 1, flexBasis: 'auto', minWidth: 88, gap: 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={[styles.dot, { backgroundColor: m.color }]} />
-                <T v="small">{m.label}</T>
+                <T v="callout">{m.label}</T>
               </View>
-              <T v="h3" style={{ fontVariant: ['tabular-nums'] }}>
+              <T v="headline" style={{ fontVariant: ['tabular-nums'] }}>
                 {m.g} г
               </T>
             </View>
@@ -172,25 +173,25 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
 
       <Appear i={2} style={styles.card}>
         <T v="caption">Программа</T>
-        <T v="h3">
+        <T v="headline">
           {plan.splitLabel} · {plan.daysPerWeek}× в неделю · ~{profile.sessionMinutes} мин
         </T>
         <WeekStrip plan={plan} />
-        <T v="small" color={colors.textDim}>
+        <T v="callout" color={colors.textDim}>
           {STRATEGY[profile.goal]}
         </T>
       </Appear>
 
       <Appear i={3}>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={8} style={{ alignSelf: 'center' }}>
-          <T v="small" style={{ fontWeight: '600' }}>
+          <T v="callout" style={{ fontWeight: '600' }}>
             {more ? 'Скрыть расчёт' : 'Как это рассчитано ›'}
           </T>
         </Pressable>
         {more ? (
           <View style={{ gap: 6, marginTop: 10 }}>
             {[...target.steps, ...plan.rationale].map((st, i) => (
-              <T key={i} v="small">
+              <T key={i} v="callout">
                 {st.label}: {st.value}
                 {st.note ? ` (${st.note})` : ''}
               </T>
@@ -199,7 +200,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
         ) : null}
       </Appear>
 
-      <Button title="Открыть мой план" size="lg" full onPress={onStart} accessibilityLabel={`Открыть мой план и начать с ${BRAND}`} />
+      <PrimaryAction title="Открыть мой план" onPress={onStart} accessibilityLabel={`Открыть мой план и начать с ${BRAND}`} />
     </View>
   );
 }

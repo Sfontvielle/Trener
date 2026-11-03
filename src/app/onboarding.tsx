@@ -5,6 +5,7 @@ import type { Equipment, GoalType } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, Chip, T } from '@/components/ui';
+import { PrimaryAction } from '@/components/ds';
 import { FadeIn } from '@/components/motion';
 import { Wheel } from '@/components/WheelPicker';
 import { RulerPicker } from '@/components/RulerPicker';
@@ -186,7 +187,7 @@ export default function Onboarding() {
             <View style={{ alignItems: 'center', gap: space.md }}>
               <Wheel label="Возраст" values={AGES} value={draft.age ?? 18} onChange={(v) => update({ age: v })} format={(v) => (v === (draft.age ?? -1) ? `${v} лет` : String(v))} width={240} testID="q-age-wheel" />
               <View style={styles.manual}>
-                <T v="small" color={colors.textDim}>
+                <T v="callout" color={colors.textDim}>
                   или введи:
                 </T>
                 <TextInput
@@ -203,16 +204,16 @@ export default function Onboarding() {
                   selectionColor={colors.accent}
                   style={styles.manualInput}
                 />
-                <T v="small" color={colors.textDim}>
+                <T v="callout" color={colors.textDim}>
                   лет
                 </T>
               </View>
               {err.age ? (
-                <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+                <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                   {err.age}
                 </T>
               ) : draft.age === undefined ? (
-                <T v="small" style={{ textAlign: 'center' }}>
+                <T v="callout" style={{ textAlign: 'center' }}>
                   Прокрути колесо или введи число
                 </T>
               ) : null}
@@ -225,7 +226,7 @@ export default function Onboarding() {
             <StageTitle title="Какой у тебя рост?" />
             <RulerPicker label="Рост" unit="см" value={draft.heightCm} onChange={(v) => update({ heightCm: v })} min={RANGE.heightCm[0]} max={RANGE.heightCm[1]} start={draft.sex === 'female' ? 165 : 178} testID="q-height" />
             {err.heightCm ? (
-              <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+              <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                 {err.heightCm}
               </T>
             ) : null}
@@ -237,11 +238,11 @@ export default function Onboarding() {
             <StageTitle title="Сколько ты весишь?" />
             <RulerPicker label="Текущий вес" unit="кг" value={draft.weightKg} onChange={(v) => update({ weightKg: v })} min={RANGE.weightKg[0]} max={RANGE.weightKg[1]} start={draft.sex === 'female' ? 62 : 78} step={0.1} decimals={1} testID="q-weight" />
             {err.weightKg ? (
-              <T v="small" color={colors.danger} style={{ textAlign: 'center' }}>
+              <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                 {err.weightKg}
               </T>
             ) : (
-              <T v="small" style={{ textAlign: 'center' }}>
+              <T v="callout" style={{ textAlign: 'center' }}>
                 Нужны для расчёта калорий и нагрузки. Хранятся только на этом iPhone.
               </T>
             )}
@@ -316,7 +317,7 @@ export default function Onboarding() {
                 <Chip key={e} label={EQUIPMENT_LABEL[e]} active={draft.equipment.includes(e)} onPress={() => update({ equipment: draft.equipment.includes(e) ? draft.equipment.filter((x) => x !== e) : [...draft.equipment, e] })} />
               ))}
             </View>
-            <T v="small" style={{ textAlign: 'center' }}>
+            <T v="callout" style={{ textAlign: 'center' }}>
               {draft.equipment.length ? 'Подберу упражнения под это оборудование.' : 'Ничего нет — соберу программу с весом тела.'}
             </T>
           </>
@@ -327,7 +328,7 @@ export default function Onboarding() {
 
       {/* как на эталонах — главная кнопка внизу экрана; на странице имени — сразу под полем (над клавиатурой) */}
       <View style={{ marginTop: space.xxl }}>
-        <Button title={cur === 'lifestyle' ? 'Завершить анкету' : 'Продолжить'} size="lg" full disabled={!canNext} onPress={next} />
+        <PrimaryAction title={cur === 'lifestyle' ? 'Завершить анкету' : 'Продолжить'} disabled={!canNext} onPress={next} />
       </View>
     </Screen>
   );
@@ -352,7 +353,7 @@ function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraf
       <Dropdown label="Сколько ты спишь?" value={draft.sleepHours} options={SLEEP_OPTIONS.map((s) => ({ v: s.hours, label: s.label.replace(' ч', ' часов').replace('ч+', 'часов и больше') }))} onChange={(v) => update({ sleepHours: v })} testID="q-sleep" />
       <Dropdown label="Есть ли ограничения в питании?" value={draft.diet} options={DIET_OPTIONS} onChange={(v) => update({ diet: v })} testID="q-diet" />
       <View style={{ gap: 10 }}>
-        <T v="body" style={{ fontWeight: '700', fontSize: 16 }}>
+        <T v="bodyStrong">
           Дополнительно (необязательно)
         </T>
         <TextInput
@@ -372,7 +373,7 @@ function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraf
           <T v="body" style={{ fontWeight: '700' }}>
             Apple Health
           </T>
-          <T v="small">{health ?? 'Необязательно: шаги и сон будут подтягиваться сами'}</T>
+          <T v="callout">{health ?? 'Необязательно: шаги и сон будут подтягиваться сами'}</T>
         </View>
         <Button
           title="Подключить"

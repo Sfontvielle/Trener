@@ -161,3 +161,25 @@ test('Запланированные: выполнение закрывает п
   assert.equal(useSchedule.getState().templates.length, 0);
   useSchedule.getState().reset();
 });
+
+test('3D-петли: ровно 6, каждая — только своему упражнению, мышцы рендера совпадают с основными', async () => {
+  const fs = await import('node:fs');
+  const { EXERCISES } = await import('../src/data/exercises');
+  // Файл реестра подключает .webp через require — в Node его не импортировать, читаем как текст
+  const src = fs.readFileSync(new URL('../src/data/exerciseAnimations.ts', import.meta.url), 'utf8');
+  const entries = [...src.matchAll(/^ {2}([a-z_]+): \{[\s\S]*?loop: require\('\.\.\/\.\.\/assets\/anim\/([a-z_]+)\.webp'\)[\s\S]*?primary: \[([^\]]*)\]/gm)].map((m) => ({ id: m[1], file: m[2], primary: m[3].split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean) }));
+  assert.equal(entries.length, 6, 'шесть петель');
+  for (const e of entries) {
+    const ex = EXERCISES.find((x) => x.id === e.id);
+    assert.ok(ex, `упражнение ${e.id} существует`);
+    assert.equal(e.file, e.id, `${e.id}: файл петли — своего упражнения`);
+    assert.ok(e.primary.some((m) => ex!.primary.includes(m as never)), `${e.id}: основные мышцы рендера (${e.primary}) есть у упражнения (${ex!.primary})`);
+  }
+  // Поиск — только по точному id: похожие варианты петлю не получают
+  const lookup = fs.readFileSync(new URL('../src/features/exercises/ExerciseAnimation.tsx', import.meta.url), 'utf8');
+  assert.match(lookup, /animationFor = \(ex: Exercise\): Anim \| undefined => EXERCISE_ANIMATIONS\[ex\.id\];/);
+  const thumb = fs.readFileSync(new URL('../src/features/exercises/ExerciseThumb.tsx', import.meta.url), 'utf8');
+  assert.match(thumb, /EXERCISE_ANIMATIONS\[ex\.id\]/);
+  assert.doesNotMatch(thumb, /exerciseMedia|\.jpg|uri:/, 'миниатюры без фото');
+  for (const v of ['incline_bench_press', 'db_bench_press', 'smith_bench_press']) assert.ok(!entries.some((e) => e.id === v), `${v} без чужой петли`);
+});

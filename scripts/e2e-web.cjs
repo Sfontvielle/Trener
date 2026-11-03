@@ -1848,6 +1848,20 @@ const closeSheet = async (pg) => {
     }
   });
 
+  await check('67. Миниатюры упражнений: без фото атлета; 3D-постер — только у упражнений со своей петлёй', async () => {
+    await page.goto(`${URL}/library`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await dismiss();
+    const media = () => page.evaluate(() => [...document.querySelectorAll('img, div')].map((el) => `${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`).filter((x) => x.trim()));
+    let all = await media();
+    assert.equal(all.filter((x) => /assets\/exercises\/|free-exercise-db/.test(x)).length, 0, 'в библиотеке нет фото атлета');
+    assert.ok((await page.locator('svg path').count()) > 50, 'миниатюры — схемы мышц');
+    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1]);
+    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift'];
+    assert.ok(posters.every((p) => own.includes(p)), `постеры только своих петель: ${posters}`);
+    await shot('library-thumbs');
+  });
+
   await check('14. Тема сохраняется после перезапуска', async () => {
     await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
