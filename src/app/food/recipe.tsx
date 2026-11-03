@@ -6,7 +6,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Icon, IconButton, T } from '@/components/ui';
 import { AppHeader, Group, ListRow, SectionHeader, StatRow } from '@/components/ds';
-import { Field, NumberField, NumberStepper } from '@/components/inputs';
+import { Field, NumberField, NumberStepper, INPUT_MAX_SCALE } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
 import { useNutrition } from '@/stores/nutrition';
@@ -54,7 +54,7 @@ export default function RecipeScreen() {
       <AppHeader title={existing ? 'Рецепт' : 'Новый рецепт'} back />
       <Field label="Название" value={name} onChangeText={setName} placeholder="Например: Гречка с курицей" maxLength={60} testID="recipe-name" />
 
-      <SectionHeader title="Ингредиенты" action="Добавить" onAction={() => setPicker(true)} />
+      <SectionHeader title="Ингредиенты" action="Добавить" actionLabel="Добавить ингредиент" onAction={() => setPicker(true)} />
       {items.length ? (
         <Group>
           {items.map((it, i) => (
@@ -151,7 +151,7 @@ function IngredientPicker({ visible, onClose, onPick, exclude }: { visible: bool
     <Sheet visible={visible} onClose={onClose} title="Ингредиент" scroll={false} maxHeightPct={0.85}>
       <View style={styles.search}>
         <Icon name="search" size={18} color={colors.muted} />
-        <TextInput value={q} onChangeText={setQ} placeholder="Продукт" placeholderTextColor={colors.muted} style={styles.input} accessibilityLabel="Поиск ингредиента" testID="ingredient-search" />
+        <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE} value={q} onChangeText={setQ} placeholder="Продукт" placeholderTextColor={colors.muted} style={styles.input} accessibilityLabel="Поиск ингредиента" testID="ingredient-search" />
       </View>
       <FlatList
         style={{ marginTop: space.sm, maxHeight: 420 }}

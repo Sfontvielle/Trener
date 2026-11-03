@@ -3,7 +3,7 @@ import { AccessibilityInfo, Platform, Pressable, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { UserProfile } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Button, Icon, T } from '@/components/ui';
+import { Button, Icon, T, linkHit } from '@/components/ui';
 import { PrimaryAction } from '@/components/ds';
 import { Appear, Progress } from '@/components/motion';
 import { WeekStrip } from '@/features/profile/PlanSummary';
@@ -183,7 +183,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
       </Appear>
 
       <Appear i={3}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={8} style={{ alignSelf: 'center' }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={8} style={[{ alignSelf: 'center' }, linkHit]}>
           <T v="callout" style={{ fontWeight: '600' }}>
             {more ? 'Скрыть расчёт' : 'Как это рассчитано ›'}
           </T>

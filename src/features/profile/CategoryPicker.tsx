@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
+import { INPUT_MAX_SCALE } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { Button, Chip, Icon, T } from '@/components/ui';
 import { colors, radius, space, themed } from '@/theme';
@@ -54,7 +55,7 @@ export function CategoryPicker({ visible, category, value, onClose, onSave }: { 
       <View style={{ gap: space.md }}>
         <View style={styles.search}>
           <Icon name="search" size={18} color={colors.muted} />
-          <TextInput
+          <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
             value={q}
             onChangeText={setQ}
             placeholder="Поиск или свой вариант"

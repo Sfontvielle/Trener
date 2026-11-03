@@ -14,7 +14,7 @@ export function Field({ label, hint, error, style, accessory, ...rest }: TextInp
     <View style={[{ gap: 6 }, style]}>
       {label ? <T v="caption">{label}</T> : null}
       <View>
-      <TextInput
+      <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
         placeholderTextColor={colors.muted}
         selectionColor={colors.accent}
         accessibilityLabel={label ?? rest.placeholder}

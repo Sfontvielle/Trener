@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { INPUT_MAX_SCALE } from '@/components/inputs';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CoachAction, CoachMessage } from '@/types';
@@ -83,7 +84,7 @@ export default function Coach() {
             </ScrollView>
           ) : null}
           <View style={styles.inputRow}>
-            <TextInput
+            <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
               value={text}
               onChangeText={setText}
               placeholder="Спроси тренера…"

@@ -729,7 +729,7 @@ function ExerciseFocus({
         ) : null}
         {/* Название слева крупно, мышцы обычным регистром; «ⓘ» — рекомендация, история, блины */}
         <View style={styles.titleRow}>
-          <T v="title1" style={{ flex: 1 }} numberOfLines={3}>
+          <T v="title1" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={3}>
             {ex.name}
           </T>
           <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" color={colors.textDim} onPress={openInfo} style={{ marginRight: -10 }} />
@@ -1102,7 +1102,7 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
       ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={set.done ? 'Отменить выполнение подхода' : 'Подход выполнен'}
+        accessibilityLabel={set.done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
         accessibilityState={{ checked: !!set.done }}
         onPress={() => onComplete(set)}
         style={styles.colOk}

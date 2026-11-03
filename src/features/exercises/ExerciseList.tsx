@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { INPUT_MAX_SCALE } from '@/components/inputs';
 import type { Equipment, Exercise, ExerciseCategory } from '@/types';
 import { colors, radius, themed } from '@/theme';
 import { Button, Chip, EmptyState, Icon, T } from '@/components/ui';
@@ -96,7 +97,7 @@ export function ExerciseList({
           {header}
           <View style={styles.search}>
             <Icon name="search" size={18} color={colors.muted} />
-            <TextInput value={q} onChangeText={setQ} placeholder="Поиск: жим, присед, бицепс…" placeholderTextColor={colors.muted} style={styles.searchInput} selectionColor={colors.accent} returnKeyType="search" clearButtonMode="while-editing" />
+            <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE} value={q} onChangeText={setQ} placeholder="Поиск: жим, присед, бицепс…" placeholderTextColor={colors.muted} style={styles.searchInput} selectionColor={colors.accent} returnKeyType="search" clearButtonMode="while-editing" />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
             <Chip label="Все" active={cat === 'all'} onPress={() => setCat('all')} />

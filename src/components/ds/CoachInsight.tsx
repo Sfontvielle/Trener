@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, space, themed } from '@/theme';
-import { Icon, T, elevation } from '../ui';
+import { Icon, T, elevation, linkHit } from '../ui';
 
 /**
  * Один совет тренера (дизайн-система §9 CoachInsight): источник, 1–2 предложения, «Почему так?» и одно действие.
@@ -50,14 +50,14 @@ export function CoachInsight({
       {onWhy || action ? (
         <View style={styles.actions}>
           {onWhy ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Почему так?" onPress={onWhy} hitSlop={10}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Почему так: ${title}`} onPress={onWhy} hitSlop={10} style={linkHit}>
               <T v="callout">Почему так?</T>
             </Pressable>
           ) : (
             <View />
           )}
           {action ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={10} testID={action.testID}>
+            <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={10} testID={action.testID} style={linkHit}>
               <T v="callout" color={colors.accent} style={{ fontWeight: '600' }}>
                 {action.label}
               </T>

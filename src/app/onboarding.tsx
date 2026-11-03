@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
+import { INPUT_MAX_SCALE } from '@/components/inputs';
 import { router } from 'expo-router';
 import type { Equipment, GoalType } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
@@ -156,7 +157,7 @@ export default function Onboarding() {
         {cur === 'name' ? (
           <>
             <StageTitle title="Как тебя зовут?" sub="Так я буду к тебе обращаться" />
-            <TextInput
+            <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
               value={draft.name}
               onChangeText={(t) => update({ name: t })}
               placeholder="Введите имя"
@@ -190,7 +191,7 @@ export default function Onboarding() {
                 <T v="callout" color={colors.textDim}>
                   или введи:
                 </T>
-                <TextInput
+                <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
                   value={draft.age === undefined ? '' : String(draft.age)}
                   onChangeText={(t) => {
                     const n = parseInt(t.replace(/\D/g, ''), 10);
@@ -356,7 +357,7 @@ function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraf
         <T v="bodyStrong">
           Дополнительно (необязательно)
         </T>
-        <TextInput
+        <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
           value={draft.limitations}
           onChangeText={(t) => update({ limitations: t })}
           placeholder="Аллергии, травмы, особенности и т.д."

@@ -73,11 +73,11 @@ export function Header({ title, subtitle, right, onBack, large }: { title: strin
         style={{ marginLeft: -4 }}
       />
       <View style={{ flex: 1, paddingHorizontal: 6 }}>
-        <T v={large ? 'h1' : 'h3'} numberOfLines={1}>
+        <T v={large ? 'title1' : 'title2'} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
           {title}
         </T>
         {subtitle ? (
-          <T v="small" numberOfLines={1}>
+          <T v="footnote" numberOfLines={1}>
             {subtitle}
           </T>
         ) : null}

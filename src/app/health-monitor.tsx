@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, Icon, T } from '@/components/ui';
+import { Button, Card, Icon, T, linkHit } from '@/components/ui';
 import { Field, Toggle } from '@/components/inputs';
 import { DateField } from '@/components/DateField';
 import { TrendChart } from '@/components/charts';
@@ -56,7 +56,7 @@ export default function HealthMonitorScreen() {
     const s = parseInt(sys, 10);
     const d = parseInt(dia, 10);
     if (!(s >= 70 && s <= 260 && d >= 40 && d <= 160 && s > d)) {
-      toast('Проверьте значения давления', 'alert-circle');
+      toast('Проверь значения давления', 'alert-circle');
       return;
     }
     en.addBp({ date: today(), systolic: s, diastolic: d, pulse: pulse ? parseInt(pulse, 10) : undefined });
@@ -167,7 +167,7 @@ export default function HealthMonitorScreen() {
         />
         {/* Граница безопасности: при включённом режиме — всегда на виду; иначе — по нажатию */}
         {!en.enabled ? (
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: boundaryOpen }} hitSlop={8} onPress={() => setBoundaryOpen(!boundaryOpen)}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: boundaryOpen }} hitSlop={8} onPress={() => setBoundaryOpen(!boundaryOpen)} style={[{ alignSelf: 'flex-start' }, linkHit]}>
             <T v="small" style={{ fontWeight: '600' }}>
               {boundaryOpen ? 'Скрыть' : 'Что делает и чего не делает RYNJI ›'}
             </T>

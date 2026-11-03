@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
-import { Button, Icon, SectionTitle, T } from '@/components/ui';
+import { Button, Icon, SectionTitle, T, linkHit } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -227,7 +227,7 @@ export default function Home() {
             <T v="title1" accessibilityRole="header">
               Сегодня
             </T>
-            <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setJournalOpen(true)} hitSlop={8} style={{ alignSelf: 'flex-start' }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Дневник: календарь дней" onPress={() => setJournalOpen(true)} hitSlop={8} style={[{ alignSelf: 'flex-start' }, linkHit]}>
               <T v="footnote">
                 {WEEKDAY_FULL[weekdayIndex(d)]}, {formatDayLong(d)}
               </T>

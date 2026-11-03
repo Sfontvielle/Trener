@@ -37,8 +37,8 @@ const SET_HINT: Record<string, string> = {
   '2': `Обычно 2 подхода. Чтобы не терять недельный объём, ${BRAND} добавит упражнение или +1 подход в основном движении — и объяснит это в плане.`,
   '3': 'Обычно 3 подхода, в основном упражнении — до 4, если иначе объём не добрать.',
 };
-const REP_ITEMS: { key: RepStyle; label: string }[] = [
-  { key: 'auto', label: 'Авто' },
+const REP_ITEMS: { key: RepStyle; label: string; a11y?: string }[] = [
+  { key: 'auto', label: 'Авто', a11y: 'Повторы: авто' },
   { key: 'heavy', label: 'Тяжело' },
   { key: 'moderate', label: 'Средне' },
   { key: 'light', label: 'Много' },
@@ -90,7 +90,7 @@ export default function TrainingPrefs() {
       <Card style={{ gap: 10 }}>
         <View style={styles.wrap}>
           {SPLITS.map((s) => (
-            <Chip key={s} label={s === 'auto' ? 'Авто' : SPLIT_PREF_LABEL[s]} active={prefs.preferredSplit === s} onPress={() => commit(withPrefs(profile, { preferredSplit: s }), 'Сплит изменён, план перестроен')} />
+            <Chip key={s} label={s === 'auto' ? 'Авто' : SPLIT_PREF_LABEL[s]} accessibilityLabel={`Сплит: ${s === 'auto' ? 'авто' : SPLIT_PREF_LABEL[s]}`} active={prefs.preferredSplit === s} onPress={() => commit(withPrefs(profile, { preferredSplit: s }), 'Сплит изменён, план перестроен')} />
           ))}
         </View>
         {prefs.preferredSplit === 'custom' ? (
@@ -278,7 +278,7 @@ export default function TrainingPrefs() {
 function ExList({ title, empty, items, onRemove, onAdd }: { title: string; empty: string; items: { id: string; sub?: string }[]; onRemove: (id: string) => void; onAdd: () => void }) {
   return (
     <>
-      <SectionTitle title={`${title}${items.length ? ` · ${items.length}` : ''}`} action="Добавить" onAction={onAdd} />
+      <SectionTitle title={`${title}${items.length ? ` · ${items.length}` : ''}`} action="Добавить" actionLabel={`Добавить: ${title}`} onAction={onAdd} />
       <Card style={{ gap: 8 }}>
         {items.length === 0 ? <T v="small">{empty}</T> : null}
         {items.map((it) => (

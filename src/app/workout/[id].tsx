@@ -132,7 +132,7 @@ export default function SessionDetail() {
         <T v="caption">
           {formatDayLong(s.date)} · {KIND_LABEL[kind]}
         </T>
-        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+        <T v="display" accessibilityRole="header" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
           {s.name}
         </T>
         <T v="bodyDim">

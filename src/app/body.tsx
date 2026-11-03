@@ -106,7 +106,7 @@ export default function BodyScreen() {
   if (!profile || !a) return null;
   return (
     <Screen>
-      <Header title="Тело" right={<IconButton name="add" label="Записать замеры и фото" onPress={() => router.push('/measurements')} />} />
+      <Header title="Тело" right={<IconButton name="add" label="Добавить замеры и фото" onPress={() => router.push('/measurements')} />} />
 
       {/* Главное: процент жира диапазоном и что это значит */}
       {bf ? (

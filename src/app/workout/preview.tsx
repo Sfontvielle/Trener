@@ -54,7 +54,7 @@ export default function Preview() {
       <Header title="" right={<IconButton name="create-outline" label="Изменить тренировку" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
       {/* Главное — название по центру и одна строка; ниже — одна кнопка и упражнения с мышечной группой */}
       <Appear i={0} style={{ alignItems: 'center', gap: 6 }}>
-        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
+        <T v="display" accessibilityRole="header" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
           {tpl.name}
         </T>
         <T v="bodyDim" style={{ textAlign: 'center' }}>

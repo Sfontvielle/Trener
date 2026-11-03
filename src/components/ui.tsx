@@ -37,6 +37,12 @@ export const MAX_SCALE: Record<Variant, number> = {
   body: 2, bodyStrong: 2, bodyDim: 2, callout: 2, small: 2, footnote: 2, caption: 2, mono: 1.6,
 } as Record<Variant, number>;
 
+/**
+ * Область нажатия текстовой ссылки — 44 pt по высоте без сдвига вёрстки (сама строка ~20 pt).
+ * Надёжнее hitSlop: область видна и в вебе, и в инспекторе доступности.
+ */
+export const linkHit = { paddingVertical: 12, marginVertical: -12 } as const;
+
 /** Минимальный размер текста в приложении (дизайн-система §3) */
 const MIN_FONT = 12;
 
@@ -228,17 +234,21 @@ export function Chip({
   onPress,
   icon,
   style,
+  accessibilityLabel,
 }: {
   label: string;
   active?: boolean;
   onPress?: () => void;
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
+  /** Если одна и та же подпись есть в разных группах («Авто») — с названием группы */
+  accessibilityLabel?: string;
 }) {
   // Чип — скруглённый прямоугольник 8 pt; выбранный — контрастный (как выбор в iOS), акцент остаётся для действия
   return (
     <Tap
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: !!active }}
       onPress={() => {
         haptic.tap();
@@ -362,14 +372,14 @@ export function Segmented<K extends string>({ items, value, onChange, style, ble
 }
 
 /** Заголовок секции: headline слева, необязательное текстовое действие справа (SectionHeader из дизайн-системы) */
-export function SectionTitle({ title, action, onAction, style }: { title: string; action?: string; onAction?: () => void; style?: StyleProp<ViewStyle> }) {
+export function SectionTitle({ title, action, onAction, actionLabel, style }: { title: string; action?: string; onAction?: () => void; /** Название для VoiceOver, если действие одно и то же в разных секциях («Добавить») */ actionLabel?: string; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.section, style]}>
       <T v="headline" accessibilityRole="header" style={{ flexShrink: 1 }}>
         {title}
       </T>
       {action ? (
-        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" accessibilityLabel={action}>
+        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" accessibilityLabel={actionLabel ?? action} style={linkHit}>
           <T v="callout" style={{ fontWeight: '600' }}>
             {action}
           </T>
@@ -399,7 +409,7 @@ export function EmptyState({ icon, title, text, action, onAction, style }: { ico
   );
 }
 
-export function Banner({ icon = 'information-circle', text, tone = 'info', action, onAction }: { icon?: IconName; text: string; tone?: 'info' | 'warning' | 'danger' | 'accent'; action?: string; onAction?: () => void }) {
+export function Banner({ icon = 'information-circle', text, tone = 'info', action, onAction, actionLabel }: { icon?: IconName; text: string; tone?: 'info' | 'warning' | 'danger' | 'accent'; action?: string; onAction?: () => void; actionLabel?: string }) {
   const c = tone === 'warning' ? colors.warning : tone === 'danger' ? colors.danger : tone === 'accent' ? colors.accent : colors.textDim;
   const bg = tone === 'warning' ? colors.warningDim : tone === 'danger' ? colors.dangerDim : tone === 'accent' ? colors.accentDim : colors.surface2;
   return (
@@ -409,7 +419,7 @@ export function Banner({ icon = 'information-circle', text, tone = 'info', actio
         {text}
       </T>
       {action ? (
-        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" style={{ flexShrink: 1, maxWidth: '45%' }}>
+        <Pressable onPress={onAction} hitSlop={12} accessibilityRole="button" accessibilityLabel={actionLabel ?? action} style={[{ flexShrink: 1, maxWidth: '45%' }, linkHit]}>
           <T v="callout" color={tone === 'info' ? colors.text : c} style={{ fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit>
             {action}
           </T>

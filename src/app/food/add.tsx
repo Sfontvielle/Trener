@@ -7,7 +7,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Banner, Button, Icon, Segmented, Skeleton, T, elevation } from '@/components/ui';
 import { AppHeader, ListRow, Group } from '@/components/ds';
-import { Field } from '@/components/inputs';
+import { Field, INPUT_MAX_SCALE } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
 import { useNutrition, mealForHour, type SavedMeal } from '@/stores/nutrition';
@@ -156,7 +156,7 @@ export default function AddFood() {
       <AppHeader title={`Добавить в ${MEAL_TO[meal]}`} subtitle={date === today() ? undefined : date} back />
       <View style={styles.search}>
         <Icon name="search" size={18} color={colors.muted} />
-        <TextInput
+        <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
           value={q}
           onChangeText={setQ}
           placeholder="Название, бренд или штрихкод"
