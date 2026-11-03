@@ -1,0 +1,77 @@
+# Проверки RYNJI: типы, линтер, юнит-тесты; регрессия снимков дневника и активной тренировки (web-рендер).
+# Снимки — в том же окружении, где сняты эталоны: Ubuntu 24.04, шрифт Inter (fonts-inter), Chromium из Playwright 1.63.
+# После намеренного изменения интерфейса эталоны обновляются локально: node scripts/visual-web.cjs --update.
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+      - run: npm test
+
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: checks
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Шрифт Inter по умолчанию, как у эталонов
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-inter
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'XML'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <alias><family>sans-serif</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>system-ui</family><prefer><family>Inter</family></prefer></alias>
+          </fontconfig>
+          XML
+          fc-cache -f
+          fc-match system-ui
+      - name: Playwright 1.63 и Chromium
+        run: |
+          npm install -g playwright@1.63.0
+          npx -y playwright@1.63.0 install --with-deps chromium
+          echo "PLAYWRIGHT_PATH=$(npm root -g)/playwright" >> "$GITHUB_ENV"
+      - name: Web-сервер Expo
+        run: |
+          nohup npx expo start --web --port 8081 > expo.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://localhost:8081/ > /dev/null && break; sleep 2; done
+          curl -sf "http://localhost:8081/index.ts.bundle?platform=web&dev=true&hot=false&lazy=false&transform.engine=hermes&transform.routerRoot=src%2Fapp&unstable_transformProfile=hermes-stable" -o /dev/null
+      - run: node scripts/visual-web.cjs
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff
+          path: |
+            visual-out/
+            expo.log
+          if-no-files-found: ignore
