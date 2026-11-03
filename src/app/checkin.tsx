@@ -77,7 +77,10 @@ export default function CheckIn() {
         <SectionHeader title="Почему" />
         <Group>
           {reasons.map((x) => (
-            <ListRow key={x} title={x[0].toUpperCase() + x.slice(1)} />
+            // Причина — целой фразой: при крупном шрифте переносится, а не обрезается
+            <View key={x} accessible style={styles.reason}>
+              <T v="body">{x[0].toUpperCase() + x.slice(1)}</T>
+            </View>
           ))}
         </Group>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: details }} onPress={() => setDetails(!details)} hitSlop={8} style={{ alignSelf: 'flex-start', marginTop: space.sm, minHeight: 32, justifyContent: 'center' }}>
@@ -213,4 +216,5 @@ function Choice3({ title, options, values, value, onChange }: { title: string; o
 const styles = themed({
   sleep: { flexDirection: 'row', alignItems: 'center', gap: space.xs, alignSelf: 'flex-start', minHeight: 44 },
   inset: { paddingHorizontal: space.md },
+  reason: { minHeight: 48, justifyContent: 'center', paddingHorizontal: space.md, paddingVertical: space.sm },
 });
