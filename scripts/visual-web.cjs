@@ -6,7 +6,7 @@
  * Запуск: npx expo start --web --port 8081, затем
  *   node scripts/visual-web.cjs            — сравнить с эталонами (отличия — в VISUAL_OUT, по умолчанию visual-out/)
  *   node scripts/visual-web.cjs --update   — перезаписать эталоны (после намеренного изменения интерфейса)
- * Шрифт — Inter (пакет fonts-inter, Ubuntu 24.04), Chromium из Playwright 1.63: так же настроен CI.
+ * Шрифт текста перед снимком — явно Inter (пакет fonts-inter); Chromium из Playwright 1.63 — так же в CI.
  */
 const fs = require('fs');
 const path = require('path');
@@ -44,8 +44,16 @@ async function capture(browser, theme) {
     }
   };
   const shots = {};
+  // Системный стек шрифтов RN-web (-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto…) на разных Linux
+  // разрешается в разные шрифты; перед снимком текст явно переводится на Inter (fonts-inter), иконочные шрифты не трогаются
+  const pinFont = () =>
+    p.evaluate(() => {
+      for (const el of document.querySelectorAll('body *')) if (/apple-system|BlinkMacSystemFont|Segoe UI|Roboto/.test(getComputedStyle(el).fontFamily)) el.style.fontFamily = 'Inter';
+    });
   const shot = async (name) => {
     await p.waitForTimeout(900);
+    await pinFont();
+    await p.waitForTimeout(300);
     shots[`${name}-${theme}`] = await p.screenshot();
   };
   await p.goto(URL, { waitUntil: 'networkidle' });

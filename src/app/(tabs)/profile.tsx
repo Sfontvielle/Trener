@@ -33,6 +33,7 @@ import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 import { LOCATION_LABEL } from '@/features/profile/questionnaire';
 import { Image } from 'expo-image';
 import { pickAvatar, removeAvatar } from '@/services/avatar';
+import { labRecognitionAvailable } from '@/services/labExtract';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -180,7 +181,7 @@ export default function Profile() {
         <ListRow icon="medkit-outline" title="Здоровье и особенности" subtitle={healthLine(profile)} onPress={() => open('health')} />
         <ListRow icon="moon-outline" title="Сон и активность" subtitle={lifeLine} onPress={() => open('life')} />
         <ListRow icon="pulse-outline" title="Восстановление" subtitle="Чек-ин: сон и самочувствие" onPress={() => router.push('/checkin')} />
-        <ListRow icon="flask-outline" title="Анализы" subtitle={labCount ? `${labCount} ${plural(labCount, 'анализ', 'анализа', 'анализов')} · история и изменения` : 'PDF, фото или текст — любые лаборатории'} onPress={() => router.push('/labs')} />
+        <ListRow icon="flask-outline" title="Анализы" subtitle={labCount ? `${labCount} ${plural(labCount, 'анализ', 'анализа', 'анализов')} · история и изменения` : labRecognitionAvailable() ? 'PDF, фото или текст — любые лаборатории' : 'Текст или вручную — любые лаборатории'} onPress={() => router.push('/labs')} />
         <ListRow icon="heart-circle-outline" title="Давление, пульс, мониторинг" subtitle={enhancedOn ? 'Режим Enhanced включён · мониторинг' : 'Мониторинг здоровья и сигналы'} onPress={() => router.push('/health-monitor')} />
         <ListRow icon="heart-outline" title="Apple Health" subtitle={healthSummary} onPress={() => router.push('/health')} />
       </Group>

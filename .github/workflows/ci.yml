@@ -41,21 +41,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Шрифт Inter по умолчанию, как у эталонов
+      - name: Шрифт Inter, как у эталонов
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-inter
-          mkdir -p ~/.config/fontconfig
-          cat > ~/.config/fontconfig/fonts.conf <<'XML'
-          <?xml version="1.0"?>
-          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-          <fontconfig>
-            <alias><family>sans-serif</family><prefer><family>Inter</family></prefer></alias>
-            <alias><family>system-ui</family><prefer><family>Inter</family></prefer></alias>
-          </fontconfig>
-          XML
-          fc-cache -f
-          fc-match system-ui
+          fc-list | grep -c "Inter" || true
       - name: Playwright 1.63 и Chromium
         run: |
           npm install -g playwright@1.63.0

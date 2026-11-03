@@ -102,7 +102,7 @@ export default function LabsScreen() {
         <EmptyState
           icon="flask-outline"
           title="Анализов пока нет"
-          text="PDF, фото бланка, текст или вручную — перед сохранением ты проверишь каждое значение."
+          text={`${labRecognitionAvailable() ? 'PDF, фото бланка, текст' : 'Текст из PDF или письма лаборатории'} или вручную — перед сохранением ты проверишь каждое значение.`}
           action="Добавить анализы"
           onAction={() => setAddOpen(true)}
         />
