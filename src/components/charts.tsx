@@ -3,6 +3,7 @@ import { Animated, Easing, Platform, Pressable, StyleProp, View, ViewStyle } fro
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { colors } from '@/theme';
 import { Icon, T } from './ui';
+import { prefersReducedMotion } from './motion';
 
 /** Кольцо прогресса с плавной анимацией заполнения (анимируем число, а не SVG-компонент — работает и на web) */
 export function Ring({
@@ -27,7 +28,9 @@ export function Ring({
   const [shown, setShown] = useState(0);
   useEffect(() => {
     const id = a.addListener(({ value }) => setShown(value));
-    Animated.timing(a, { toValue: target, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    // «Уменьшение движения» — сразу итоговое значение
+    if (prefersReducedMotion()) a.setValue(target);
+    else Animated.timing(a, { toValue: target, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
     return () => a.removeListener(id);
   }, [target, a]);
   return (
@@ -46,7 +49,8 @@ export function Bar({ progress, color = colors.accent, height = 6, style }: { pr
   const p = Math.max(0, Math.min(1, progress));
   const a = useState(() => new Animated.Value(0))[0];
   useEffect(() => {
-    Animated.timing(a, { toValue: p, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    if (prefersReducedMotion()) a.setValue(p);
+    else Animated.timing(a, { toValue: p, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [p, a]);
   return (
     <View style={[{ height, borderRadius: height, backgroundColor: colors.surface3, overflow: 'hidden' }, style]}>
@@ -281,7 +285,8 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 export function ActivityRings({ rings, size = 64, stroke = 7, label }: { rings: { progress: number; color: string }[]; size?: number; stroke?: number; label?: string }) {
   const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    Animated.timing(v, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    if (prefersReducedMotion()) v.setValue(1);
+    else Animated.timing(v, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [v]);
   const c = size / 2;
   return (

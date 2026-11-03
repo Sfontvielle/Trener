@@ -94,7 +94,7 @@ export const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
   danger: '#C7342B',
   dangerDim: 'rgba(199,52,43,0.1)',
   dangerLine: 'rgba(199,52,43,0.38)',
-  secondaryMuscle: '#E07A12',
+  secondaryMuscle: '#B85F00',
   stabilizerMuscle: '#6E5CE6',
   muscleIdle: '#DCE1E8',
   muscleNeutral: '#C8CFD9',

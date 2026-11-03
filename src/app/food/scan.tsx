@@ -5,6 +5,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { prefersReducedMotion } from '@/components/motion';
 import { useNutrition } from '@/stores/nutrition';
 import { FoodApiError, foodErrorText, lookupBarcode } from '@/services/foodApi';
 import { haptic } from '@/services/haptics';
@@ -48,7 +49,10 @@ export default function Scan() {
     // 'on' = одиночная фокусировка (AVCaptureDevice .autoFocus), затем возвращаем continuous
     setFocusPulse('on');
     pulse.setValue(0);
-    Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 160, useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 420, delay: 200, useNativeDriver: true })]).start();
+    if (prefersReducedMotion()) {
+      pulse.setValue(1);
+      setTimeout(() => pulse.setValue(0), 600);
+    } else Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 160, useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 420, delay: 200, useNativeDriver: true })]).start();
     setTimeout(() => setFocusPulse('off'), 700);
   };
 

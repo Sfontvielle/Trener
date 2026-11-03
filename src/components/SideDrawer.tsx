@@ -5,6 +5,7 @@ import { useModalPresence } from './useModalPresence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, space, themed } from '@/theme';
 import { IconButton, T } from './ui';
+import { prefersReducedMotion } from './motion';
 
 /**
  * Выдвижная боковая панель справа (навигация по тренировке).
@@ -96,7 +97,9 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
     },
   );
   if (!mounted) return null;
-  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [panelW, 0] });
+  // «Уменьшение движения»: панель проявляется на месте, без выезда сбоку
+  const calm = prefersReducedMotion();
+  const translateX = calm ? 0 : anim.interpolate({ inputRange: [0, 1], outputRange: [panelW, 0] });
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, panelW], outputRange: [1, 0], extrapolate: 'clamp' }));
   return (
     <Modal visible={shown} onDismiss={onDismiss} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
@@ -105,7 +108,7 @@ export function SideDrawer({ visible, onClose, title, subtitle, children, footer
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрыть список" />
       </Animated.View>
       <SafeDetector gesture={gestures.pan}>
-      <Animated.View style={[styles.panel, { width: panelW, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8, transform: [{ translateX }, { translateX: drag }] }]} {...gestures.handlers}>
+      <Animated.View style={[styles.panel, { width: panelW, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8, transform: [{ translateX }, { translateX: drag }] }, calm && { opacity: anim }]} {...gestures.handlers}>
         <View style={styles.head}>
           <View style={{ flex: 1 }}>
             <T v="h2" numberOfLines={2}>

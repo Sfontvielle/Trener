@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, View } from 'react-native';
 import { colors, radius, themed } from '@/theme';
 import { Icon, T } from '@/components/ui';
+import { prefersReducedMotion } from '@/components/motion';
 import { fmtSec } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 
@@ -24,6 +25,8 @@ export function HoldTimer({ startedAt, target, onStop, onCancel }: { startedAt: 
     if (!reached || fired.current) return;
     fired.current = true;
     haptic.timerEnd();
+    // «Уменьшение движения»: без импульса — остаются отклик и рамка акцентом
+    if (prefersReducedMotion()) return;
     Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 180, useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 380, useNativeDriver: true })]).start();
   }, [reached, pulse]);
   const progress = target > 0 ? Math.min(1, sec / target) : 0;

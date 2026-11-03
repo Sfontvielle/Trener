@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T, type IconName } from './ui';
+import { prefersReducedMotion } from './motion';
 
 /**
  * Кросс-платформенные подтверждения и тосты.
@@ -116,7 +117,7 @@ function ToastView() {
   return (
     <Animated.View
       pointerEvents={t.action ? 'box-none' : 'none'}
-      style={[styles.toast, { top: insets.top + 8, opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}
+      style={[styles.toast, { top: insets.top + 8, opacity: a, transform: [{ translateY: prefersReducedMotion() ? 0 : a.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}
     >
       <Icon name={t.icon ?? 'checkmark-circle'} size={18} color={colors.accent} />
       <T v="small" color={colors.text} style={{ flexShrink: 1, fontWeight: '600' }}>
