@@ -72,5 +72,5 @@ export function CoachInsight({
 const styles = themed({
   card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, gap: space.sm },
   src: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 32 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', columnGap: space.md, rowGap: space.xs, minHeight: 32 },
 });

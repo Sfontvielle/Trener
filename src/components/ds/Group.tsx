@@ -60,7 +60,8 @@ export function ListRow({
         ) : null}
       </View>
       {value ? (
-        <T v="body" color={colors.textDim} style={{ fontVariant: ['tabular-nums'], flexShrink: 0 }}>
+        // При крупном шрифте значение переносится, а не выталкивает «›» за край
+        <T v="body" color={colors.textDim} style={{ fontVariant: ['tabular-nums'], flexShrink: 1, maxWidth: '62%', textAlign: 'right' }}>
           {value}
         </T>
       ) : null}
