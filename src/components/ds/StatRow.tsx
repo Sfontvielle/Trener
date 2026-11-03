@@ -17,6 +17,7 @@ export function StatRow({
   digits = 0,
   delta,
   deltaTone = 'neutral',
+  deltaSuffix = '',
   icon,
   dot,
   onPress,
@@ -30,6 +31,8 @@ export function StatRow({
   digits?: number;
   delta?: number;
   deltaTone?: 'good' | 'bad' | 'neutral';
+  /** Единица дельты, если она не совпадает с единицей значения («%», « кг») */
+  deltaSuffix?: string;
   icon?: IconName;
   /** Цветная метка данных (белки, жиры…): цвет — только у данных */
   dot?: string;
@@ -38,7 +41,7 @@ export function StatRow({
   style?: StyleProp<ViewStyle>;
 }) {
   const shown = typeof value === 'number' ? fmtValue(value, digits) : value;
-  const d = delta === undefined || !Number.isFinite(delta) ? null : fmtDelta(delta, digits);
+  const d = delta === undefined || !Number.isFinite(delta) ? null : `${fmtDelta(delta, digits)}${deltaSuffix}`;
   const dc = deltaTone === 'good' ? colors.accent : deltaTone === 'bad' ? colors.warning : colors.textDim;
   const body = (
     <>
