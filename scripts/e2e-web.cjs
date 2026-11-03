@@ -1818,6 +1818,36 @@ const closeSheet = async (pg) => {
     }
   });
 
+  await check('66. Дневник: подсказка тренера по остатку — при переборе без «отработай»; «Спросить тренера» открывает чат с вопросом', async () => {
+    const iso = todayIso();
+    await page.evaluate((day) => {
+      const st = JSON.parse(localStorage.getItem('form.nutrition'));
+      st.state.entries.push({ id: 'e2e-over', date: day, productId: 'local:oats_dry', name: 'Овсяные хлопья', grams: 1000, macros: { kcal: 3660, protein: 122, fat: 61, carbs: 595, fiber: 101 }, meal: 'dinner', createdAt: Date.now() });
+      localStorage.setItem('form.nutrition', JSON.stringify(st));
+    }, iso);
+    try {
+      await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      await dismiss();
+      const hint = page.getByTestId('nutrition-hint');
+      assert.equal(await hint.count(), 1, 'одна подсказка');
+      const t = await hint.innerText();
+      assert.match(t, /Калорий на [\d\s\u202f]+ больше цели/);
+      assert.doesNotMatch(t, /отработ|голод|сожги/i, 'без компенсаций');
+      await shot('nutrition-hint');
+      await page.getByLabel('Спросить тренера').click();
+      await page.waitForTimeout(1200);
+      assert.match(page.url(), /\/coach/);
+      assert.equal(await page.getByLabel('Сообщение тренеру').inputValue(), 'Что мне поесть сейчас?');
+    } finally {
+      await page.evaluate(() => {
+        const st = JSON.parse(localStorage.getItem('form.nutrition'));
+        st.state.entries = st.state.entries.filter((e) => e.id !== 'e2e-over');
+        localStorage.setItem('form.nutrition', JSON.stringify(st));
+      });
+    }
+  });
+
   await check('14. Тема сохраняется после перезапуска', async () => {
     await page.goto(`${URL}/appearance`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);

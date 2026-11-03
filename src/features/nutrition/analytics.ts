@@ -99,7 +99,7 @@ export function weightLinkText(w: WeightLink): string {
     return `Недостаточно данных, чтобы связать питание с весом: нужно ${parts.join(' и ')}.`;
   }
   const d = Math.round(w.avgKcalDelta / 10) * 10;
-  const eat = Math.abs(d) < 50 ? 'Вы ели примерно по цели' : `Вы ели в среднем на ${Math.abs(d)} ккал ${d > 0 ? 'больше' : 'меньше'} цели`;
+  const eat = Math.abs(d) < 50 ? 'Питание в среднем по цели' : `Питание в среднем на ${Math.abs(d)} ккал ${d > 0 ? 'выше' : 'ниже'} цели`;
   const trend = Math.abs(w.kgPerWeek) < 0.05 ? 'вес почти не меняется' : `вес ${w.kgPerWeek > 0 ? 'растёт' : 'снижается'} примерно на ${kg(w.kgPerWeek)} кг в неделю`;
   return `${eat}, ${trend}.`;
 }

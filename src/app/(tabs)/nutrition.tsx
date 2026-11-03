@@ -4,8 +4,8 @@ import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, Card, EmptyState, T, elevation } from '@/components/ui';
-import { AppHeader, Group, ListRow, WeeklyDateStrip } from '@/components/ds';
+import { Button, EmptyState, T, elevation } from '@/components/ui';
+import { AppHeader, CoachInsight, Group, ListRow, ProposalCard, WeeklyDateStrip } from '@/components/ds';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
 import { useDayNutrition } from '@/hooks/useToday';
@@ -25,6 +25,9 @@ import { ConfidenceLine } from '@/features/coach/DecisionView';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { useDayKey } from '@/hooks/useDayKey';
 import { usualMeal, type UsualMeal } from '@/features/nutrition/quick';
+import { dayProgress, remaining } from '@/features/nutrition/status';
+import { suggestMeals } from '@/features/nutrition/suggest';
+import { remainderHint } from '@/features/nutrition/remainder';
 import { DaySummary, MacroSummary, MealSection, SaveMealSheet, WaterRow } from '@/features/nutrition/diary';
 import { PortionSheet, type PortionTarget } from '@/features/nutrition/PortionSheet';
 import { BRAND } from '@/config/brand';
@@ -62,6 +65,16 @@ export default function Nutrition() {
   const target = nut.target;
   const review = useMemo(() => (profile && target ? reviewCalories({ profile, weights, entries: allEntries, adjustments, targetKcal: target.kcal, metrics, sessions }) : null), [profile, target, weights, allEntries, adjustments, metrics, sessions]);
   const explain = useMemo(() => (profile && target ? explainNutrition(profile, target, latestTrendWeight(weights) ?? profile.weightKg, review?.maintenance ?? null) : null), [profile, target, weights, review]);
+  const recent = useNutrition((s) => s.recent);
+  const [reviewKept, setReviewKept] = useState(false);
+  // Подсказка тренера по остатку дня — только сегодня и только когда есть что сказать
+  const hint = useMemo(() => {
+    if (!isToday || !profile || !target || !nut.entries.length) return null;
+    const rem = remaining(target, nut.eaten);
+    const recentProducts = recent.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p);
+    const o = rem.protein > 0 ? suggestMeals({ remaining: rem, profile, todayEntries: nut.entries, recentProducts }).options[0] : undefined;
+    return remainderHint({ target, eaten: nut.eaten, entries: nut.entries.length, progress: dayProgress(), option: o ? { items: o.items.map((x) => ({ name: x.product.name, grams: x.grams })), kcal: o.total.kcal, protein: o.total.protein } : null });
+  }, [isToday, profile, target, nut.entries, nut.eaten, recent, products]);
 
   const openAdd = (meal?: MealSlot) => {
     haptic.tap();
@@ -139,15 +152,34 @@ export default function Nutrition() {
         ))}
       </View>
 
+      {hint ? (
+        <CoachInsight
+          source={BRAND}
+          title={hint.title}
+          text={hint.text}
+          tone={hint.tone === 'warning' ? 'warning' : 'info'}
+          action={{ label: 'Спросить тренера', onPress: () => router.push({ pathname: '/coach', params: { q: 'Что мне поесть сейчас?' } }) }}
+          style={{ marginTop: space.md }}
+          testID="nutrition-hint"
+        />
+      ) : null}
+
       <WaterRow date={date} />
 
-      {review && isToday && review.status === 'adjust' ? (
-        // Итог алгоритма одной фразой и действие — только если правило предлагает изменение
-        <Card style={{ marginTop: space.md, gap: space.xs }} testID="calorie-review">
-          <T v="body">{review.summary}</T>
-          {review.maintenance ? <T v="footnote">{review.maintenance.text}</T> : null}
-          <Button title={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`} size="sm" onPress={() => { applyCalorieDelta(review.deltaKcal, review.summary, 'adaptive'); toast('Калорийность обновлена'); }} style={{ alignSelf: 'flex-start', marginTop: space.xs }} />
-        </Card>
+      {review && isToday && review.status === 'adjust' && !reviewKept ? (
+        // Итог алгоритма одной фразой и решение — только если правило предлагает изменение
+        <ProposalCard
+          title={review.summary}
+          why={review.maintenance?.text}
+          applyLabel={`Применить ${review.deltaKcal > 0 ? '+' : ''}${review.deltaKcal} ккал`}
+          onKeep={() => setReviewKept(true)}
+          onApply={() => {
+            applyCalorieDelta(review.deltaKcal, review.summary, 'adaptive');
+            toast('Калорийность обновлена');
+          }}
+          style={{ marginTop: space.md }}
+          testID="calorie-review"
+        />
       ) : null}
 
       <Sheet visible={moreOpen} onClose={() => setMoreOpen(false)} title="Питание" subtitle={isToday ? 'Сегодня' : relativeDay(date)}>

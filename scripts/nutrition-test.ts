@@ -205,6 +205,31 @@ test('Связь с весом: нужно 14 учтённых дней и 4 в�
     assert.equal(ok.weight.avgKcalDelta, -250);
     assert.ok(ok.weight.kgPerWeek < 0, `${ok.weight.kgPerWeek}`);
   }
-  assert.match(weightLinkText(ok.weight), /^Вы ели в среднем на 250 ккал меньше цели, вес снижается примерно на 0,\d+ кг в неделю\.$/);
-  assert.equal(weightLinkText({ ok: true, avgKcalDelta: 20, kgPerWeek: 0.01, weighIns: 8 }), 'Вы ели примерно по цели, вес почти не меняется.');
+  assert.match(weightLinkText(ok.weight), /^Питание в среднем на 250 ккал ниже цели, вес снижается примерно на 0,\d+ кг в неделю\.$/);
+  assert.equal(weightLinkText({ ok: true, avgKcalDelta: 20, kgPerWeek: 0.01, weighIns: 8 }), 'Питание в среднем по цели, вес почти не меняется.');
+});
+
+test('Подсказка по остатку: молчит без повода; перебор — без урезания; недобор белка к вечеру — с вариантом', async () => {
+  const { remainderHint } = await import('../src/features/nutrition/remainder');
+  const T = { kcal: 2500, protein: 150, fat: 70, carbs: 300 };
+  const M = (kcal: number, protein: number) => ({ kcal, protein, fat: 0, carbs: 0 });
+  // Ничего не записано — подсказки нет (пустые приёмы пищи и так зовут добавить еду)
+  assert.equal(remainderHint({ target: T, eaten: M(0, 0), entries: 0, progress: 0.8 }), null);
+  // Утро: недобор естественный — молчим
+  assert.equal(remainderHint({ target: T, eaten: M(500, 30), entries: 2, progress: 0.2 }), null);
+  // Белок почти добран — молчим
+  assert.equal(remainderHint({ target: T, eaten: M(1800, 135), entries: 4, progress: 0.8 }), null);
+  // Перебор в пределах разброса — молчим; заметный — предупреждение без «отработай»
+  assert.equal(remainderHint({ target: T, eaten: M(2600, 100), entries: 5, progress: 0.9 }), null);
+  const over = remainderHint({ target: T, eaten: M(2800, 100), entries: 5, progress: 0.9 });
+  assert.equal(over?.tone, 'warning');
+  assert.equal(over?.title, 'Калорий на 300 больше цели.');
+  assert.doesNotMatch(over?.text ?? '', /отработ|голод|сожги/i);
+  // Недобор белка к вечеру — остаток и один вариант
+  const low = remainderHint({ target: T, eaten: M(1500, 80), entries: 3, progress: 0.7, option: { items: [{ name: 'Творог 5%', grams: 250 }], kcal: 303, protein: 43 } });
+  assert.equal(low?.tone, 'info');
+  assert.equal(low?.title, 'Осталось 70 г белка и 1 000 ккал.');
+  assert.equal(low?.text, 'Например, творог 5% 250 г: ≈ 303 ккал и 43 г белка.');
+  // Без варианта — только остаток
+  assert.equal(remainderHint({ target: T, eaten: M(1500, 80), entries: 3, progress: 0.7 })?.text, undefined);
 });
