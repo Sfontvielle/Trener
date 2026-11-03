@@ -69,18 +69,18 @@ export function DaySummary({ eaten, target, onWhy }: { eaten: Macros; target: Nu
 }
 
 /** Б/Ж/У и клетчатка: шкала до цели и «съедено / цель». Клетчатка без данных — «—», частично — «≥» */
-export function MacroSummary({ entries, eaten, target }: { entries: FoodEntry[]; eaten: Macros; target: NutritionTarget }) {
+export function MacroSummary({ entries, eaten, target, fiber: withFiber = true, testID = 'macro-summary' }: { entries: FoodEntry[]; eaten: Macros; target: NutritionTarget; fiber?: boolean; testID?: string }) {
   const fiber = sumFiber(entries);
-  const rows: { label: string; v: number | null; t: number; c: string; partial?: boolean }[] = [
-    { label: 'Белки', v: eaten.protein, t: target.protein, c: colors.protein },
-    { label: 'Жиры', v: eaten.fat, t: target.fat, c: colors.fat },
-    { label: 'Углеводы', v: eaten.carbs, t: target.carbs, c: colors.carbs },
-    { label: 'Клетчатка', v: fiber.g, t: target.fiber ?? fiberTarget(target.kcal), c: colors.fiber, partial: !fiber.complete },
+  const rows: { key: string; label: string; v: number | null; t: number; c: string; partial?: boolean }[] = [
+    { key: 'protein', label: 'Белки', v: eaten.protein, t: target.protein, c: colors.protein },
+    { key: 'fat', label: 'Жиры', v: eaten.fat, t: target.fat, c: colors.fat },
+    { key: 'carbs', label: 'Углеводы', v: eaten.carbs, t: target.carbs, c: colors.carbs },
+    ...(withFiber ? [{ key: 'fiber', label: 'Клетчатка', v: fiber.g, t: target.fiber ?? fiberTarget(target.kcal), c: colors.fiber, partial: !fiber.complete }] : []),
   ];
   return (
-    <View style={styles.macros} testID="macro-summary">
+    <View style={styles.macros} testID={testID}>
       {rows.map((r) => (
-        <View key={r.label} style={styles.macro} accessible accessibilityLabel={`${r.label}: ${r.v === null ? 'нет данных' : `${r.partial ? 'не меньше ' : ''}${Math.round(r.v)}`} из ${Math.round(r.t)} г`}>
+        <View key={r.label} testID={`macro-${r.key}`} style={styles.macro} accessible accessibilityLabel={`${r.label}: ${r.v === null ? 'нет данных' : `${r.partial ? 'не меньше ' : ''}${Math.round(r.v)}`} из ${Math.round(r.t)} г`}>
           <T v="callout" color={colors.text} style={styles.macroLabel} numberOfLines={1}>
             {r.label}
           </T>

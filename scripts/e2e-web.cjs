@@ -400,44 +400,37 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. Главная (эталон 01_home): логотип и колокольчик, приветствие, карточка тренировки, плитки 2×2, совет RYNJI, КБЖУ, вес, активность', async () => {
+  await check('17. «Сегодня» (макет 01-home): заголовок и дата, колокольчик, карточка тренировки, питание шкалами, активность группой, один совет', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
     assert.equal(await page.getByRole('button', { name: 'Профиль', exact: true }).count(), 0, 'профиля в шапке нет');
     assert.ok(await page.getByRole('tab', { name: 'Профиль' }).isVisible(), 'профиль — нижняя вкладка');
     const tabs = await page.getByRole('tab').evaluateAll((els) => els.map((e) => (e.getAttribute('aria-label') || '').split(',')[0]));
-    assert.deepEqual(tabs, ['Главная', 'Тренировки', 'Питание', 'Прогресс', 'Профиль'], 'пять вкладок, без центрального «+»');
-    const cta = await page.getByText(/^Начать тренировку$|^Продолжить тренировку$|^Добавить еду$/).first().boundingBox();
-    assert.ok(cta && cta.y + cta.height < 956 - 80, `главная кнопка на первом экране: y=${cta && cta.y}`);
-    assert.match(await page.evaluate(() => document.body.innerText), /RYNJI[\s\S]*(Доброе утро|Добрый день|Добрый вечер|Доброй ночи), Тест/, 'логотип и приветствие по времени');
+    assert.deepEqual(tabs, ['Сегодня', 'Тренировки', 'Питание', 'Прогресс', 'Профиль'], 'пять вкладок, без центрального «+»');
+    const t = await page.evaluate(() => document.body.innerText);
+    assert.match(t, /^Сегодня\s+(Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье), \d+ /m, 'заголовок и дата');
+    const cta = await page.getByTestId('coach-today').getByRole('button', { name: /Начать тренировку|Продолжить тренировку|Итоги|Заполнить анкету/ }).first().boundingBox().catch(() => null);
+    const card = await page.getByTestId('coach-today').boundingBox();
+    assert.ok(card && card.y + card.height < 956 - 80, `карточка тренировки на первом экране: y=${card && card.y}`);
+    if (cta) assert.ok(cta.y + cta.height < 956 - 80, 'главная кнопка на первом экране');
     assert.ok(await page.getByTestId('home-bell').isVisible(), 'колокольчик — сигналы тренера');
-    for (const id of ['home-kcal', 'home-protein', 'home-steps', 'home-recovery']) {
-      const b = await page.getByTestId(id).boundingBox();
-      assert.ok(b && b.y < 956 - 80, `${id} на первом экране`);
-    }
-    assert.match(await page.getByTestId('home-kcal').innerText(), /Калории[\s\S]*ккал/);
-    assert.match(await page.getByTestId('home-protein').innerText(), /Белки[\s\S]*г/);
-    assert.match(await page.getByTestId('home-nutrition').innerText(), /КБЖУ на сегодня[\s\S]*Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'БЖУ');
-    assert.match(await page.getByTestId('home-steps-week').innerText(), /Активность за 7 дней/);
-    assert.match(await page.getByTestId('home-weight').innerText(), /кг/, 'вес');
-    assert.match(await page.getByTestId('home-weight').innerText(), /за неделю|через неделю|Давно/, 'динамика веса');
+    // Без дублей: нет плиток «Калории/Белки», веса, воды и манекена на главной
+    for (const gone of ['home-protein', 'home-weight', 'home-steps-week']) assert.equal(await page.getByTestId(gone).count(), 0, `${gone} убран`);
+    assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'вода — только в «Питании»');
+    assert.equal(await page.locator('img[src*="home_hero"]').count(), 0, 'без манекена');
+    assert.match(await page.getByTestId('home-nutrition').innerText(), /из [\d\s\u202f]+ ккал[\s\S]*Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'питание: ккал и Б/Ж/У');
     assert.match(await page.getByTestId('home-steps').innerText(), /Шаги/);
-    assert.match(await page.getByTestId('home-recovery').innerText(), /Восстановление/);
-    for (const l of [/^Шаги, как рассчитана цель/, /^Восстановление: /, /^Вода: добавить или уменьшить/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
-    await page.getByTestId('coach-feed').scrollIntoViewIfNeeded();
-    assert.match(await page.getByTestId('coach-feed').innerText(), /Совет RYNJI/, 'совет тренера');
-    // RYNJI Coach — с главной: «Спросить»
-    await page.getByTestId('coach-ask').click();
-    await page.waitForTimeout(900);
-    assert.match(page.url(), /\/coach/);
-    await page.goto(URL, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1200);
-    await dismiss();
-    // Вода — компактной строкой: +250 в один тап
-    await page.getByLabel('Плюс 250 мл воды').first().click();
-    await page.waitForTimeout(300);
-    assert.match(await page.getByLabel('Вода: добавить или уменьшить').innerText(), /250 мл/);
+    assert.match(await page.getByTestId('home-sleep').innerText(), /Сон/);
+    assert.match(await page.getByTestId('home-recovery').innerText(), /Готовность/);
+    for (const l of [/^Шаги, как рассчитана цель/, /^Готовность: /, /^Калории: .*Открыть питание$/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
+    assert.match(await page.getByTestId('coach-feed').innerText(), /RYNJI/, 'совет тренера');
+    // «Спросить тренера» — когда у совета нет своего действия; иначе — действие совета
+    if (await page.getByTestId('coach-ask').count()) {
+      await page.getByTestId('coach-ask').click();
+      await page.waitForTimeout(900);
+      assert.match(page.url(), /\/coach/);
+    }
     await shot('home');
   });
 
@@ -552,9 +545,9 @@ const closeSheet = async (pg) => {
     assert.ok(!(await visible('Выбор сохраняется на устройстве')), 'один «Назад» уходит с «Оформления»');
     assert.ok(await visible('Темы и акцентные цвета'), 'вернулись в профиль');
     assert.equal(await page.getByRole('tab', { name: 'Профиль' }).getAttribute('aria-selected'), 'true', 'профиль — вкладка');
-    await page.getByRole('tab', { name: 'Главная' }).click();
+    await page.getByRole('tab', { name: 'Сегодня' }).click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'вкладка «Главная»');
+    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'вкладка «Сегодня»');
   });
 
   await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
@@ -795,7 +788,7 @@ const closeSheet = async (pg) => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const b = await page.getByLabel(/^Восстановление: /).first().boundingBox();
+    const b = await page.getByLabel(/^Готовность: /).first().boundingBox();
     assert.ok(b && b.y < 956, 'готовность на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
     assert.match(t, /готовность|чек-ин|сон/i);
@@ -940,18 +933,18 @@ const closeSheet = async (pg) => {
     }
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(800);
-    await page.getByLabel('Вода: добавить или уменьшить').click();
+    await page.getByLabel('Дневник: календарь дней').click();
     await page.waitForTimeout(800);
-    assert.ok(await page.getByTestId('water-amount').count(), 'после календаря приложение отвечает');
+    assert.ok(await page.getByTestId('day-journal').count(), 'после календаря приложение отвечает');
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(600);
   });
 
-  await check('39. Вода: увеличить и уменьшить в листе с главной', async () => {
-    await page.goto(URL, { waitUntil: 'networkidle' });
+  await check('39. Вода: увеличить и уменьшить в листе из «Питания»', async () => {
+    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    await page.getByLabel('Вода: добавить или уменьшить').click();
+    await page.getByLabel('Вода: изменить объём').click();
     await page.waitForTimeout(700);
     const amount = async () => (await page.getByTestId('water-amount').innerText()).trim();
     const a0 = await amount();
@@ -1009,9 +1002,9 @@ const closeSheet = async (pg) => {
     const block = page.getByTestId('coach-today');
     if (await block.count()) {
       const t = await block.innerText();
-      assert.match(t, /Тренировка дня|Сегодня|Тренировка выполнена/, 'главное на сегодня — крупно, без служебных подписей');
+      assert.match(t, /Тренировка по программе|По программе|Тренер советует отдых|Запланировано|Тренировка выполнена|День отдыха|Идёт тренировка/, 'главное на сегодня — одна карточка');
       // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
-      assert.match(await page.getByLabel(/Калории, открыть питание/).first().innerText(), /ккал/, 'калории дня');
+      assert.match(await page.getByLabel(/^Калории: .*Открыть питание$/).first().innerText(), /ккал/, 'калории дня');
       // «Почему так» — в листе тренера (строка тренера на главной)
       await page.getByTestId('coach-feed').click();
       await page.waitForTimeout(700);
@@ -1782,6 +1775,41 @@ const closeSheet = async (pg) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     assert.equal(Math.round((await nutritionState()).entries.find((x) => x.id === e.id).macros.kcal), 213, 'снимок записи не изменился');
+  });
+
+  await check('65. «Сегодня» в день отдыха: «День отдыха», причина и ближайшая тренировка; без кнопки «Начать»', async () => {
+    const iso = todayIso();
+    const saved = await page.evaluate((day) => {
+      const raw = JSON.parse(localStorage.getItem('form.plan'));
+      const prev = raw.state.overrides?.[day] ?? null;
+      raw.state.overrides = { ...(raw.state.overrides || {}), [day]: { date: day, templateId: null, mode: 'rest', reason: 'Тренер перенёс нагрузку: сегодня восстановление', source: 'coach', createdAt: Date.now() } };
+      localStorage.setItem('form.plan', JSON.stringify(raw));
+      return prev;
+    }, iso);
+    try {
+      await page.goto(URL, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      await dismiss();
+      const card = page.getByTestId('coach-today');
+      const t = await card.innerText();
+      if (/Идёт тренировка|Тренировка выполнена/.test(t)) return; // активная или выполненная тренировка важнее отдыха
+      assert.match(t, /День отдыха/);
+      assert.match(t, /Тренер перенёс нагрузку/);
+      assert.equal(await card.getByText('Начать тренировку').count(), 0, 'в день отдыха нет «Начать»');
+      if (await card.getByLabel(/^Ближайшая: /).count()) {
+        await card.getByLabel(/^Ближайшая: /).click();
+        await page.waitForTimeout(900);
+        assert.match(page.url(), /workout\/preview/, 'ближайшая — состав тренировки');
+      }
+      await shot('home-rest');
+    } finally {
+      await page.evaluate(({ day, prev }) => {
+        const raw = JSON.parse(localStorage.getItem('form.plan'));
+        if (prev) raw.state.overrides[day] = prev;
+        else delete raw.state.overrides[day];
+        localStorage.setItem('form.plan', JSON.stringify(raw));
+      }, { day: iso, prev: saved });
+    }
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

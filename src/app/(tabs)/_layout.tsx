@@ -13,7 +13,7 @@ import { GlassSurface } from '@/components/Glass';
 type MciName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 /** Значки контурные 24 pt; выбранная вкладка — основным цветом текста с полосой акцента сверху */
 const TABS: Record<string, { label: string; icon: IconName | MciName; mci?: boolean }> = {
-  index: { label: 'Главная', icon: 'home-outline' },
+  index: { label: 'Сегодня', icon: 'home-outline' },
   training: { label: 'Тренировки', icon: 'barbell-outline' },
   nutrition: { label: 'Питание', icon: 'silverware-fork-knife', mci: true },
   progress: { label: 'Прогресс', icon: 'stats-chart-outline' },
