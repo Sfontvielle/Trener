@@ -32,6 +32,8 @@ export function ListRow({
   chevron = !!onPress,
   testID,
   accessibilityLabel,
+  hint,
+  tone,
   right,
 }: {
   title: string;
@@ -44,13 +46,17 @@ export function ListRow({
   chevron?: boolean;
   testID?: string;
   accessibilityLabel?: string;
+  /** Подсказка VoiceOver (текущее значение, если подпись строки должна остаться короткой) */
+  hint?: string;
+  /** Разрушительное действие: название и значок цветом danger */
+  tone?: 'danger';
   right?: React.ReactNode;
 }) {
   const body = (
     <>
-      {icon ? <Icon name={icon} size={22} color={iconColor ?? colors.textDim} /> : null}
+      {icon ? <Icon name={icon} size={22} color={tone === 'danger' ? colors.danger : (iconColor ?? colors.textDim)} /> : null}
       <View style={styles.texts}>
-        <T v="body" numberOfLines={2}>
+        <T v="body" numberOfLines={2} color={tone === 'danger' ? colors.danger : undefined}>
           {title}
         </T>
         {subtitle ? (
@@ -72,13 +78,13 @@ export function ListRow({
   const label = accessibilityLabel ?? [title, subtitle, value].filter(Boolean).join(', ');
   if (onPress) {
     return (
-      <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface2 }]}>
+      <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface2 }]}>
         {body}
       </Pressable>
     );
   }
   return (
-    <View testID={testID} accessible accessibilityLabel={label} style={styles.row}>
+    <View testID={testID} accessible={!right} accessibilityLabel={right ? undefined : label} style={styles.row}>
       {body}
     </View>
   );

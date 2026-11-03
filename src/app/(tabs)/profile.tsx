@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { UserProfile } from '@/types';
-import { colors, radius, space, themed } from '@/theme';
+import { colors, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Banner, Button, Card, Chip, Divider, Icon, SectionTitle, T } from '@/components/ui';
-import { Appear } from '@/components/motion';
+import { Banner, Button, Chip, Icon, T } from '@/components/ui';
+import { AppHeader, Group, ListRow, SectionHeader } from '@/components/ds';
 import { Field, Toggle } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { confirm, toast } from '@/components/Dialog';
@@ -22,7 +22,8 @@ import { hasHealthInfo, healthOf, healthTraining } from '@/features/profile/heal
 import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
 import { ensurePermission } from '@/services/notifications';
-import { relativeDay, toISODate } from '@/utils/date';
+import { plural, relativeDay, toISODate } from '@/utils/date';
+import { fmtValue } from '@/utils/format';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
 import { GymSheet } from '@/features/training/GymSheet';
@@ -32,7 +33,6 @@ import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 import { LOCATION_LABEL } from '@/features/profile/questionnaire';
 import { Image } from 'expo-image';
 import { pickAvatar, removeAvatar } from '@/services/avatar';
-import type { IconName } from '@/components/ui';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -124,102 +124,120 @@ export default function Profile() {
   };
   const set = (patch: Partial<UserProfile>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
+  const gymLine = settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — диски и шаги';
+  const lifeLine = `${fmtValue(profile.stepsPerDay)} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа${profile.sleepHours ? ` · сон ~${String(profile.sleepHours).replace('.', ',')} ч` : ''}`;
+  const notifLine = [settings.morningReminder && 'чек-ин', settings.trainingReminder && 'тренировка', settings.weeklyReview && 'отчёт недели'].filter(Boolean).join(', ') || 'Выключены';
+  const themeLine = settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Как в системе' : 'Тёмная';
+
   return (
     <Screen keyboard tabBar>
-      <T v="h1" style={{ marginBottom: space.sm }}>
-        Профиль
-      </T>
-      {/* Кто ты: фото (своё или инициалы), имя и цель; дальше — категории (значения — внутри разделов) */}
-      <Appear i={0} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: space.sm }}>
+      <AppHeader title="Профиль" />
+      {/* Кто ты: фото (своё или инициалы), имя, цель и уровень */}
+      <View style={styles.who}>
         <Pressable accessibilityRole="button" accessibilityLabel={settings.avatarUri ? 'Фото профиля: изменить' : 'Добавить фото профиля'} onPress={() => setAvatarOpen(true)} style={styles.avatar} testID="profile-avatar">
           {settings.avatarUri ? (
-            <Image source={{ uri: settings.avatarUri }} style={{ width: '100%', height: '100%', borderRadius: 38 }} contentFit="cover" accessibilityIgnoresInvertColors />
+            <Image source={{ uri: settings.avatarUri }} style={{ width: '100%', height: '100%', borderRadius: 32 }} contentFit="cover" accessibilityIgnoresInvertColors />
           ) : (
-            <T v="h1" color={colors.text}>
+            <T v="title2" color={colors.text}>
               {profile.name.charAt(0).toUpperCase()}
             </T>
           )}
           <View style={styles.avatarBadge}>
-            <Icon name="camera" size={13} color={colors.onAccent} />
+            <Icon name="camera" size={12} color={colors.text} />
           </View>
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <T v="h1" numberOfLines={1}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T v="title2" numberOfLines={1}>
             {profile.name}
           </T>
-          <T v="bodyDim">
+          <T v="callout" color={colors.textDim}>
             {GOAL_LABEL[profile.goal]} · {LEVEL_LABEL[profile.level]}
           </T>
         </View>
-      </Appear>
+      </View>
 
-      <SectionTitle title="Личные данные" />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="person-outline" label="Имя, пол, возраст, рост, вес" value={`${profile.sex === 'male' ? 'М' : 'Ж'} · ${profile.age} лет · ${profile.heightCm} см · ${profile.weightKg} кг`} onPress={() => open('body')} />
-      </Card>
+      <SectionHeader title="Личные данные" />
+      <Group>
+        <ListRow icon="person-outline" title="Параметры тела" subtitle={`${profile.sex === 'male' ? 'Мужчина' : 'Женщина'} · ${profile.age} лет · ${profile.heightCm} см · ${profile.weightKg} кг`} onPress={() => open('body')} />
+      </Group>
 
-      <SectionTitle title="Цели и тренировки" />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="flag-outline" label="Цель" value={GOAL_LABEL[profile.goal]} onPress={() => open('goal')} />
-        <Divider />
-        <Row icon="barbell-outline" label="Тренировки" value={`${profile.daysPerWeek}×/нед · ${profile.sessionMinutes} мин · ${LOCATION_LABEL[profile.location] ?? 'зал'}`} onPress={() => open('training')} />
-        <Divider />
-        <Row icon="options-outline" label="Предпочтения и ограничения" value={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
-        <Divider />
-        <Row icon="disc-outline" label="Оборудование зала" value={settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — настроить диски и шаги'} onPress={() => setGymOpen(true)} />
-        <Divider />
-        <Row icon="document-text-outline" label="Мой план и расчёты" value="Программа, КБЖУ и как они посчитаны" onPress={() => router.push('/plan')} />
-      </Card>
+      <SectionHeader title="Цели и тренировки" />
+      <Group>
+        <ListRow icon="flag-outline" title="Цель" value={GOAL_LABEL[profile.goal]} accessibilityLabel="Цель" hint={GOAL_LABEL[profile.goal]} onPress={() => open('goal')} />
+        <ListRow icon="barbell-outline" title="Тренировки" subtitle={`${profile.daysPerWeek}×/нед · ${profile.sessionMinutes} мин · ${LOCATION_LABEL[profile.location] ?? 'зал'}`} accessibilityLabel="Тренировки" hint={`${profile.daysPerWeek} раза в неделю, ${profile.sessionMinutes} минут`} onPress={() => open('training')} />
+        <ListRow icon="options-outline" title="Предпочтения и ограничения" subtitle={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
+        <ListRow icon="disc-outline" title="Оборудование зала" subtitle={gymLine} onPress={() => setGymOpen(true)} />
+        <ListRow icon="document-text-outline" title="Мой план и расчёты" subtitle="Программа, КБЖУ и как они посчитаны" onPress={() => router.push('/plan')} />
+      </Group>
 
-      <SectionTitle title="Питание" />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="restaurant-outline" label="Питание и предпочтения" value={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
-      </Card>
+      <SectionHeader title="Питание" />
+      <Group>
+        <ListRow icon="restaurant-outline" title="Питание и предпочтения" subtitle={profile.likedFoods.length ? `Любит: ${profile.likedFoods.slice(0, 3).join(', ')}` : 'Предпочтения не заданы'} onPress={() => open('food')} />
+      </Group>
 
-      <SectionTitle title="Здоровье" />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="medkit-outline" label="Здоровье и особенности" value={healthLine(profile)} onPress={() => open('health')} />
-        <Divider />
-        <Row icon="moon-outline" label="Сон и активность" value={`${profile.stepsPerDay} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа${profile.sleepHours ? ` · сон ~${String(profile.sleepHours).replace('.', ',')} ч` : ''}`} onPress={() => open('life')} />
-        <Divider />
-        <Row icon="pulse-outline" label="Восстановление" value="Чек-ин: сон и самочувствие" onPress={() => router.push('/checkin')} />
-        <Divider />
-        <Row icon="flask-outline" label="Анализы" value={labCount ? `${labCount} ${labCount === 1 ? 'анализ' : 'анализа(ов)'} · история и изменения` : 'PDF, фото или текст — любые лаборатории'} onPress={() => router.push('/labs')} />
-        <Divider />
-        <Row icon="heart-circle-outline" label="Давление, пульс, мониторинг" value={enhancedOn ? 'Режим Enhanced включён · мониторинг' : 'Мониторинг здоровья и сигналы'} onPress={() => router.push('/health-monitor')} />
-        <Divider />
-        <Row icon="heart-outline" label="Apple Health" value={healthSummary} onPress={() => router.push('/health')} />
-      </Card>
+      <SectionHeader title="Здоровье" />
+      <Group>
+        <ListRow icon="medkit-outline" title="Здоровье и особенности" subtitle={healthLine(profile)} onPress={() => open('health')} />
+        <ListRow icon="moon-outline" title="Сон и активность" subtitle={lifeLine} onPress={() => open('life')} />
+        <ListRow icon="pulse-outline" title="Восстановление" subtitle="Чек-ин: сон и самочувствие" onPress={() => router.push('/checkin')} />
+        <ListRow icon="flask-outline" title="Анализы" subtitle={labCount ? `${labCount} ${plural(labCount, 'анализ', 'анализа', 'анализов')} · история и изменения` : 'PDF, фото или текст — любые лаборатории'} onPress={() => router.push('/labs')} />
+        <ListRow icon="heart-circle-outline" title="Давление, пульс, мониторинг" subtitle={enhancedOn ? 'Режим Enhanced включён · мониторинг' : 'Мониторинг здоровья и сигналы'} onPress={() => router.push('/health-monitor')} />
+        <ListRow icon="heart-outline" title="Apple Health" subtitle={healthSummary} onPress={() => router.push('/health')} />
+      </Group>
 
-      <SectionTitle title={`${BRAND} Coach`} />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="sparkles-outline" label="Настройки Coach и память" value={`Что ${BRAND} знает обо мне · ${memory.length}`} onPress={() => setCoachOpen(true)} />
-      </Card>
+      <SectionHeader title={`${BRAND} Coach`} />
+      <Group>
+        <ListRow icon="sparkles-outline" title="Память и факты" subtitle={`Что ${BRAND} знает обо мне`} value={String(memory.length)} onPress={() => setCoachOpen(true)} />
+      </Group>
 
-      <SectionTitle title="Оформление и уведомления" />
-      <Card style={{ paddingVertical: 4 }}>
-        <Row icon="color-palette-outline" label="Темы и акцентные цвета" value={`${settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Системная' : 'Тёмная'} тема`} onPress={() => router.push('/appearance')} />
-        <Divider />
-        <Row icon="notifications-outline" label="Уведомления" value={[settings.morningReminder && 'чек-ин', settings.trainingReminder && 'тренировка', settings.weeklyReview && 'отчёт недели'].filter(Boolean).join(', ') || 'выключены'} onPress={() => setNotifOpen(true)} />
-        <Divider />
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52 }}>
-          <T v="body" style={{ flex: 1, fontWeight: '600' }}>
-            Единицы веса
-          </T>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <Chip label="кг" active={settings.weightUnit === 'kg'} onPress={() => updateSettings({ weightUnit: 'kg' })} />
-            <Chip label="lb" active={settings.weightUnit === 'lb'} onPress={() => updateSettings({ weightUnit: 'lb' })} />
-          </View>
+      <SectionHeader title="Оформление" />
+      <Group>
+        <ListRow icon="color-palette-outline" title="Темы и акцентные цвета" value={themeLine} onPress={() => router.push('/appearance')} />
+        <ListRow
+          icon="scale-outline"
+          title="Единицы веса"
+          right={
+            <View style={{ flexDirection: 'row', gap: space.xs }}>
+              <Chip label="кг" active={settings.weightUnit === 'kg'} onPress={() => updateSettings({ weightUnit: 'kg' })} />
+              <Chip label="lb" active={settings.weightUnit === 'lb'} onPress={() => updateSettings({ weightUnit: 'lb' })} />
+            </View>
+          }
+        />
+        <View style={styles.inset}>
+          <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, рекорды (на iPhone)" />
         </View>
-        <Toggle value={settings.haptics} onChange={(v) => updateSettings({ haptics: v })} label="Тактильный отклик" sub="Подходы, рекорды (на iPhone)" />
-      </Card>
+      </Group>
 
-      <SectionTitle title="Apple ID, данные и резервные копии" />
-      <Card style={{ paddingVertical: 4, marginBottom: space.md }}>
-        <Row icon="logo-apple" label="Аккаунт" value={accountSummary(apple)} onPress={() => setAccountOpen(true)} />
-        <Divider />
-        <Row icon="cloud-upload-outline" label="Данные и резервные копии" value={settings.lastBackupAt ? `Всё на устройстве · копия ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Всё хранится на устройстве · экспорт и перенос'} onPress={() => router.push('/data')} />
-      </Card>
+      <SectionHeader title="Уведомления" />
+      <Group>
+        <ListRow icon="notifications-outline" title="Напоминания" subtitle={notifLine} onPress={() => setNotifOpen(true)} />
+      </Group>
+
+      <SectionHeader title="Apple ID, данные и резервные копии" />
+      <Group>
+        <ListRow icon="logo-apple" title="Аккаунт" subtitle={accountSummary(apple)} onPress={() => setAccountOpen(true)} />
+        <ListRow icon="cloud-upload-outline" title="Данные и резервные копии" subtitle={settings.lastBackupAt ? `Всё на устройстве · копия ${relativeDay(toISODate(new Date(settings.lastBackupAt))).toLowerCase()}` : 'Всё хранится на устройстве · экспорт и перенос'} onPress={() => router.push('/data')} />
+      </Group>
+
+      <Group style={{ marginTop: space.xl }}>
+        <ListRow
+          icon="trash-outline"
+          title="Удалить все данные"
+          tone="danger"
+          chevron={false}
+          onPress={() =>
+            confirm('Удалить все данные?', 'Профиль, план, тренировки, питание, замеры и память тренера будут удалены с устройства без возможности восстановления (кроме ранее экспортированного файла).', 'Удалить всё', async () => {
+              await resetAllStores();
+              await clearAllData();
+              router.replace('/welcome');
+            }, true)
+          }
+        />
+      </Group>
+
+      <T v="footnote" style={{ textAlign: 'center', marginTop: space.lg }}>
+        {BRAND} — фитнес-помощник и не ставит медицинских диагнозов.
+      </T>
 
       <Sheet visible={notifOpen} onClose={() => setNotifOpen(false)} title="Уведомления">
         <View style={{ gap: 6 }}>
@@ -248,7 +266,7 @@ export default function Profile() {
       {/* Настройки Coach: память — устойчивые факты, которые тренер учитывает; редактировать и удалять может только человек */}
       <Sheet visible={coachOpen} onClose={() => setCoachOpen(false)} title={`${BRAND} Coach`} subtitle={`Что ${BRAND} знает обо мне · ${memory.length}`}>
         <View style={{ gap: 8 }} testID="coach-memory">
-          {memory.length === 0 ? <T v="small">Тренер запоминает устойчивые факты: что ты не любишь, как реагируют суставы, когда удобно тренироваться.</T> : null}
+          {memory.length === 0 ? <T v="callout">Тренер запоминает устойчивые факты: что ты не любишь, как реагируют суставы, когда удобно тренироваться.</T> : null}
           {memory.map((m) =>
             editMem?.id === m.id ? (
               <View key={m.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
@@ -259,10 +277,8 @@ export default function Profile() {
               <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' || m.category === 'health' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
                 <Pressable style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`Изменить: ${m.text}`} onPress={() => setEditMem({ id: m.id, text: m.text })}>
-                  <T v="body" style={{ fontSize: 14 }}>
-                    {m.text}
-                  </T>
-                  <T v="small" style={{ fontSize: 11 }}>
+                  <T v="body">{m.text}</T>
+                  <T v="footnote">
                     {m.source === 'coach' ? 'запомнил тренер' : 'добавлено тобой'} · тап — изменить
                   </T>
                 </Pressable>
@@ -306,28 +322,9 @@ export default function Profile() {
               }}
             />
           ) : null}
-          <T v="small">Фото хранится только на этом iPhone.</T>
+          <T v="footnote">Фото хранится только на этом iPhone.</T>
         </View>
       </Sheet>
-
-      <Button
-        title="Удалить все данные"
-        icon="trash-outline"
-        size="sm"
-        variant="danger"
-        style={{ marginTop: space.xl }}
-        onPress={() =>
-          confirm('Удалить все данные?', 'Профиль, план, тренировки, питание, замеры и память тренера будут удалены с устройства без возможности восстановления (кроме ранее экспортированного файла).', 'Удалить всё', async () => {
-            await resetAllStores();
-            await clearAllData();
-            router.replace('/welcome');
-          }, true)
-        }
-      />
-
-      <T v="small" style={{ textAlign: 'center', marginTop: space.lg, fontSize: 12 }}>
-        {BRAND} — фитнес-помощник и не ставит медицинских диагнозов.
-      </T>
 
       <GymSheet visible={gymOpen} onClose={() => setGymOpen(false)} />
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
@@ -348,22 +345,10 @@ export default function Profile() {
   );
 }
 
-/** Строка раздела в стиле iOS: название; текущее значение — в VoiceOver и внутри раздела, на экране не шумит */
-function Row({ label, value, onPress, icon }: { label: string; value: string; onPress: () => void; icon?: IconName }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={value} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
-      {icon ? <Icon name={icon} size={19} color={colors.accent} /> : null}
-      <T v="body" style={{ flex: 1, fontWeight: '600' }}>
-        {label}
-      </T>
-      <Icon name="chevron-forward" size={18} color={colors.muted} />
-    </Pressable>
-  );
-}
-
 const styles = themed({
-  avatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center', overflow: 'visible', borderWidth: 2, borderColor: colors.accentLine },
-  avatarBadge: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.bg },
-  times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingVertical: 8, borderRadius: radius.sm },
+  who: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.md, marginBottom: space.xs },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+  avatarBadge: { position: 'absolute', right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.bg },
+  times: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, paddingBottom: space.xs },
+  inset: { paddingHorizontal: space.md },
 });
