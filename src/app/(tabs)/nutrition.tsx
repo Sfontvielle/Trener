@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
@@ -27,7 +27,7 @@ import { useDayKey } from '@/hooks/useDayKey';
 import { usualMeal, type UsualMeal } from '@/features/nutrition/quick';
 import { dayProgress, remaining } from '@/features/nutrition/status';
 import { suggestMeals } from '@/features/nutrition/suggest';
-import { remainderHint } from '@/features/nutrition/remainder';
+import { remainderHint, type RemainderOption } from '@/features/nutrition/remainder';
 import { DaySummary, MacroSummary, MealSection, SaveMealSheet, WaterRow } from '@/features/nutrition/diary';
 import { PortionSheet, type PortionTarget } from '@/features/nutrition/PortionSheet';
 import { BRAND } from '@/config/brand';
@@ -67,14 +67,23 @@ export default function Nutrition() {
   const explain = useMemo(() => (profile && target ? explainNutrition(profile, target, latestTrendWeight(weights) ?? profile.weightKg, review?.maintenance ?? null) : null), [profile, target, weights, review]);
   const recent = useNutrition((s) => s.recent);
   const [reviewKept, setReviewKept] = useState(false);
-  // Подсказка тренера по остатку дня — только сегодня и только когда есть что сказать
-  const hint = useMemo(() => {
-    if (!isToday || !profile || !target || !nut.entries.length) return null;
-    const rem = remaining(target, nut.eaten);
-    const recentProducts = recent.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p);
-    const o = rem.protein > 0 ? suggestMeals({ remaining: rem, profile, todayEntries: nut.entries, recentProducts }).options[0] : undefined;
-    return remainderHint({ target, eaten: nut.eaten, entries: nut.entries.length, progress: dayProgress(), option: o ? { items: o.items.map((x) => ({ name: x.product.name, grams: x.grams })), kcal: o.total.kcal, protein: o.total.protein } : null });
-  }, [isToday, profile, target, nut.entries, nut.eaten, recent, products]);
+  // Подсказка тренера по остатку дня — только сегодня и только когда есть что сказать. Сам остаток — сразу;
+  // вариант еды — перебор продуктов (~30 мс в Node, на iPhone дольше кадра), поэтому после отрисовки и с кешем по остатку
+  const hintBase = useMemo(() => (isToday && target && nut.entries.length ? remainderHint({ target, eaten: nut.eaten, entries: nut.entries.length, progress: dayProgress() }) : null), [isToday, target, nut.entries, nut.eaten]);
+  const optKey = hintBase?.tone === 'info' && target ? `${Math.round(target.protein - nut.eaten.protein)}:${Math.round(target.kcal - nut.eaten.kcal)}:${new Date().getHours()}` : null;
+  const [hintOpt, setHintOpt] = useState<{ key: string; option: RemainderOption | null } | null>(null);
+  useEffect(() => {
+    if (!optKey || !profile || !target || hintOpt?.key === optKey) return;
+    // В свободное время JS-потока, после отрисовки дневника (InteractionManager в RN 0.88 больше нет)
+    const task = requestIdleCallback(() => {
+      const rem = remaining(target, nut.eaten);
+      const recentProducts = recent.map((id) => products[id] ?? LOCAL_FOODS.find((f) => f.id === id)).filter((p): p is FoodProduct => !!p);
+      const o = suggestMeals({ remaining: rem, profile, todayEntries: nut.entries, recentProducts }).options[0];
+      setHintOpt({ key: optKey, option: o ? { items: o.items.map((x) => ({ name: x.product.name, grams: x.grams })), kcal: o.total.kcal, protein: o.total.protein } : null });
+    });
+    return () => cancelIdleCallback(task);
+  }, [optKey, hintOpt?.key, profile, target, nut.eaten, nut.entries, recent, products]);
+  const hint = hintBase && target && hintOpt && hintOpt.key === optKey ? remainderHint({ target, eaten: nut.eaten, entries: nut.entries.length, progress: dayProgress(), option: hintOpt.option }) : hintBase;
 
   const openAdd = (meal?: MealSlot) => {
     haptic.tap();
