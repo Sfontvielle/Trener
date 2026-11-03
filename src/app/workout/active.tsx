@@ -18,7 +18,6 @@ import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
-import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
 import { Field } from '@/components/inputs';
 import { TechniquePanel } from '@/features/exercises/TechniquePanel';
 import { sessionEnergy } from '@/features/training/energy';
@@ -98,14 +97,6 @@ export default function ActiveWorkout() {
     const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-  useEffect(() => {
-    active?.exercises.forEach((we) => {
-      const ex = getExercise(we.exerciseId, customs);
-      if (ex) prefetchExerciseMedia(ex);
-    });
-    // только при открытии
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
 
   const idx = active ? currentIndexOf(active) : 0;
   const count = active?.exercises.length ?? 0;

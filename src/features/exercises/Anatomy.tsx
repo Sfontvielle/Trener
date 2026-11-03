@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 import type { BodyPart } from 'react-native-body-highlighter';
 import { bodyFront } from 'react-native-body-highlighter/dist/assets/bodyFront';
@@ -8,7 +8,7 @@ import { bodyFemaleFront } from 'react-native-body-highlighter/dist/assets/bodyF
 import { bodyFemaleBack } from 'react-native-body-highlighter/dist/assets/bodyFemaleBack';
 import type { MuscleSlug, Sex } from '@/types';
 import { colors, radius, themed } from '@/theme';
-import { T } from '@/components/ui';
+import { Segmented, T } from '@/components/ui';
 import { MUSCLE_LABEL } from '@/data/exercises';
 
 const FRONT_ONLY: MuscleSlug[] = ['chest', 'biceps', 'abs', 'obliques', 'quadriceps', 'tibialis'];
@@ -61,16 +61,12 @@ export const Anatomy = memo(function Anatomy({
       <View>
         <View style={[styles.row, { flexDirection: 'column', alignItems: 'center', paddingVertical: 14 }]}>
           <Figure side={side} sex={sex} scale={1.15} fillOf={fillOf} />
-          <View style={styles.toggle}>
-            {(['front', 'back'] as const).map((sd) => (
-              <Pressable key={sd} accessibilityRole="button" accessibilityState={{ selected: side === sd }} onPress={() => setSide(sd)} style={[styles.toggleItem, side === sd && { backgroundColor: colors.accent }]}>
-                <T v="small" color={side === sd ? colors.onAccent : colors.textDim} style={{ fontWeight: '800' }}>
-                  {sd === 'front' ? 'Спереди' : 'Сзади'}
-                  {(sd === 'front' ? hasFront : hasBack) ? ' •' : ''}
-                </T>
-              </Pressable>
-            ))}
-          </View>
+          <Segmented
+            items={(['front', 'back'] as const).map((sd) => ({ key: sd, label: `${sd === 'front' ? 'Спереди' : 'Сзади'}${(sd === 'front' ? hasFront : hasBack) ? ' •' : ''}`, a11y: `${sd === 'front' ? 'Спереди' : 'Сзади'}${(sd === 'front' ? hasFront : hasBack) ? ', есть нагруженные мышцы' : ''}` }))}
+            value={side}
+            onChange={setSide}
+            style={{ marginTop: 12, minWidth: 220 }}
+          />
         </View>
         {legend}
       </View>
@@ -137,6 +133,4 @@ const styles = themed({
   row: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.surface2, borderRadius: radius.lg, paddingVertical: 12 },
   side: { alignItems: 'center' },
   label: { marginTop: 4, color: colors.textDim },
-  toggle: { flexDirection: 'row', gap: 4, padding: 3, borderRadius: radius.pill, backgroundColor: colors.surface3, marginTop: 10 },
-  toggleItem: { paddingHorizontal: 16, height: 32, borderRadius: radius.pill, justifyContent: 'center' },
 });

@@ -1348,6 +1348,10 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1200);
     assert.equal(await page.getByTestId('technique-3d').count(), 0);
     assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
+    // Без 3D — нейтральная схема мышц, без фото атлета
+    assert.ok(await page.getByTestId('technique-muscles').isVisible(), 'схема мышц');
+    const photos = await page.evaluate(() => [...document.querySelectorAll('img, div')].filter((el) => /assets\/exercises\/|free-exercise-db/.test(`${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`)).length);
+    assert.equal(photos, 0, 'фото атлета в технике нет');
   });
 
   await check('52. Программы: неделя «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {

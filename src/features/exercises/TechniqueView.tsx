@@ -6,30 +6,29 @@ import { Icon, T, type IconName } from '@/components/ui';
 import { useProfile } from '@/stores/profile';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { checkAllowed } from '@/features/training/engine/scoring';
-import { ExerciseMedia } from './ExerciseMedia';
 import { ExerciseAnimation, animationFor } from './ExerciseAnimation';
 import { Anatomy } from './Anatomy';
 import { techniqueFor } from './technique';
 
 /**
- * Техника упражнения целиком: 3D-анимация с подсветкой мышц (или фазы движения, пока её нет), анатомия (основные / вспомогательные / стабилизаторы,
+ * Техника упражнения целиком: 3D-анимация с подсветкой мышц (или нейтральная схема мышц, пока её нет), анатомия (основные / вспомогательные / стабилизаторы,
  * спереди и сзади), как выполнять, положение тела, амплитуда, дыхание, ошибки и безопасность —
  * с учётом ограничений из профиля пользователя.
  */
-export function TechniqueView({ ex, sex, mediaHeight = 240 }: { ex: Exercise; sex?: Sex; mediaHeight?: number }) {
+export function TechniqueView({ ex, sex }: { ex: Exercise; sex?: Sex }) {
   const profile = useProfile((s) => s.profile);
   const t = techniqueFor(ex);
   const allowed = profile ? checkAllowed(ex, profile, getPrefs(profile)) : { ok: true as const };
   const anim = animationFor(ex);
   return (
     <View style={{ gap: space.md }}>
+      {/* 3D-петля — только если она есть; иначе нейтральная схема мышц (без фото атлета — до лицензированной модели) */}
       {anim ? (
         <ExerciseAnimation ex={ex} anim={anim} stabilizers={t.stabilizers} />
       ) : (
-        <>
-          {ex.media ? <ExerciseMedia exercise={ex} height={mediaHeight} /> : null}
+        <View testID="technique-muscles">
           <Anatomy primary={ex.primary} secondary={ex.secondary} stabilizers={t.stabilizers} sex={sex ?? profile?.sex} large />
-        </>
+        </View>
       )}
       {!allowed.ok && allowed.reason !== 'нет оборудования' ? (
         <View style={[styles.block, { borderColor: colors.warningLine, backgroundColor: colors.warningDim }]}>
