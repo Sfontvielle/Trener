@@ -603,7 +603,7 @@ const closeSheet = async (pg) => {
     await shot('summary');
   });
 
-  await check('27. Питание: иконки приёмов, «как вчера», вода', async () => {
+  await check('27. Питание: приёмы, «как вчера», таблица КБЖУ без воды', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
@@ -611,15 +611,9 @@ const closeSheet = async (pg) => {
     const copyDay = page.getByText('Скопировать весь вчерашний день');
     const copyMeal = page.getByLabel(/^Скопировать .* со вчера$/);
     assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
-    // Вода могла быть добавлена раньше (на «Сегодня») — проверяем прибавку, а не абсолютное значение
-    const water = async () => {
-      const m = (await page.evaluate(() => document.body.innerText)).match(/Вода\s+(\d+(?:,\d+)?)\s*(мл|л)/);
-      return m ? Math.round(Number(m[1].replace(',', '.')) * (m[2] === 'л' ? 1000 : 1)) : 0;
-    };
-    const before = await water();
-    await page.getByLabel('Плюс 250 мл воды').click();
-    await page.waitForTimeout(300);
-    assert.equal(await water(), before + 250);
+    // Воды в дневнике нет (раунд 1); таблица КБЖУ: подписи колонок и итог дня
+    assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'воды нет');
+    assert.match(await page.getByTestId('macro-table-head').innerText(), /Ккал[\s\S]*Б[\s\S]*Ж[\s\S]*У[\s\S]*Кл[\s\S]*Итого/);
     await shot('nutrition');
   });
 
@@ -939,34 +933,6 @@ const closeSheet = async (pg) => {
     assert.ok(await page.getByTestId('day-journal').count(), 'после календаря приложение отвечает');
     await page.getByLabel('Закрыть').last().click();
     await page.waitForTimeout(600);
-  });
-
-  await check('39. Вода: увеличить и уменьшить в листе из «Питания»', async () => {
-    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
-    await dismiss();
-    await page.getByLabel('Вода: изменить объём').click();
-    await page.waitForTimeout(700);
-    const amount = async () => (await page.getByTestId('water-amount').innerText()).trim();
-    const a0 = await amount();
-    await page.getByLabel('Увеличить на 250 мл').click();
-    await page.waitForTimeout(200);
-    await page.getByLabel('Увеличить на 250 мл').click();
-    await page.waitForTimeout(200);
-    const a1 = await amount();
-    assert.notEqual(a1, a0, 'увеличилось');
-    await page.getByLabel('Уменьшить на 250 мл').click();
-    await page.waitForTimeout(200);
-    assert.notEqual(await amount(), a1, 'уменьшилось');
-    // Лист закрывается свайпом вниз за шапку
-    const head = await page.getByText('Ориентир', { exact: false }).last().boundingBox();
-    const cdp = await ctx.newCDPSession(page);
-    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
-    await touch('touchStart', head.y);
-    for (let i = 1; i <= 12; i++) { await touch('touchMove', head.y + i * 30); await page.waitForTimeout(16); }
-    await touch('touchEnd', 0);
-    await page.waitForTimeout(900);
-    assert.equal(await page.getByTestId('water-amount').count(), 0, 'лист закрыт свайпом');
   });
 
   await check('40. Питание → «Ещё»: лист со списком стягивается пальцем за содержимое', async () => {

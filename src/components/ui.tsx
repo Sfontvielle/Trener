@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -69,6 +70,11 @@ const SIM_SCALE = (() => {
     return 1;
   }
 })();
+
+/** Текущий масштаб системного шрифта (в вебе — имитация из localStorage для проверок вёрстки) */
+export function fontScale(): number {
+  return SIM_SCALE > 1 ? SIM_SCALE : PixelRatio.getFontScale();
+}
 
 function simulate(st: TextStyle, k: number): TextStyle {
   return { ...st, ...(st.fontSize ? { fontSize: st.fontSize * k } : null), ...(st.lineHeight ? { lineHeight: st.lineHeight * k } : null) };
