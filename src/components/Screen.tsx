@@ -40,6 +40,8 @@ export function Screen({
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
+      // Короткий экран не «гуляет» под пальцем: оттягивание — только когда есть что прокручивать (или обновление жестом)
+      alwaysBounceVertical={!!refreshControl}
       refreshControl={refreshControl}
       onScroll={onScroll}
       scrollEventThrottle={16}

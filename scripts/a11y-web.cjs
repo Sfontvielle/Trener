@@ -167,10 +167,10 @@ const PROFILE = {
   await audit('/welcome', fp);
   routes.push('/welcome');
   await step('/auth', () => tap(fp.getByRole('button', { name: 'Начать', exact: true })));
-  await step('/onboarding · имя', () => tap(fp.getByRole('button', { name: 'Без входа (только разработка)', exact: true })));
+  await step('/onboarding · имя', () => tap(fp.getByTestId('auth-skip')));
   await step('/onboarding · пол', async () => { await fp.getByLabel('Как тебя зовут?').fill('Анна'); await next(); });
   await step('/onboarding · возраст', async () => { await tap(fp.getByLabel('Женщина')); await next(); });
-  await step('/onboarding · рост', async () => { await fp.getByLabel('Возраст, лет').fill('27'); await next(); });
+  await step('/onboarding · рост', async () => { for (let i = 0; i < 2; i++) await tap(fp.getByTestId('q-age-plus')); await next(); });
   await step('/onboarding · вес', async () => { await fp.getByLabel('Рост, см').fill('166'); await next(); });
   await step('/onboarding · цель', async () => { await fp.getByLabel('Текущий вес, кг').fill('58'); await next(); });
   await step('/onboarding · опыт', async () => { await tap(fp.getByLabel('Набор массы')); await next(); });

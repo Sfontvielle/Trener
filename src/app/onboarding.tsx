@@ -5,10 +5,10 @@ import { router } from 'expo-router';
 import type { Equipment, GoalType } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, Chip, T } from '@/components/ui';
+import { Chip, T } from '@/components/ui';
 import { PrimaryAction } from '@/components/ds';
 import { FadeIn } from '@/components/motion';
-import { Wheel } from '@/components/WheelPicker';
+import { DrumPicker } from '@/components/DrumPicker';
 import { RulerPicker } from '@/components/RulerPicker';
 import { ChoiceCard, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
 import { PlanReady } from '@/features/onboarding/PlanReady';
@@ -28,7 +28,6 @@ import {
   type QDraft,
 } from '@/features/profile/questionnaire';
 import { nameFromApple } from '@/features/account/route';
-import { connectHealth } from '@/features/health/sync';
 import { useProfile } from '@/stores/profile';
 import { useAccount } from '@/stores/account';
 import { useQuestionnaire } from '@/stores/questionnaire';
@@ -87,7 +86,7 @@ const GOALS: { v: GoalType; label: string; sub: string; image: number }[] = [
   { v: 'recomp', label: 'Рекомпозиция', sub: 'Улучшить состав тела', image: require('../../assets/art/goal_recomp.webp') },
   { v: 'maintain', label: 'Поддержание', sub: 'Сохранить текущую форму', image: require('../../assets/art/goal_maintain.webp') },
 ];
-const AGES = Array.from({ length: 90 - 14 + 1 }, (_, i) => 14 + i);
+const AGES = Array.from({ length: RANGE.age[1] - RANGE.age[0] + 1 }, (_, i) => RANGE.age[0] + i);
 
 export default function Onboarding() {
   const draft = useQuestionnaire((s) => s.draft);
@@ -185,37 +184,11 @@ export default function Onboarding() {
         {cur === 'age' ? (
           <>
             <StageTitle title="Сколько тебе лет?" sub="Только для пользователей 18+" />
-            <View style={{ alignItems: 'center', gap: space.md }}>
-              <Wheel label="Возраст" values={AGES} value={draft.age ?? 18} onChange={(v) => update({ age: v })} format={(v) => (v === (draft.age ?? -1) ? `${v} лет` : String(v))} width={240} testID="q-age-wheel" />
-              <View style={styles.manual}>
-                <T v="callout" color={colors.textDim}>
-                  или введи:
-                </T>
-                <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
-                  value={draft.age === undefined ? '' : String(draft.age)}
-                  onChangeText={(t) => {
-                    const n = parseInt(t.replace(/\D/g, ''), 10);
-                    update({ age: Number.isFinite(n) ? n : undefined });
-                  }}
-                  placeholder="—"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  accessibilityLabel="Возраст, лет"
-                  selectionColor={colors.accent}
-                  style={styles.manualInput}
-                />
-                <T v="callout" color={colors.textDim}>
-                  лет
-                </T>
-              </View>
+            <View style={{ alignItems: 'center', gap: space.md, marginTop: space.md }}>
+              <DrumPicker label="Возраст" values={AGES} value={draft.age} start={25} onChange={(v) => update({ age: v })} format={(v) => `${v} лет`} testID="q-age" />
               {err.age ? (
                 <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                   {err.age}
-                </T>
-              ) : draft.age === undefined ? (
-                <T v="callout" style={{ textAlign: 'center' }}>
-                  Прокрути колесо или введи число
                 </T>
               ) : null}
             </View>
@@ -242,11 +215,7 @@ export default function Onboarding() {
               <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                 {err.weightKg}
               </T>
-            ) : (
-              <T v="callout" style={{ textAlign: 'center' }}>
-                Нужны для расчёта калорий и нагрузки. Хранятся только на этом iPhone.
-              </T>
-            )}
+            ) : null}
           </>
         ) : null}
 
@@ -335,9 +304,8 @@ export default function Onboarding() {
   );
 }
 
-/** Этап 5 (эталон 06_lifestyle): три выпадающих списка, «Дополнительно» и Apple Health по желанию */
+/** Этап 5 (эталон 06_lifestyle): три выпадающих списка и «Дополнительно». Apple Health подключается позже — в профиле */
 function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraft>) => void }) {
-  const [health, setHealth] = useState<string | null>(null);
   return (
     <View style={{ gap: space.lg }}>
       <StageTitle title="Расскажи о своём образе жизни" />
@@ -369,32 +337,12 @@ function Lifestyle({ draft, update }: { draft: QDraft; update: (p: Partial<QDraf
           style={styles.area}
         />
       </View>
-      <View style={styles.healthRow}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <T v="body" style={{ fontWeight: '700' }}>
-            Apple Health
-          </T>
-          <T v="callout">{health ?? 'Необязательно: шаги и сон будут подтягиваться сами'}</T>
-        </View>
-        <Button
-          title="Подключить"
-          size="sm"
-          variant="secondary"
-          onPress={async () => {
-            const r = await connectHealth();
-            setHealth(r.message);
-          }}
-        />
-      </View>
     </View>
   );
 }
 
 const styles = themed({
   nameInput: { fontSize: 18, color: colors.text, height: 62, paddingHorizontal: 18, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  manual: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  manualInput: { fontSize: 18, fontWeight: '700', color: colors.text, width: 56, height: 40, textAlign: 'center', borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, padding: 0 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   area: { minHeight: 96, fontSize: 16, color: colors.text, padding: 16, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, textAlignVertical: 'top' },
-  healthRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md, backgroundColor: colors.surface2 },
 });

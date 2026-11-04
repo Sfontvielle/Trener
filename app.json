@@ -16,7 +16,9 @@
         "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов и фотографировать бланки анализов.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "RYNJI читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
-        "NSPhotoLibraryUsageDescription": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве."
+        "NSPhotoLibraryUsageDescription": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве.",
+        "CFBundleDevelopmentRegion": "ru",
+        "CFBundleAllowMixedLocalizations": true
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -116,6 +118,9 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "locales": {
+      "ru": "./locales/ru.json"
     }
   }
 }

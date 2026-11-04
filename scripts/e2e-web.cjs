@@ -62,8 +62,8 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await pg.getByText('Начать', { exact: true }).click();
   await pg.waitForTimeout(800);
   assert.match(await body(), /Вход/);
-  assert.equal(await pg.getByText('Продолжить без входа', { exact: true }).count(), 0, 'входа «без Apple ID» для пользователей нет');
-  await pg.getByText('Без входа (только разработка)', { exact: true }).click();
+  // Вход можно пропустить (решение владельца, раунд 1)
+  await pg.getByTestId('auth-skip').click();
   await pg.waitForTimeout(1000);
   // 1 из 5 — имя
   assert.match(await body(), /1 из 5[\s\S]*Как тебя зовут\?[\s\S]*Так я буду к тебе обращаться/);
@@ -76,13 +76,12 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await pg.getByLabel(PROFILE.sex === 'female' ? 'Женщина' : 'Мужчина').click();
   await next();
   assert.match(await body(), /Сколько тебе лет\?[\s\S]*Только для пользователей 18\+/);
-  assert.equal(await pg.getByLabel('Возраст, лет').inputValue(), '', 'возраст не подставлен');
+  // Барабан: «+» сверху, «−» снизу, без поля ручного ввода; пока не тронули — значение не выбрано
+  assert.equal(await pg.getByLabel('Возраст, лет').count(), 0, 'поля ручного ввода нет');
+  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), '25', 'возраст не подставлен — стартовое приглушённо');
   assert.ok(await disabled());
-  await pg.getByLabel('Возраст, лет').fill('17');
-  await pg.waitForTimeout(200);
-  assert.match(await body(), /с 18 лет/);
-  assert.ok(await disabled(), 'до 18 — нельзя');
-  await pg.getByLabel('Возраст, лет').fill(String(PROFILE.age));
+  for (let i = 0; i < PROFILE.age - 25; i++) await pg.getByTestId('q-age-plus').click();
+  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), `${PROFILE.age} лет`);
   await next();
   assert.match(await body(), /Какой у тебя рост\?/);
   assert.equal(await pg.getByLabel('Рост, см').inputValue(), '', 'рост не подставлен');
