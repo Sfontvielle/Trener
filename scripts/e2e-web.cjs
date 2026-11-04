@@ -1023,7 +1023,7 @@ const closeSheet = async (pg) => {
     }
   });
 
-  await check('42. Анализы: вставка текста → «Проверьте распознанные данные» → правка → сохранение → история и изменения', async () => {
+  await check('42. Анализы: вставка текста → «Проверь распознанные данные» → правка → сохранение → история и изменения', async () => {
     const paste = async (text) => {
       await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(1200);
@@ -1035,7 +1035,7 @@ const closeSheet = async (pg) => {
       await page.getByTestId('lab-paste').fill(text);
       await page.getByText('Распознать', { exact: true }).click();
       await page.waitForTimeout(1000);
-      assert.ok(await page.getByText('Проверьте распознанные данные').isVisible(), 'экран проверки обязателен');
+      assert.ok(await page.getByText('Проверь распознанные данные').isVisible(), 'экран проверки обязателен');
     };
     await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
     // Уверенно распознанное — компактной таблицей; любое значение можно исправить до сохранения
@@ -1798,7 +1798,8 @@ const closeSheet = async (pg) => {
       await dismiss();
       const card = page.getByTestId('coach-today');
       const t = await card.innerText();
-      if (/Идёт тренировка|Тренировка выполнена/.test(t)) return; // активная или выполненная тренировка важнее отдыха
+      // активная, выполненная или своя запланированная на сегодня тренировка важнее отдыха (после полуночи «завтра» из сценария 56 становится сегодня)
+      if (/Идёт тренировка|Тренировка выполнена|Запланировано/.test(t)) return;
       assert.match(t, /День отдыха/);
       assert.match(t, /Тренер перенёс нагрузку/);
       assert.equal(await card.getByText('Начать тренировку').count(), 0, 'в день отдыха нет «Начать»');

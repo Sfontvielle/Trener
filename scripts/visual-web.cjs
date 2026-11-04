@@ -16,7 +16,7 @@ const URL = process.env.E2E_URL || 'http://localhost:8081';
 const UPDATE = process.argv.includes('--update');
 const BASE = path.join(__dirname, 'visual-baseline');
 const OUT = process.env.VISUAL_OUT || path.join(process.cwd(), 'visual-out');
-/** Пиксель «другой», если какой-то канал отличается больше чем на 48 из 255 (сглаживание шрифта — меньше) */
+/** Пиксель «другой», если какой-то канал отличается больше чем на 48 из 255 и рядом (3×3) на другом снимке нет похожего */
 const CHANNEL = 48;
 /** Допустимая доля других пикселей */
 const MAX_RATIO = 0.005;
@@ -104,14 +104,33 @@ async function diff(browser, a, b) {
       g.drawImage(ib, 0, 0);
       const db = g.getImageData(0, 0, c.width, c.height);
       const out = g.createImageData(c.width, c.height);
+      const W = c.width;
+      const H = c.height;
+      const A = da.data;
+      const B = db.data;
+      const close = (P, i, Q, j) => Math.max(Math.abs(P[i] - Q[j]), Math.abs(P[i + 1] - Q[j + 1]), Math.abs(P[i + 2] - Q[j + 2])) <= CHANNEL;
+      // Есть ли похожий пиксель в окрестности 3×3 на другом снимке: сглаживание краёв и сдвиг глифа на 1 px между машинами — не отличие
+      const near = (P, Q, x, y) => {
+        const i = (y * W + x) * 4;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+            if (close(P, i, Q, (yy * W + xx) * 4)) return true;
+          }
+        return false;
+      };
       let n = 0;
-      for (let i = 0; i < da.data.length; i += 4) {
-        const d = Math.max(Math.abs(da.data[i] - db.data[i]), Math.abs(da.data[i + 1] - db.data[i + 1]), Math.abs(da.data[i + 2] - db.data[i + 2]));
-        if (d > CHANNEL) {
-          n++;
-          out.data.set([255, 0, 0, 255], i);
-        } else out.data.set([db.data[i] / 3, db.data[i + 1] / 3, db.data[i + 2] / 3, 255], i);
-      }
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          const same = close(A, i, B, i) || (near(A, B, x, y) && near(B, A, x, y));
+          if (!same) {
+            n++;
+            out.data.set([255, 0, 0, 255], i);
+          } else out.data.set([B[i] / 3, B[i + 1] / 3, B[i + 2] / 3, 255], i);
+        }
       g.putImageData(out, 0, 0);
       return { ratio: n / (c.width * c.height), png: c.toDataURL('image/png') };
     },
@@ -122,7 +141,8 @@ async function diff(browser, a, b) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  // Одинаковое сглаживание на любой машине: серое, без субпиксельного (LCD) и без хинтинга — в CI оно включалось у части слоёв
+  const browser = await chromium.launch({ args: ['--disable-lcd-text', '--font-render-hinting=none'] });
   const all = {};
   const errors = [];
   for (const theme of ['dark', 'light']) {
