@@ -76,7 +76,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   const plan = await page.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
   const routes = [
     '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress',
-    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/labs', '/labs/hct', '/labs/review', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor',
+    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/body', '/stats',
     '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan', '/food/recipe',
     '/exercise/bench_press', `/workout/${session.id}`, `/workout/preview?templateId=${plan.templates[0].id}`, '/workout/builder', '/onboarding',
   ];
@@ -143,10 +143,8 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
     profile: () => monkey('/profile'),
     checkin: () => monkey('/checkin'),
     food: () => monkey('/food/add'),
-    labs: () => monkey('/labs'),
     body: () => monkey('/body'),
     stats: () => monkey('/stats'),
-    health: () => monkey('/health-monitor'),
     weekly: () => monkey('/weekly-review'),
     onboarding: async () => {
       // Короткий онбординг (5 шагов), затем раздел «Здоровье» из ленты — каждый «+» открывает выбор, выбор и сохранение без ошибок

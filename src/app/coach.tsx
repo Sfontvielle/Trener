@@ -12,7 +12,7 @@ import { useCoach } from '@/stores/coach';
 import { applyCoachAction, declineCoachAction, sendCoachMessage } from '@/features/coach/service';
 import { useKeyboardAwareScroll } from '@/components/keyboard';
 import { haptic } from '@/services/haptics';
-import { plural, toISODate } from '@/utils/date';
+import { toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
 
 const QUICK = ['Что мне сегодня делать?', 'Упражнения на верх груди', 'Что мне поесть сейчас?', 'Какие анализы сдать?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит плечо при жиме', 'Что ты обо мне помнишь?'];
@@ -21,7 +21,6 @@ export default function Coach() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ q?: string }>();
   const messages = useCoach((s) => s.messages);
-  const memoryCount = useCoach((s) => s.memory.length);
   const [text, setText] = useState(params.q ? String(params.q) : '');
   const [busy, setBusy] = useState(false);
   const list = useRef<FlatList<CoachMessage>>(null);
@@ -52,7 +51,7 @@ export default function Coach() {
         <AppHeader
           back
           title={`${BRAND} Coach`}
-          subtitle={`Знает твои данные · помнит ${memoryCount} ${plural(memoryCount, 'факт', 'факта', 'фактов')}`}
+          subtitle="Знает твои тренировки, питание и восстановление"
           actions={[
             {
               icon: 'ellipsis-horizontal',

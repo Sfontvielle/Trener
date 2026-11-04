@@ -12,9 +12,6 @@ import { confirm, toast } from '@/components/Dialog';
 import { resetAllStores } from '@/stores/hydration';
 import { clearAllData } from '@/storage/persist';
 import { useProfile } from '@/stores/profile';
-import { useLabs } from '@/stores/labs';
-import { useEnhanced } from '@/stores/enhanced';
-import { useCoach } from '@/stores/coach';
 import { useHealth } from '@/stores/health';
 import { applyProfile } from '@/features/profile/applyProfile';
 import { BodySection, FoodSection, GoalPicker, HealthSection, LifestyleSection, TrainingSection } from '@/features/profile/forms';
@@ -22,7 +19,7 @@ import { hasHealthInfo, healthOf, healthTraining } from '@/features/profile/heal
 import { GOAL_LABEL } from '@/features/nutrition/targets';
 import { LEVEL_LABEL } from '@/features/training/planGenerator';
 import { ensurePermission } from '@/services/notifications';
-import { plural, relativeDay, toISODate } from '@/utils/date';
+import { relativeDay, toISODate } from '@/utils/date';
 import { fmtValue } from '@/utils/format';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { SPLIT_PREF_LABEL } from '@/features/training/engine/split';
@@ -33,7 +30,6 @@ import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 import { LOCATION_LABEL } from '@/features/profile/questionnaire';
 import { Image } from 'expo-image';
 import { pickAvatar, removeAvatar } from '@/services/avatar';
-import { labRecognitionAvailable } from '@/services/labExtract';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -65,10 +61,7 @@ const TITLES: Record<Exclude<Section, null>, string> = { goal: 'Цель', body:
 export default function Profile() {
   const profile = useProfile((s) => s.profile);
   const settings = useProfile((s) => s.settings);
-  const labCount = useLabs((x) => x.reports.length);
-  const enhancedOn = useEnhanced((x) => x.enabled);
   const updateSettings = useProfile((s) => s.updateSettings);
-  const memory = useCoach((s) => s.memory);
   const healthOn = useHealth((s) => s.enabled);
   const healthSync = useHealth((s) => s.lastSyncAt);
   const healthSummary = healthOn ? `Подключено${healthSync ? ` · ${new Date(healthSync).toTimeString().slice(0, 5)}` : ''}` : 'Не подключено · сон, шаги, HRV, пульс';
@@ -77,11 +70,8 @@ export default function Profile() {
   const [accountOpen, setAccountOpen] = useState(false);
   const apple = useAccount((s) => s.apple);
   const [draft, setDraft] = useState<UserProfile | null>(null);
-  const [fact, setFact] = useState('');
-  const [editMem, setEditMem] = useState<{ id: string; text: string } | null>(null);
   const [notifDenied, setNotifDenied] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [coachOpen, setCoachOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   // Переход с главной («Дополни профиль»): сразу открыть нужный раздел. Профиль — вкладка и не размонтируется,
   // поэтому помним последний обработанный раздел, а не «уже открывали»
@@ -181,14 +171,7 @@ export default function Profile() {
         <ListRow icon="medkit-outline" title="Здоровье и особенности" subtitle={healthLine(profile)} onPress={() => open('health')} />
         <ListRow icon="moon-outline" title="Сон и активность" subtitle={lifeLine} onPress={() => open('life')} />
         <ListRow icon="pulse-outline" title="Восстановление" subtitle="Чек-ин: сон и самочувствие" onPress={() => router.push('/checkin')} />
-        <ListRow icon="flask-outline" title="Анализы" subtitle={labCount ? `${labCount} ${plural(labCount, 'анализ', 'анализа', 'анализов')} · история и изменения` : labRecognitionAvailable() ? 'PDF, фото или текст — любые лаборатории' : 'Текст или вручную — любые лаборатории'} onPress={() => router.push('/labs')} />
-        <ListRow icon="heart-circle-outline" title="Давление, пульс, мониторинг" subtitle={enhancedOn ? 'Режим Enhanced включён · мониторинг' : 'Мониторинг здоровья и сигналы'} onPress={() => router.push('/health-monitor')} />
         <ListRow icon="heart-outline" title="Apple Health" subtitle={healthSummary} onPress={() => router.push('/health')} />
-      </Group>
-
-      <SectionHeader title={`${BRAND} Coach`} />
-      <Group>
-        <ListRow icon="sparkles-outline" title="Память и факты" subtitle={`Что ${BRAND} знает обо мне`} value={String(memory.length)} onPress={() => setCoachOpen(true)} />
       </Group>
 
       <SectionHeader title="Оформление" />
@@ -261,38 +244,6 @@ export default function Profile() {
               ))}
             </View>
           ) : null}
-        </View>
-      </Sheet>
-
-      {/* Настройки Coach: память — устойчивые факты, которые тренер учитывает; редактировать и удалять может только человек */}
-      <Sheet visible={coachOpen} onClose={() => setCoachOpen(false)} title={`${BRAND} Coach`} subtitle={`Что ${BRAND} знает обо мне · ${memory.length}`}>
-        <View style={{ gap: 8 }} testID="coach-memory">
-          {memory.length === 0 ? <T v="callout">Тренер запоминает устойчивые факты: что ты не любишь, как реагируют суставы, когда удобно тренироваться.</T> : null}
-          {memory.map((m) =>
-            editMem?.id === m.id ? (
-              <View key={m.id} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
-                <Field style={{ flex: 1 }} value={editMem.text} onChangeText={(t) => setEditMem({ id: m.id, text: t })} autoFocus />
-                <Button title="OK" size="sm" disabled={!editMem.text.trim()} onPress={() => { useCoach.getState().updateMemory(m.id, editMem.text); setEditMem(null); }} style={{ height: 50 }} />
-              </View>
-            ) : (
-              <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Icon name={m.category === 'food' ? 'restaurant-outline' : m.category === 'injury' || m.category === 'health' ? 'medkit-outline' : m.category === 'training' ? 'barbell-outline' : 'bookmark-outline'} size={16} color={colors.textDim} />
-                <Pressable style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel={`Изменить: ${m.text}`} onPress={() => setEditMem({ id: m.id, text: m.text })}>
-                  <T v="body">{m.text}</T>
-                  <T v="footnote">
-                    {m.source === 'coach' ? 'запомнил тренер' : 'добавлено тобой'} · тап — изменить
-                  </T>
-                </Pressable>
-                <Pressable hitSlop={10} accessibilityLabel="Удалить факт" onPress={() => useCoach.getState().removeMemory(m.id)}>
-                  <Icon name="close" size={16} color={colors.muted} />
-                </Pressable>
-              </View>
-            ),
-          )}
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
-            <Field style={{ flex: 1 }} placeholder="Добавить факт: «Не ем рыбу»" value={fact} onChangeText={setFact} onSubmitEditing={() => { if (fact.trim()) { useCoach.getState().addMemory(fact, 'preference', 'user'); setFact(''); } }} />
-            <Button title="Добавить" size="sm" disabled={!fact.trim()} onPress={() => { useCoach.getState().addMemory(fact, 'preference', 'user'); setFact(''); }} style={{ height: 50 }} />
-          </View>
         </View>
       </Sheet>
 

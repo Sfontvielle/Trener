@@ -1022,102 +1022,6 @@ const closeSheet = async (pg) => {
     }
   });
 
-  await check('42. Анализы: вставка текста → «Проверь распознанные данные» → правка → сохранение → история и изменения', async () => {
-    const paste = async (text) => {
-      await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(1200);
-      await dismiss();
-      await page.getByText('Добавить', { exact: true }).first().click();
-      await page.waitForTimeout(600);
-      await page.getByText('Вставить текст анализов').click();
-      await page.waitForTimeout(700);
-      await page.getByTestId('lab-paste').fill(text);
-      await page.getByText('Распознать', { exact: true }).click();
-      await page.waitForTimeout(1000);
-      assert.ok(await page.getByText('Проверь распознанные данные').isVisible(), 'экран проверки обязателен');
-    };
-    await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
-    // Уверенно распознанное — компактной таблицей; любое значение можно исправить до сохранения
-    assert.equal(await page.getByLabel('Значение, строка 3').count(), 0, 'строки свёрнуты');
-    await page.getByLabel('Изменить: АЛТ').click();
-    await page.waitForTimeout(300);
-    await page.getByLabel('Значение, строка 3').fill('31');
-    await page.getByText('Подтвердить и сохранить').click();
-    await page.waitForTimeout(1000);
-    // После сохранения — сразу отчёт по загрузке
-    let t = await page.getByTestId('lab-report').innerText();
-    assert.match(t, /Первый анализ/);
-    assert.match(t, /Вне референса/);
-    assert.match(await page.getByTestId('lab-report-list').innerText(), /ЛПНП/);
-    await paste('ИНВИТРО\nДата взятия образца: 01.09.2026\nГематокрит (HCT) 48,1 % 39 - 49\nХолестерин ЛПНП 3,5 ммоль/л < 3,0 H\nАЛТ 31 Ед/л < 41');
-    await page.getByText('Подтвердить и сохранить').click();
-    await page.waitForTimeout(1000);
-    t = await page.getByTestId('lab-report').innerText();
-    assert.match(t, /Сравнение с анализом 1 мар/);
-    // По умолчанию — что ухудшилось относительно референса: ЛПНП выше и дальше от него
-    let list = await page.getByTestId('lab-report-list').innerText();
-    assert.match(list, /ЛПНП/);
-    assert.match(list, /дальше от референса/);
-    assert.match(list, /↑ 0,4/);
-    await page.getByLabel('Повысилось: 2').click();
-    await page.waitForTimeout(500);
-    list = await page.getByTestId('lab-report-list').innerText();
-    assert.match(list, /↑ 2,1 п\.п\./);
-    assert.match(t, /Без существенных изменений: АЛТ/);
-    await page.getByText('Таблица всех анализов').last().click();
-    await page.waitForTimeout(800);
-    const table = await page.getByTestId('lab-table').innerText();
-    assert.match(table, /48,1/);
-    assert.match(table, /46/);
-    await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000);
-    await dismiss();
-    const ch = await page.getByTestId('lab-changes').innerText();
-    assert.match(ch, /Последний анализ/);
-    assert.match(ch, /ухудшилось/);
-    await page.getByLabel(/^Гематокрит: 48,1/).click();
-    await page.waitForTimeout(900);
-    t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /референс вашей лаборатории: 39 – 49/);
-    assert.match(t, /↑ 2,1 п\.п\. с прошлого/);
-    await shot('lab-marker');
-  });
-
-  await check('43. Здоровье: давление по среднему, Enhanced — история и граница безопасности', async () => {
-    await page.goto(`${URL}/health-monitor`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1200);
-    await dismiss();
-    for (const [s1, d1] of [[146, 94], [148, 95]]) {
-      await page.getByText('Записать', { exact: true }).click();
-      await page.waitForTimeout(500);
-      await page.getByTestId('bp-sys').fill(String(s1));
-      await page.getByTestId('bp-dia').fill(String(d1));
-      await page.getByText('Сохранить', { exact: true }).last().click();
-      await page.waitForTimeout(600);
-    }
-    let t = await page.getByTestId('health-signals').innerText();
-    assert.match(t, /≥140\/90/);
-    assert.match(t, /обсудить/);
-    await page.getByText('Режим Enhanced (AAS)').click();
-    await page.waitForTimeout(400);
-    t = await page.getByTestId('enhanced-card').innerText();
-    assert.match(t, /Не составляет циклы/);
-    assert.match(t, /Нормальные анализы не означают, что AAS безопасны/);
-    await page.getByText('Добавить запись').click();
-    await page.waitForTimeout(500);
-    await page.getByLabel('Вещество', { exact: true }).fill('Тестовая запись');
-    await page.getByText('Сохранить', { exact: true }).last().click();
-    await page.waitForTimeout(600);
-    assert.match(await page.getByTestId('enhanced-card').innerText(), /Тестовая запись/);
-    await shot('health');
-    // Сигнал давления виден на главной и запрещает повышение нагрузки
-    await page.goto(URL, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
-    await dismiss();
-    const line = await page.getByTestId('coach-feed').innerText();
-    assert.ok(/Давление/.test(line) || /Давление/.test(await openFeed(page)), 'сигнал давления на главной');
-  });
-
   await check('44. Отчёт недели: метрики и решения тренера (что/почему/данные/уверенность)', async () => {
     await page.goto(`${URL}/weekly-review`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
@@ -1131,7 +1035,6 @@ const closeSheet = async (pg) => {
       const d = await page.getByTestId('weekly-decisions').innerText();
       assert.match(d, /Решения тренера на неделю/i);
       assert.match(d, /Уверенность:/);
-      assert.match(d, /Нагрузку не повышаем/, 'давление ≥140/90 — без повышения нагрузки');
     }
   });
 

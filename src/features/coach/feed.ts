@@ -42,9 +42,7 @@ const SETUP: Record<SetupItem, { title: string; text: string; section: string }>
 
 const ALERT_ICON: Record<CoachAlert['level'], string> = { urgent: 'alert-circle', warning: 'warning-outline', info: 'information-circle-outline', positive: 'trending-up' };
 const ALERT_ROUTE: Partial<Record<NonNullable<CoachAlert['target']>, { label: string; route?: string }>> = {
-  labs: { label: 'Анализы', route: '/labs' },
   weekly: { label: 'Отчёт недели', route: '/weekly-review' },
-  health: { label: 'Подробнее', route: '/health-monitor' },
   checkin: { label: 'Чек-ин', route: '/checkin' },
   weight: { label: 'Взвеситься', route: '/weight' },
   measure: { label: 'Измерить' },

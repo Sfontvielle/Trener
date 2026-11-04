@@ -160,22 +160,6 @@ export function DayDetails({ s, onClose }: { s: DaySummary; onClose?: () => void
         </Block>
       ) : null}
 
-      {s.labs.map((l) => (
-        <Pressable
-          key={l.id}
-          accessibilityRole="button"
-          onPress={() => {
-            onClose?.();
-            afterModalClose(() => router.push('/labs'));
-          }}
-        >
-          <Block icon="flask-outline" title={`Анализы${l.lab ? ` · ${l.lab}` : ''}`} right="›">
-            <T v="small">
-              {l.count} показателей{l.outOfRange ? ` · вне референса: ${l.outOfRange}` : ' · все в пределах референса'}
-            </T>
-          </Block>
-        </Pressable>
-      ))}
     </View>
   );
 }
