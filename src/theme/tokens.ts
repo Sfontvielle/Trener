@@ -40,6 +40,9 @@ export interface Palette {
   fat: string;
   carbs: string;
   fiber: string;
+  /** Кольца «Сегодня»: сон и тренировки недели (шаги — акцентом) */
+  ringSleep: string;
+  ringWeek: string;
   overlay: string;
   tabBar: string;
   doneRow: string;
@@ -73,6 +76,8 @@ export const DARK_BASE: Omit<Palette, keyof AccentSet> = {
   fat: '#FF7EA6',
   carbs: '#F2D45C',
   fiber: '#4FD1C1',
+  ringSleep: '#8FA2FF',
+  ringWeek: '#4CC9F0',
   overlay: 'rgba(5,8,12,0.66)',
   tabBar: 'rgba(13,17,24,0.94)',
 };
@@ -102,6 +107,8 @@ export const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
   fat: '#B32F5C',
   carbs: '#806200',
   fiber: '#0C7062',
+  ringSleep: '#4157CC',
+  ringWeek: '#0A6C8C',
   overlay: 'rgba(14,20,27,0.32)',
   tabBar: 'rgba(255,255,255,0.96)',
 };

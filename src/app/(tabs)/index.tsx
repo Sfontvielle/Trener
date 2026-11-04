@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
-import { Button, Icon, SectionTitle, T, linkHit } from '@/components/ui';
+import { Button, Icon, T, linkHit } from '@/components/ui';
 import { Field } from '@/components/inputs';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -29,9 +29,8 @@ import { resumeActive, startTodayPlanned } from '@/features/training/actions';
 import { startPlanned } from '@/features/training/planning';
 import { estimateMinutes } from '@/features/training/planGenerator';
 import { useSchedule } from '@/stores/schedule';
-import { sleepCard } from '@/features/home/today';
-import { ActivityGroup, NutritionBlock, WorkoutCard, type WorkoutCardState } from '@/features/home/Today';
-import { CoachInsight } from '@/components/ds/CoachInsight';
+import { DayRings, NutritionBlock, WorkoutCard, type SleepRingData, type WorkoutCardState } from '@/features/home/Today';
+import { agendaProgress, weekAgenda } from '@/features/training/weekAgenda';
 import { sleepMinutesOf } from '@/features/science/recovery';
 import { buildJournal, dayMode } from '@/features/journal/build';
 import { workoutDebrief } from '@/features/training/debrief';
@@ -168,7 +167,14 @@ export default function Home() {
   if (!profile) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   const target = nut.target;
   const checkin = checkins[d];
-  const sleepNow = sleepCard(checkin ? sleepMinutesOf(checkin) : undefined, health?.sleepHours);
+  // Сон: Apple Health (со временем подъёма; без часов — «в постели» от iPhone), иначе — из утреннего чек-ина
+  const hd = healthDays[d];
+  const sleepRing: SleepRingData | null = hd?.sleepHours
+    ? { minutes: Math.round(hd.sleepHours * 60), wakeAt: hd.wakeAt, inBed: hd.sleepInBed, source: 'health' }
+    : checkin && sleepMinutesOf(checkin)
+      ? { minutes: sleepMinutesOf(checkin)!, source: 'checkin' }
+      : null;
+  const week = agendaProgress(weekAgenda({ today: d, plan, sessions, overrides }));
 
   const reactTo = (i: LocalInsight, status: 'accepted' | 'dismissed') => {
     if (i.key) useCoach.getState().recordAdvice({ key: i.key, date: d, text: i.text, status });
@@ -215,12 +221,11 @@ export default function Home() {
           : tw.kind === 'rest'
             ? { kind: 'rest', reason: tw.reason, next: tw.nextWorkout }
             : { kind: 'no_plan' };
-  const top = feed[0];
-  const topAction = top?.actions[0];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: space.md, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.xl }} showsVerticalScrollIndicator={false}>
+      {/* Всё на одном экране: прокрутка включается, только если не помещается (маленький iPhone, крупный текст) */}
+      <ScrollView alwaysBounceVertical={false} contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: space.md, paddingBottom: insets.bottom + TAB_BAR_HEIGHT + space.md }} showsVerticalScrollIndicator={false}>
         {/* Шапка (макет 01-home): «Сегодня», дата — вход в дневник дня, колокольчик — сигналы тренера */}
         <View style={styles.header}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -235,7 +240,7 @@ export default function Home() {
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel={feed.length ? `Сигналы тренера: ${feed.length}` : 'Сигналы тренера'} onPress={() => { haptic.tap(); setFeedOpen(true); }} hitSlop={6} style={styles.bell} testID="home-bell">
             <Icon name="notifications-outline" size={22} color={colors.text} />
-            {feed.some((f) => f.tone === 'urgent' || f.tone === 'warning') ? <View style={styles.bellDot} /> : null}
+            {feed.length ? <View style={[styles.bellDot, feed.some((f) => f.tone === 'urgent' || f.tone === 'warning') && { backgroundColor: colors.warning }]} testID="home-bell-dot" /> : null}
           </Pressable>
         </View>
 
@@ -244,41 +249,24 @@ export default function Home() {
         </View>
 
         {target ? (
-          <>
-            <SectionTitle title="Питание" action="Дневник" onAction={() => router.push('/nutrition')} />
+          <View style={{ marginTop: space.lg }}>
             <NutritionBlock eaten={nut.eaten} target={target} entries={nut.entries} />
-          </>
+          </View>
         ) : null}
 
-        <SectionTitle title="Активность и восстановление" />
-        <ActivityGroup
-          steps={health?.steps}
-          stepsTarget={steps?.target ?? profile.stepsPerDay}
-          healthOn={healthOn}
-          sleepMinutes={sleepNow?.minutes}
-          readiness={readiness}
-          hasCheckin={!!checkin}
-          onSteps={() => setStepsOpen(true)}
-          onReadiness={() => setWhyOpen(true)}
-        />
-
-        {/* Один совет тренера; все сигналы — по колокольчику или тапу */}
-        <CoachInsight
-          style={{ marginTop: space.xl }}
-          source={BRAND}
-          title={top?.title ?? 'Сигналов нет — всё по плану.'}
-          text={top?.text}
-          tone={top?.tone === 'urgent' ? 'urgent' : top?.tone === 'warning' ? 'warning' : 'info'}
-          more={Math.max(0, feed.length - 1)}
-          onOpen={() => setFeedOpen(true)}
-          onWhy={coach ? () => setCoachWhyOpen(true) : undefined}
-          action={
-            top && topAction
-              ? { label: topAction.label, onPress: () => runFeed(top, topAction) }
-              : { label: 'Спросить тренера', onPress: () => router.push(insight && insight.date === d ? { pathname: '/coach', params: { insight: '1' } } : '/coach'), testID: 'coach-ask' }
-          }
-          testID="coach-feed"
-        />
+        {/* Три кольца дня: шаги, сон (с подъёмом), тренировки недели; советы тренера — по колокольчику */}
+        <View style={{ marginTop: space.lg }}>
+          <DayRings
+            steps={health?.steps}
+            stepsTarget={steps?.target ?? profile.stepsPerDay}
+            healthOn={healthOn}
+            sleep={sleepRing}
+            week={week}
+            onSteps={() => (health?.steps === undefined && !healthOn ? router.push('/health') : setStepsOpen(true))}
+            onSleep={() => (readiness ? setWhyOpen(true) : router.push('/checkin'))}
+            onWeek={() => router.push('/training')}
+          />
+        </View>
       </ScrollView>
 
       <Sheet visible={diaryOpen} onClose={() => setDiaryOpen(false)} title="Дневник" subtitle="Выбери день — сон, шаги, вес, тренировка, питание">

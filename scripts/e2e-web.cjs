@@ -44,9 +44,9 @@ const check = async (name, fn) => {
   }
 };
 
-/** Лента тренера на главной — одна строка; все сигналы — в листе по тапу */
+/** Сигналы тренера — по колокольчику на главной (R1: главная без прокрутки, отдельной карточки совета нет) */
 const openFeed = async (pg) => {
-  await pg.getByTestId('coach-feed').click();
+  await pg.getByTestId('home-bell').click();
   await pg.waitForTimeout(800);
   return pg.getByTestId('coach-feed-list').innerText();
 };
@@ -157,8 +157,8 @@ const closeSheet = async (pg) => {
     pages.push(op);
     await check('0. Приветствие → вход (без Apple ID в браузере) → анкета 5 этапов без подставленных значений → главная; здоровье — правила', async () => {
       await passQuestionnaire(op);
-      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('coach-feed').isVisible()), 'после анкеты — главная');
-      // Остальное — позже: лента предлагает рассказать о еде (строка тренера → лист со всеми сигналами)
+      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('home-bell').isVisible()), 'после анкеты — главная');
+      // Остальное — позже: лента предлагает рассказать о еде (колокольчик → лист со всеми сигналами)
       assert.match(await openFeed(op), /Дополни профиль: что любишь есть/);
       await closeSheet(op);
       await op.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
@@ -399,7 +399,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. «Сегодня» (макет 01-home): заголовок и дата, колокольчик, карточка тренировки, питание шкалами, активность группой, один совет', async () => {
+  await check('17. «Сегодня» на одном экране: заголовок и дата, колокольчик (сигналы), карточка тренировки, питание, три кольца — шаги, сон, неделя', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
@@ -419,17 +419,22 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'вода — только в «Питании»');
     assert.equal(await page.locator('img[src*="home_hero"]').count(), 0, 'без манекена');
     assert.match(await page.getByTestId('home-nutrition').innerText(), /из [\d\s\u202f]+ ккал[\s\S]*Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'питание: ккал и Б/Ж/У');
-    assert.match(await page.getByTestId('home-steps').innerText(), /Шаги/);
-    assert.match(await page.getByTestId('home-sleep').innerText(), /Сон/);
-    assert.match(await page.getByTestId('home-recovery').innerText(), /Готовность/);
-    for (const l of [/^Шаги, как рассчитана цель/, /^Готовность: /, /^Калории: .*Открыть питание$/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
-    assert.match(await page.getByTestId('coach-feed').innerText(), /RYNJI/, 'совет тренера');
-    // «Спросить тренера» — когда у совета нет своего действия; иначе — действие совета
-    if (await page.getByTestId('coach-ask').count()) {
-      await page.getByTestId('coach-ask').click();
-      await page.waitForTimeout(900);
-      assert.match(page.url(), /\/coach/);
-    }
+    // Три кольца дня: шаги, сон, тренировки недели (R1)
+    assert.ok(await page.getByTestId('home-rings').isVisible(), 'кольца дня');
+    for (const l of [/^Шаги/, /^Сон/, /^Тренировки за неделю: \d+/, /^Калории: .*Открыть питание$/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
+    // Всё на одном экране: кольца над таб-баром, совета-карточки нет (сигналы — по колокольчику)
+    const rings = await page.getByTestId('home-rings').boundingBox();
+    assert.ok(rings && rings.y + rings.height < 956 - 80, `кольца на первом экране: низ ${rings && rings.y + rings.height}`);
+    assert.equal(await page.getByTestId('coach-feed').count(), 0, 'отдельной карточки совета нет');
+    assert.match(await openFeed(page), /./, 'сигналы — в листе по колокольчику');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(500);
+    // Кольцо недели ведёт в «Тренировки»
+    await page.getByTestId('home-week').click();
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByTestId('tab-bar').getByRole('tab', { name: /^Тренировки/ }).getAttribute('aria-selected'), 'true', 'кольцо недели → тренировки');
+    await page.getByRole('tab', { name: 'Сегодня' }).click();
+    await page.waitForTimeout(700);
     await shot('home');
   });
 
@@ -546,7 +551,7 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByRole('tab', { name: 'Профиль' }).getAttribute('aria-selected'), 'true', 'профиль — вкладка');
     await page.getByRole('tab', { name: 'Сегодня' }).click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'вкладка «Сегодня»');
+    assert.ok(await page.getByTestId('home-rings').isVisible(), 'вкладка «Сегодня»');
   });
 
   await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
@@ -777,14 +782,15 @@ const closeSheet = async (pg) => {
     assert.match(await page.evaluate(() => document.body.innerText), /Клетчатка/i);
   });
 
-  await check('35. Утро: сон, шаги, готовность и тренировка на первом экране; тренировка — 1 тап', async () => {
+  await check('35. Утро: сон, шаги и тренировка на первом экране (сон → готовность); тренировка — 1 тап', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const b = await page.getByLabel(/^Готовность: /).first().boundingBox();
-    assert.ok(b && b.y < 956, 'готовность на первом экране');
+    const b = await page.getByLabel(/^Сон/).first().boundingBox();
+    assert.ok(b && b.y + b.height < 956 - 80, 'кольцо сна на первом экране');
+    assert.ok(await page.getByLabel(/^Шаги/).first().isVisible(), 'шаги на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /готовность|чек-ин|сон/i);
+    assert.match(t, /чек-ин|подъём|из чек-ина|Apple Health|нет данных/i);
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
@@ -1008,8 +1014,8 @@ const closeSheet = async (pg) => {
       assert.match(t, /Тренировка по программе|По программе|Тренер советует отдых|Запланировано|Тренировка выполнена|День отдыха|Идёт тренировка/, 'главное на сегодня — одна карточка');
       // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
       assert.match(await page.getByLabel(/^Калории: .*Открыть питание$/).first().innerText(), /ккал/, 'калории дня');
-      // «Почему так» — в листе тренера (строка тренера на главной)
-      await page.getByTestId('coach-feed').click();
+      // «Почему так» — в листе тренера (колокольчик на главной)
+      await page.getByTestId('home-bell').click();
       await page.waitForTimeout(700);
       await page.getByLabel('Почему? Объяснение решений тренера').click();
       await page.waitForTimeout(900);

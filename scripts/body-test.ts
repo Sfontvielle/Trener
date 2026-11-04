@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { sleepNights } from '../src/features/health/sleep';
 import type { BodyMetric, WeightEntry } from '../src/types';
 import { analyzeBody, bfLevel, bmiBodyFat, bodyTrend, combineBodyFat, estimateBodyFat, mergeZones, navyBodyFat, withoutStrengths, parsePhotoAnalysis, rfmBodyFat } from '../src/features/progress/body';
 
@@ -101,4 +102,38 @@ test('Тело: сильная сторона по фото снимает зо�
   const z = [{ zone: 'shoulders' as const, text: 'дельты' }, { zone: 'legs' as const, text: 'бёдра' }];
   assert.deepEqual(withoutStrengths(z, ['Плечи широкие']).map((x) => x.zone), ['legs']);
   assert.deepEqual(withoutStrengths(z).map((x) => x.zone), ['shoulders', 'legs']);
+});
+
+
+test('сон по ночам: «спал» от часов; только «в постели» от iPhone — помечено; ночь — по дате пробуждения; подъём', () => {
+  const at = (d: string, hm: string) => new Date(`${d}T${hm}:00`).getTime();
+  // Ночь 3→4 ноября с часами: стадии сна + «в постели» (его не считаем, раз есть «спал»)
+  const watch = [
+    { value: 0, start: at('2026-11-03', '23:00'), end: at('2026-11-04', '07:30') },
+    { value: 3, start: at('2026-11-03', '23:20'), end: at('2026-11-04', '02:00') },
+    { value: 4, start: at('2026-11-04', '02:00'), end: at('2026-11-04', '03:00') },
+    { value: 2, start: at('2026-11-04', '03:00'), end: at('2026-11-04', '03:10') },
+    { value: 5, start: at('2026-11-04', '03:10'), end: at('2026-11-04', '07:05') },
+    // Дневной сон — к этому же дню, но время подъёма не сдвигает
+    { value: 1, start: at('2026-11-04', '15:00'), end: at('2026-11-04', '15:30') },
+  ];
+  const n = sleepNights(watch).get('2026-11-04')!;
+  assert.equal(n.source, 'asleep');
+  assert.equal(n.minutes, 160 + 60 + 235 + 30);
+  assert.equal(new Date(n.wakeAt).getHours(), 7);
+  assert.equal(new Date(n.wakeAt).getMinutes(), 5);
+  // Только iPhone: «в постели» 0:30–7:40 → 7 ч 10 мин, источник «в постели»
+  const phone = [{ value: 0, start: at('2026-11-05', '00:30'), end: at('2026-11-05', '07:40') }];
+  const p = sleepNights(phone).get('2026-11-05')!;
+  assert.equal(p.source, 'inBed');
+  assert.equal(p.minutes, 430);
+  // Сон, закончившийся после 18:00, — к следующему утру
+  const late = sleepNights([{ value: 1, start: at('2026-11-05', '19:00'), end: at('2026-11-05', '20:00') }]);
+  assert.ok(late.has('2026-11-06'));
+  // Пересечения двух источников «спал» не складываются
+  const dup = sleepNights([
+    { value: 1, start: at('2026-11-07', '00:00'), end: at('2026-11-07', '06:00') },
+    { value: 3, start: at('2026-11-07', '01:00'), end: at('2026-11-07', '07:00') },
+  ]).get('2026-11-07')!;
+  assert.equal(dup.minutes, 420);
 });
