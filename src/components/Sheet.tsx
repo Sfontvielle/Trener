@@ -50,7 +50,7 @@ export function Sheet({
   const [sheetH, setSheetH] = useState(height * 0.5);
 
   // Актуальные значения для обработчиков жеста, которые создаются один раз
-  const live = useRef({ onClose, sheetH: height * 0.5, atTop: true, closing: false });
+  const live = useRef({ onClose, sheetH: height * 0.5, atTop: true, closing: false, y: 0, t: 0, vy: 0 });
   useEffect(() => {
     live.current.onClose = onClose;
   }, [onClose]);
@@ -66,12 +66,12 @@ export function Sheet({
     const st = { active: false };
     const move = (dy: number) => drag.setValue(dy >= 0 ? dy : -Math.min(28, Math.sqrt(-dy) * 3));
     const back = (vy = 0) => Animated.spring(drag, { toValue: 0, velocity: vy, damping: 26, stiffness: 300, mass: 0.9, overshootClamping: true, useNativeDriver: true }).start();
-    /** Отпускание: закрыть по расстоянию или броску, иначе плавно вернуть. vy — px/ms */
-    const finish = (dy: number, vy: number) => {
+    /** Отпускание: закрыть по расстоянию или броску, иначе плавно вернуть. vy — px/ms; force — закрыть без проверок */
+    const finish = (dy: number, vy: number, force = false) => {
       const h = Math.max(200, live.current.sheetH);
       const far = dy > Math.min(160, h * 0.3);
       const flick = vy > 0.55 && dy > 24;
-      if (far || flick) {
+      if (force || far || flick) {
         live.current.closing = true;
         const rest = Math.max(0, h + 40 - dy);
         const duration = Math.max(120, Math.min(260, rest / Math.max(1.4, vy * 1.6)));
@@ -93,7 +93,7 @@ export function Sheet({
           onPanResponderTerminationRequest: () => false,
         });
       };
-      return { native: undefined, pan: undefined, head: make(true).panHandlers, body: make(false).panHandlers };
+      return { native: undefined, pan: undefined, head: make(true).panHandlers, body: make(false).panHandlers, finish };
     }
     const { Gesture } = GH;
     // runOnJS(true) у ВСЕХ жестов, включая Native: иначе gesture-handler переключается на Reanimated
@@ -121,7 +121,7 @@ export function Sheet({
           back();
         }
       });
-    return { native, pan, head: undefined, body: undefined };
+    return { native, pan, head: undefined, body: undefined, finish };
   });
 
   const { mounted, shown, onDismiss } = useModalPresence(
@@ -148,19 +148,43 @@ export function Sheet({
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, Math.max(200, sheetH)], outputRange: [1, 0.15], extrapolate: 'clamp' }));
   const maxH = Math.max(240, (height - pad) * maxHeightPct - (pad ? insets.top : 0));
 
+  // На iPhone (без gesture-handler) длинную шторку закрывает сама прокрутка, как в системных листах iOS:
+  // тянешь содержимое вниз от верха и отпускаешь дальше порога или броском — лист уезжает. Нативная прокрутка
+  // забирает касание раньше PanResponder, поэтому тянуть «за содержимое» через PanResponder в длинных листах нельзя
+  const pullToClose = !GH && scroll && canScroll;
   const body = scroll ? (
     <SafeDetector gesture={gestures.native}>
     <ScrollView
       ref={scrollRef}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={16}
-      bounces={false}
+      bounces={pullToClose}
+      alwaysBounceVertical={pullToClose}
       overScrollMode="never"
       scrollEnabled={canScroll || pad > 0}
+      onScrollEndDrag={(e) => {
+        const l = live.current;
+        if (!pullToClose || l.closing) return;
+        // y < 0 — содержимое оттянуто вниз за верхний край. Скорость считаем сами по onScroll (pt/мс, вниз —
+        // отрицательная): знак velocity в событии на разных архитектурах RN не совпадает
+        const y = e.nativeEvent.contentOffset.y;
+        const fresh = Date.now() - l.t < 80;
+        const down = fresh ? -l.vy : 0;
+        if (y < -70 || (y < -16 && down > 0.6)) {
+          drag.setValue(-y);
+          gestures.finish(-y, down, true);
+        }
+      }}
       onLayout={(e) => setBoxH(e.nativeEvent.layout.height)}
       onContentSizeChange={(_w, h) => setContentH(h)}
       onScroll={(e) => {
-        live.current.atTop = e.nativeEvent.contentOffset.y <= 2;
+        const l = live.current;
+        const y = e.nativeEvent.contentOffset.y;
+        const now = Date.now();
+        if (now > l.t) l.vy = (y - l.y) / (now - l.t);
+        l.y = y;
+        l.t = now;
+        l.atTop = y <= 2;
         onKbScroll(e);
       }}
       contentContainerStyle={{ paddingBottom: footer || pad ? space.md : insets.bottom + space.lg }}
@@ -189,7 +213,7 @@ export function Sheet({
             setSheetH(h);
           }}
           style={[styles.sheet, { maxHeight: maxH, opacity: calm ? anim : 1, transform: [{ translateY }, { translateY: drag }] }]}
-          {...gestures.body}
+          {...(pullToClose ? undefined : gestures.body)}
         >
           <View {...gestures.head}>
           <View style={styles.grabZone}>
