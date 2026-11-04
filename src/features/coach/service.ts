@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import type { CoachAction, CoachMessage, KnowledgeSource, PlannedExercise, VolumeMuscle } from '@/types';
 import { KB_SOURCES, pubmedSearchUrl } from './local/kbSources';
+import { wikiAnswer } from '@/services/wiki';
 import { searchReviews } from '@/services/knowledge';
 import { useProfile } from '@/stores/profile';
 import { usePlan } from '@/stores/plan';
@@ -363,6 +364,15 @@ export async function sendCoachMessage(text: string): Promise<CoachMessage> {
   // Тренер работает на устройстве — сразу, без настройки
   if (!coachBaseUrl()) {
     const r = localReply(text, previousQuestion);
+    // Во встроенной базе ответа нет — краткая справка из Википедии со ссылкой (бесплатно, без ключа)
+    if (r.intent === 'fallback') {
+      const w = await wikiAnswer(text);
+      if (w) {
+        const medical = /(болезн|заболеван|синдром|гормон|лечени|диагноз|симптом|препарат|лекарств|витамин|дефицит|недостаточност)/i.test(w.text);
+        const reply = `Коротко, что об этом известно:\n\n${w.text}\n\n${medical ? 'Это справка из энциклопедии, а не диагноз или назначение — по здоровью решает врач. ' : ''}Если вопрос про твои тренировки, питание или восстановление — спроси по-своему, отвечу по твоим данным.`;
+        return useCoach.getState().addMessage({ role: 'assistant', text: reply, sources: [{ title: w.title, org: 'Википедия', url: w.url }] });
+      }
+    }
     const kbId = /kb:([a-z_0-9]+)/.exec(r.intent)?.[1];
     const msg = useCoach.getState().addMessage({ role: 'assistant', text: r.text, actions: validateActions(r.actions, actionContext()), safety: r.safety, sources: kbId ? knownSources(kbId) : undefined });
     if (kbId) void refreshSources(msg.id, kbId);

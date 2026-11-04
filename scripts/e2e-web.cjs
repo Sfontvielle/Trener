@@ -44,6 +44,15 @@ const check = async (name, fn) => {
   }
 };
 
+/** Ответ тренера «печатается» (R1): ждём, пока исчезнут точки набора и текст допечатается */
+const waitReply = async (pg, ms = 12000) => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (!(await pg.getByTestId('coach-typing').count()) && !(await pg.getByTestId('coach-typing-reply').count())) return;
+    await pg.waitForTimeout(200);
+  }
+  throw new Error('ответ тренера не допечатался');
+};
 /** Сигналы тренера — по колокольчику на главной (R1: главная без прокрутки, отдельной карточки совета нет) */
 const openFeed = async (pg) => {
   await pg.getByTestId('home-bell').click();
@@ -482,9 +491,18 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1200);
     await dismiss();
     assert.equal(await page.getByText(/Настрой|подключи/i).count(), 0);
+    // Как живой человек: сначала «печатает…» с точками, потом текст появляется постепенно
+    await page.getByLabel('Сообщение тренеру').fill('сколько белка мне нужно');
+    await page.getByLabel('Отправить').click();
+    await page.waitForTimeout(250);
+    assert.ok(await page.getByTestId('coach-typing').count(), 'точки набора');
+    assert.match(await page.evaluate(() => document.body.innerText), /RYNJI печатает…/);
+    await waitReply(page);
+    assert.match(await page.evaluate(() => document.body.innerText), /г\/кг/i);
+    // Здоровье и безопасность — без «печати», сразу целиком
     await page.getByLabel('Сообщение тренеру').fill('можно ли тренироваться при простуде');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1500);
+    await waitReply(page);
     assert.match(await page.evaluate(() => document.body.innerText), /врач/i);
     await shot('coach');
   });
@@ -495,13 +513,16 @@ const closeSheet = async (pg) => {
     await dismiss();
     await page.getByLabel('Сообщение тренеру').fill('Что мне сегодня делать?');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1200);
+    await waitReply(page);
     const t = await page.evaluate(() => document.body.innerText);
     assert.ok(!/Пройди утренний чек-ин/.test(t), 'не требует чек-ин');
     assert.ok(/Начать тренировку|Тренировка вне плана|уже сделана/.test(t), 'есть действие');
     await page.getByLabel('Сообщение тренеру').fill('хочу упражнение на верх груди');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1200);
+    // Тап по печатающемуся ответу — показать целиком сразу
+    await page.waitForTimeout(1800);
+    if (await page.getByTestId('coach-typing-reply').count()) await page.getByTestId('coach-typing-reply').click();
+    await waitReply(page, 3000);
     assert.ok(await page.getByText('Начать эту тренировку').last().isVisible());
     await shot('coach-target');
   });

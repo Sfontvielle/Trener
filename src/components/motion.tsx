@@ -11,16 +11,25 @@ import { colors } from '@/theme';
  */
 let reduceMotion = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as { webdriver?: boolean }).webdriver;
 const automation = reduceMotion;
+/** Только настройка системы, без поправки на автотесты */
+let userReduce = false;
 AccessibilityInfo.isReduceMotionEnabled?.()
   .then((v) => {
+    userReduce = v;
     reduceMotion = automation || v;
   })
   .catch(() => {});
 AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v: boolean) => {
+  userReduce = v;
   reduceMotion = automation || v;
 });
 
 export const prefersReducedMotion = () => reduceMotion;
+/**
+ * Поведение, а не украшение (например, «печать» ответа тренера): зависит только от настройки «Уменьшение движения»,
+ * автотесты видят его как есть и сами ждут окончания
+ */
+export const userPrefersReducedMotion = () => userReduce;
 const native = Platform.OS !== 'web';
 
 /** Смена содержимого по действию (раздел, шаг анкеты): прозрачность + небольшой подъём за 180 мс */
