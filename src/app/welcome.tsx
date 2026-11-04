@@ -180,7 +180,7 @@ export default function Welcome() {
           Персональная программа, питание и восстановление — в одной системе.
         </T>
         <View style={{ marginTop: space.lg, alignSelf: 'stretch' }}>
-          <Button title="Начать" size="lg" live onPress={start} />
+          <Button title="Начать" size="lg" full onPress={start} />
         </View>
       </Animated.View>
     </View>

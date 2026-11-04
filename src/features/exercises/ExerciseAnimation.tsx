@@ -59,13 +59,13 @@ export function ExerciseAnimation({ ex, anim, stabilizers = [] }: { ex: Exercise
           </T>
         </View>
         <View style={styles.bar}>
-          <Pressable onPress={() => setPlaying((p) => !p)} hitSlop={10} accessibilityRole="button" accessibilityLabel={playing ? 'Пауза' : 'Воспроизвести'} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          <Pressable onPress={() => setPlaying((p) => !p)} hitSlop={10} accessibilityRole="button" accessibilityLabel={playing ? 'Пауза' : 'Воспроизвести'} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minHeight: 44, marginVertical: -12 }}>
             <Icon name={playing ? 'pause' : 'play'} size={16} color="#FFFFFF" />
             <T v="small" color="rgba(255,255,255,0.8)" style={{ flex: 1, fontSize: 12 }} numberOfLines={1}>
               {playing ? 'Повторение по кругу' : 'Пауза'}
             </T>
           </Pressable>
-          <Pressable onPress={() => setFull(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Во весь экран" testID="technique-3d-full">
+          <Pressable onPress={() => setFull(true)} hitSlop={6} accessibilityRole="button" accessibilityLabel="Во весь экран" testID="technique-3d-full" style={{ width: 44, height: 44, margin: -13, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="expand" size={17} color="#FFFFFF" />
           </Pressable>
         </View>

@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, EmptyState, IconButton, T } from '@/components/ui';
-import { Ambient, Appear } from '@/components/motion';
+import { Appear } from '@/components/motion';
 import { usePlan } from '@/stores/plan';
 import { useWorkouts } from '@/stores/workouts';
 import { useTodayWorkout, useReadiness } from '@/hooks/useToday';
@@ -51,11 +51,10 @@ export default function Preview() {
   const totalSets = rows.reduce((a, r) => a + r.rec.sets, 0);
   return (
     <Screen>
-      <Ambient height={380} />
       <Header title="" right={<IconButton name="create-outline" label="Изменить тренировку" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
       {/* Главное — название по центру и одна строка; ниже — одна кнопка и упражнения с мышечной группой */}
       <Appear i={0} style={{ alignItems: 'center', gap: 6 }}>
-        <T v="hero" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
+        <T v="display" accessibilityRole="header" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
           {tpl.name}
         </T>
         <T v="bodyDim" style={{ textAlign: 'center' }}>
@@ -63,7 +62,7 @@ export default function Preview() {
         </T>
       </Appear>
       <Appear i={1} style={{ marginTop: space.xl }}>
-        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" live onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
+        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" full onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
       </Appear>
       <Appear i={2} style={styles.list}>
         {rows.map(({ ex, rec }, i) => (

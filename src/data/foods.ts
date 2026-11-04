@@ -286,6 +286,11 @@ export const LOCAL_FOODS: FoodProduct[] = ROWS.map(([slug, name, kcal, protein, 
 
 const ALIASES = new Map(ROWS.map((r) => [`local:${r[0]}`, (r[8] ?? '').toLowerCase()]));
 
+/** Дополнительные слова для поиска базового продукта («курица филе грудка») */
+export function localAliases(id: string): string {
+  return ALIASES.get(id) ?? '';
+}
+
 export function searchLocalFoods(q: string, limit = 20): FoodProduct[] {
   const query = q.trim().toLowerCase().replace(/ё/g, 'е');
   if (!query) return [];

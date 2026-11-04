@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T, type IconName } from './ui';
+import { prefersReducedMotion } from './motion';
 
 /**
  * Кросс-платформенные подтверждения и тосты.
@@ -102,17 +103,21 @@ function ToastView() {
   useEffect(() => {
     if (!t) return;
     a.setValue(0);
+    // С действием («Отменить») — 8 секунд, чтобы успеть передумать (NUTRITION_SPEC.md §3); после — тост убирается
+    // совсем: невидимая кнопка не должна перехватывать нажатия вверху экрана
     Animated.sequence([
       Animated.timing(a, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(t.action ? 3600 : 2200),
+      Animated.delay(t.action ? 7600 : 2200),
       Animated.timing(a, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start();
+    ]).start(({ finished }) => {
+      if (finished && useDialog.getState().toast?.id === t.id) useDialog.setState({ toast: null });
+    });
   }, [t, a]);
   if (!t) return null;
   return (
     <Animated.View
       pointerEvents={t.action ? 'box-none' : 'none'}
-      style={[styles.toast, { top: insets.top + 8, opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}
+      style={[styles.toast, { top: insets.top + 8, opacity: a, transform: [{ translateY: prefersReducedMotion() ? 0 : a.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}
     >
       <Icon name={t.icon ?? 'checkmark-circle'} size={18} color={colors.accent} />
       <T v="small" color={colors.text} style={{ flexShrink: 1, fontWeight: '600' }}>

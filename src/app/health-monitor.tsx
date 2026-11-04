@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, Icon, T } from '@/components/ui';
+import { Button, Card, Icon, T, linkHit } from '@/components/ui';
 import { Field, Toggle } from '@/components/inputs';
 import { DateField } from '@/components/DateField';
 import { TrendChart } from '@/components/charts';
@@ -17,6 +17,7 @@ import { useProfile } from '@/stores/profile';
 import { BP_LABEL, bpSummary, healthMonitor, rhrTrend, type SignalLevel } from '@/features/health/monitor';
 import { daysBetween, formatDayShort, today } from '@/utils/date';
 import { haptic } from '@/services/haptics';
+import { labRecognitionAvailable } from '@/services/labExtract';
 
 const LEVEL_COLOR: Record<SignalLevel, string> = { urgent: colors.danger, doctor: colors.warning, monitor: colors.warning, info: colors.textDim };
 const LEVEL_LABEL: Record<SignalLevel, string> = { urgent: 'срочно', doctor: 'обсудить с врачом', monitor: 'наблюдать', info: 'информация' };
@@ -56,7 +57,7 @@ export default function HealthMonitorScreen() {
     const s = parseInt(sys, 10);
     const d = parseInt(dia, 10);
     if (!(s >= 70 && s <= 260 && d >= 40 && d <= 160 && s > d)) {
-      toast('Проверьте значения давления', 'alert-circle');
+      toast('Проверь значения давления', 'alert-circle');
       return;
     }
     en.addBp({ date: today(), systolic: s, diastolic: d, pulse: pulse ? parseInt(pulse, 10) : undefined });
@@ -114,8 +115,8 @@ export default function HealthMonitorScreen() {
       )}
 
       <Card style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <T v="caption" style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <T v="caption" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 140 }}>
             Артериальное давление
           </T>
           <Button title="Записать" icon="add" size="sm" variant="secondary" onPress={() => setBpOpen(true)} />
@@ -155,7 +156,7 @@ export default function HealthMonitorScreen() {
           </T>
           <Icon name="chevron-forward" size={16} color={colors.muted} />
         </View>
-        <T v="body">{lastLab ? `Последние: ${formatDayShort(lastLab.date)}${lastLab.lab ? ` · ${lastLab.lab}` : ''} · всего ${labs.length}` : 'Загрузите анализы — PDF, фото или текст'}</T>
+        <T v="body">{lastLab ? `Последние: ${formatDayShort(lastLab.date)}${lastLab.lab ? ` · ${lastLab.lab}` : ''} · всего ${labs.length}` : `Добавь анализы — ${labRecognitionAvailable() ? 'PDF, фото или текст' : 'текст или вручную'}`}</T>
       </Card>
 
       <Card style={{ gap: 8, marginTop: space.md }} testID="enhanced-card">
@@ -167,7 +168,7 @@ export default function HealthMonitorScreen() {
         />
         {/* Граница безопасности: при включённом режиме — всегда на виду; иначе — по нажатию */}
         {!en.enabled ? (
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: boundaryOpen }} hitSlop={8} onPress={() => setBoundaryOpen(!boundaryOpen)}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: boundaryOpen }} hitSlop={8} onPress={() => setBoundaryOpen(!boundaryOpen)} style={[{ alignSelf: 'flex-start' }, linkHit]}>
             <T v="small" style={{ fontWeight: '600' }}>
               {boundaryOpen ? 'Скрыть' : 'Что делает и чего не делает RYNJI ›'}
             </T>

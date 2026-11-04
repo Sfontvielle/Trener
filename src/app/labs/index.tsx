@@ -102,7 +102,7 @@ export default function LabsScreen() {
         <EmptyState
           icon="flask-outline"
           title="Анализов пока нет"
-          text="PDF, фото бланка, текст или вручную — перед сохранением вы проверите каждое значение."
+          text={`${labRecognitionAvailable() ? 'PDF, фото бланка, текст' : 'Текст из PDF или письма лаборатории'} или вручную — перед сохранением ты проверишь каждое значение.`}
           action="Добавить анализы"
           onAction={() => setAddOpen(true)}
         />
@@ -201,7 +201,7 @@ export default function LabsScreen() {
         RYNJI не ставит диагнозы и не назначает лечение. «Выше/ниже референса» — это сравнение с диапазоном вашей лаборатории, а не диагноз. Решения принимает врач.
       </T>
 
-      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Добавить анализы" subtitle="Перед сохранением вы проверите каждое значение">
+      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Добавить анализы" subtitle="Перед сохранением ты проверишь каждое значение">
         <View style={{ gap: 10 }}>
           {labRecognitionAvailable() ? (
             <>

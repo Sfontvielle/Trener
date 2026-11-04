@@ -77,7 +77,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   const routes = [
     '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress',
     '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/labs', '/labs/hct', '/labs/review', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor',
-    '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan',
+    '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan', '/food/recipe',
     '/exercise/bench_press', `/workout/${session.id}`, `/workout/preview?templateId=${plan.templates[0].id}`, '/workout/builder', '/onboarding',
   ];
 

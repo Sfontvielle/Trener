@@ -14,7 +14,7 @@ export function Field({ label, hint, error, style, accessory, ...rest }: TextInp
     <View style={[{ gap: 6 }, style]}>
       {label ? <T v="caption">{label}</T> : null}
       <View>
-      <TextInput
+      <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE}
         placeholderTextColor={colors.muted}
         selectionColor={colors.accent}
         accessibilityLabel={label ?? rest.placeholder}
@@ -71,10 +71,15 @@ export function NumberStepper({
   label,
   compact,
   inline,
+  large,
+  testID,
   style,
 }: {
   value: number;
   onChange: (v: number) => void;
+  /** Крупное поле (порция еды): высота 64, число — стиль display */
+  large?: boolean;
+  testID?: string;
   step?: number;
   min?: number;
   max?: number;
@@ -101,10 +106,10 @@ export function NumberStepper({
     haptic.tap();
     onChange(clamp(Math.round((value + d) * 1000) / 1000));
   };
-  const h = compact ? 40 : inline ? 44 : 48;
-  const fontSize = inline ? 24 : compact ? 18 : 20;
+  const h = large ? 64 : compact ? 40 : inline ? 44 : 48;
+  const fontSize = large ? 34 : inline ? 24 : compact ? 18 : 20;
   return (
-    <View style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
+    <View testID={testID} style={[inline ? styles.inlineRow : { gap: 6 }, style]}>
       {label ? (
         <T v={inline ? 'body' : 'caption'} color={inline ? colors.textDim : undefined} style={inline ? { flex: 1 } : undefined}>
           {label}
@@ -298,7 +303,7 @@ const styles = themed({
   inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
   stepBtn: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   numField: { minHeight: 44, borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: 'transparent' },
-  stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
+  stepInput: { flexShrink: 0, color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'center', paddingHorizontal: 4, paddingVertical: 0, fontVariant: ['tabular-nums'] },
   scaleItem: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52 },
   track: { width: 50, height: 30, borderRadius: 15, backgroundColor: colors.surface3, padding: 3 },

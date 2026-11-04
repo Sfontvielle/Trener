@@ -58,7 +58,7 @@ export default function LabReviewScreen() {
 
   return (
     <Screen keyboard>
-      <Header title="Проверьте распознанные данные" subtitle="Сохранится только после подтверждения" />
+      <Header title="Проверь распознанные данные" subtitle="Сохранится только после подтверждения" />
       <View style={{ gap: space.md }}>
         {d.source.kind !== 'manual' ? (
           <Banner icon="eye-outline" tone={low ? 'warning' : 'info'} text={`Распознано: ${d.rows.length}. Сверьте с бланком — нажмите на строку, чтобы исправить${low ? `; ${low} отмечены для проверки` : ''}.`} />

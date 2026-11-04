@@ -20,3 +20,6 @@ npm-debug.*
 
 # кадры рендера 3D (пересобираются tools/anim/render.cjs)
 tools/anim/out/
+
+# отличия регрессии снимков (scripts/visual-web.cjs)
+visual-out/

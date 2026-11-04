@@ -10,6 +10,7 @@ import { suggestMeals } from '@/features/nutrition/suggest';
 import type { LocalInsight } from './insights';
 import { uid } from '@/utils/id';
 import { today } from '@/utils/date';
+import { NBSP, fmtValue } from '@/utils/format';
 import { BRAND } from '@/config/brand';
 
 /**
@@ -35,10 +36,11 @@ export function offlineAnswer(args: {
     const todayEntries = args.entries.filter((e) => e.date === today());
     const rem = remaining(args.target, sumMacros(todayEntries));
     const s = suggestMeals({ remaining: rem, profile: args.profile, todayEntries, recentProducts: args.recentProducts });
-    const lines = [`Осталось: ${Math.max(0, Math.round(rem.kcal))} ккал, Б ${Math.max(0, Math.round(rem.protein))} / Ж ${Math.max(0, Math.round(rem.fat))} / У ${Math.max(0, Math.round(rem.carbs))}.`];
+    const n = (x: number) => fmtValue(Math.max(0, Math.round(x)));
+    const lines = [`Осталось: ${n(rem.kcal)}${NBSP}ккал, Б ${n(rem.protein)} / Ж ${n(rem.fat)} / У ${n(rem.carbs)}.`];
     lines.push(...s.notes);
     const o = s.options[0];
-    if (o) lines.push(`Вариант: ${o.items.map((i) => `${i.product.name.toLowerCase()} ${i.grams} г`).join(' + ')} ≈ ${Math.round(o.total.kcal)} ккал, Б ${Math.round(o.total.protein)} Ж ${Math.round(o.total.fat)} У ${Math.round(o.total.carbs)}.`);
+    if (o) lines.push(`Вариант: ${o.items.map((i) => `${i.product.name.toLowerCase()} ${i.grams}${NBSP}г`).join(' + ')} ≈ ${n(o.total.kcal)}${NBSP}ккал, Б ${n(o.total.protein)} Ж ${n(o.total.fat)} У ${n(o.total.carbs)}.`);
     return { text: lines.join(' '), actions };
   }
 

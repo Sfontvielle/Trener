@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { colors, currentTheme, space } from '@/theme';
 import { Screen } from '@/components/Screen';
 import { Button, T } from '@/components/ui';
-import { Ambient, FadeIn } from '@/components/motion';
+import { FadeIn } from '@/components/motion';
 import { AppleButton } from '@/features/account/AppleButton';
 import { useAppleLink } from '@/features/account/useAppleLink';
 import { useAccount } from '@/stores/account';
@@ -27,7 +27,6 @@ export default function Auth() {
 
   return (
     <Screen scroll={false}>
-      <Ambient tone="calm" height={460} />
       <FadeIn from={12} style={{ flex: 1 }}>
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <T v="display" accessibilityRole="header" style={{ textAlign: 'center' }}>

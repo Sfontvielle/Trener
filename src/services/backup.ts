@@ -9,6 +9,7 @@ import { useLabs } from '@/stores/labs';
 import { useEnhanced } from '@/stores/enhanced';
 import { useBody } from '@/stores/body';
 import { useNutrition } from '@/stores/nutrition';
+import { migrateNutrition } from '@/features/nutrition/schema';
 import { useWorkouts } from '@/stores/workouts';
 import { useCoach } from '@/stores/coach';
 import { useJournal } from '@/stores/journal';
@@ -33,7 +34,8 @@ export interface BackupFile {
     plan: { plan: unknown; target: unknown; overrides: unknown; adjustments: unknown };
     checkins: { byDate: unknown };
     body: { weights: unknown; metrics: unknown; photos?: unknown; analyses?: unknown };
-    nutrition: { entries: unknown; products: unknown; recent: unknown; lastGrams: unknown; meals?: unknown; water?: unknown; favorites?: unknown };
+    /** recipes — с фазы C (схема питания v2); старые копии восстанавливаются без них и переводятся migrateNutrition */
+    nutrition: { entries: unknown; products: unknown; recent: unknown; lastGrams: unknown; meals?: unknown; water?: unknown; favorites?: unknown; recipes?: unknown };
     workouts: { sessions: unknown; draft: unknown; customExercises: unknown };
     coach: { messages: unknown; summary: unknown; summarizedUntil: unknown; memory: unknown; advice?: unknown; knowledge?: unknown };
     journal?: { notes: unknown };
@@ -61,7 +63,7 @@ export function buildBackup(): BackupFile {
       plan: { plan: pl.plan, target: pl.target, overrides: pl.overrides, adjustments: pl.adjustments },
       checkins: { byDate: useCheckins.getState().byDate },
       body: { weights: b.weights, metrics: b.metrics, photos: b.photos, analyses: b.analyses },
-      nutrition: { entries: n.entries, products: n.products, recent: n.recent, lastGrams: n.lastGrams, meals: n.meals, water: n.water, favorites: n.favorites },
+      nutrition: { entries: n.entries, products: n.products, recent: n.recent, lastGrams: n.lastGrams, meals: n.meals, water: n.water, favorites: n.favorites, recipes: n.recipes },
       // активная тренировка не входит в копию — это незавершённое состояние
       workouts: { sessions: w.sessions, draft: w.draft, customExercises: w.customExercises },
       coach: { messages: c.messages, summary: c.summary, summarizedUntil: c.summarizedUntil, memory: c.memory, advice: c.advice, knowledge: c.knowledge },
@@ -208,7 +210,8 @@ export function restoreBackup(b: BackupFile): void {
   // Старые копии (сон только в часах) нормализуются той же миграцией, что и хранилище
   useCheckins.setState(migrateCheckins({ byDate: obj(d.checkins?.byDate) }, 1));
   useBody.setState({ weights: arr(d.body?.weights), metrics: arr(d.body?.metrics), photos: arr(d.body?.photos), analyses: arr(d.body?.analyses) });
-  useNutrition.setState({ entries: arr(d.nutrition?.entries), products: obj(d.nutrition?.products), recent: arr(d.nutrition?.recent), lastGrams: obj(d.nutrition?.lastGrams), meals: arr(d.nutrition?.meals), water: obj(d.nutrition?.water), favorites: arr(d.nutrition?.favorites) });
+  // Копия любой версии переводится в текущую схему дневника той же миграцией, что и хранилище; корзина не восстанавливается
+  useNutrition.setState({ ...migrateNutrition(d.nutrition ?? {}, 1), draft: null });
   useJournal.setState({ notes: arr(d.journal?.notes) });
   useLabs.setState({ reports: arr(d.labs?.reports) });
   useEnhanced.setState({ enabled: !!d.enhanced?.enabled, aas: arr(d.enhanced?.aas), bp: arr(d.enhanced?.bp) });

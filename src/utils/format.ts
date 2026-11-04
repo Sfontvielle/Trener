@@ -51,3 +51,35 @@ export function fmtSec(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** Неразрывный пробел между числом и единицей: «2 150 ккал» и «82,5 кг» не переносятся посередине */
+export const NBSP = '\u00A0';
+/** Узкий неразрывный пробел между разрядами — его ставит fmtNum: «2 150» */
+export const GROUP = '\u202F';
+/** Типографский минус (U+2212) — одной ширины с плюсом в табличных цифрах */
+export const MINUS = '\u2212';
+
+const isZero = (s: string) => !/[1-9]/.test(s);
+
+/**
+ * Число для интерфейса по правилам ru-RU: разряды через узкий неразрывный пробел, десятичная запятая,
+ * минус — типографский. Незначащий ноль после запятой убирается: 82.0 → «82», 82.5 → «82,5».
+ */
+export function fmtValue(n: number, digits = 0): string {
+  if (!Number.isFinite(n)) return '—';
+  const s = fmtNum(Math.abs(n), digits);
+  return n < 0 && !isZero(s) ? `${MINUS}${s}` : s;
+}
+
+/** Число с единицей: (2150, 'ккал') → «2 150 ккал» (между числом и единицей — неразрывный пробел) */
+export function fmtUnit(n: number, unit?: string, digits = 0): string {
+  const v = fmtValue(n, digits);
+  return unit && v !== '—' ? `${v}${NBSP}${unit}` : v;
+}
+
+/** Изменение со знаком: +1,2 / −0,5 / 0. Ноль — без знака */
+export function fmtDelta(n: number, digits = 0): string {
+  if (!Number.isFinite(n)) return '—';
+  const v = fmtValue(n, digits);
+  return n > 0 && !isZero(v) ? `+${v}` : v;
+}

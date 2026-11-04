@@ -159,7 +159,7 @@ export function RulerPicker({
 const styles = themed({
   valueBox: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 190, height: 74, paddingHorizontal: 24, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
   valueBoxOn: { borderColor: colors.borderStrong },
-  valueInput: { fontSize: 40, fontWeight: '800', color: colors.text, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, flexGrow: 0, flexShrink: 0 },
+  valueInput: { fontSize: 40, fontWeight: '700', color: colors.text, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, flexGrow: 0, flexShrink: 0 },
   ruler: { width: '100%', height: 76, overflow: 'hidden' },
   needle: { position: 'absolute', top: -4, width: 3, height: 50, borderRadius: 1.5 },
   pmRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 8 },

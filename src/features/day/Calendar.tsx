@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, View } from 'react-native';
 import type { ISODate } from '@/types';
 import { Icon, T } from '@/components/ui';
+import { prefersReducedMotion } from '@/components/motion';
 import { colors, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
 import { addDays, parseISODate, startOfWeek, toISODate, WEEKDAYS_SHORT } from '@/utils/date';
@@ -38,7 +39,8 @@ export function TrainingCalendar({ today: d, src, onSelect, initiallyOpen = fals
   const markers = useMemo(() => dayMarkers(open ? grid : week, src), [open, grid, week, src]);
 
   useEffect(() => {
-    Animated.timing(anim, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+    if (prefersReducedMotion()) anim.setValue(open ? 1 : 0);
+    else Animated.timing(anim, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: false }).start();
   }, [open, anim]);
 
   // Вертикальный свайп по календарю: вниз — раскрыть, вверх — свернуть; горизонтальный по месяцу — листать

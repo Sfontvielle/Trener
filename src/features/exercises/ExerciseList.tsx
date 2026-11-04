@@ -1,10 +1,12 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { INPUT_MAX_SCALE } from '@/components/inputs';
 import type { Equipment, Exercise, ExerciseCategory } from '@/types';
 import { colors, radius, themed } from '@/theme';
 import { Button, Chip, EmptyState, Icon, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
-import { ExerciseMedia } from './ExerciseMedia';
+import { Anatomy } from './Anatomy';
+import { ExerciseAnimation, animationFor } from './ExerciseAnimation';
 import { ExerciseThumb } from './ExerciseThumb';
 import { CATEGORY_LABEL, EQUIPMENT_LABEL, EXERCISES, MUSCLE_LABEL } from '@/data/exercises';
 import { useProfile } from '@/stores/profile';
@@ -95,7 +97,7 @@ export function ExerciseList({
           {header}
           <View style={styles.search}>
             <Icon name="search" size={18} color={colors.muted} />
-            <TextInput value={q} onChangeText={setQ} placeholder="Поиск: жим, присед, бицепс…" placeholderTextColor={colors.muted} style={styles.searchInput} selectionColor={colors.accent} returnKeyType="search" clearButtonMode="while-editing" />
+            <TextInput maxFontSizeMultiplier={INPUT_MAX_SCALE} value={q} onChangeText={setQ} placeholder="Поиск: жим, присед, бицепс…" placeholderTextColor={colors.muted} style={styles.searchInput} selectionColor={colors.accent} returnKeyType="search" clearButtonMode="while-editing" />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
             <Chip label="Все" active={cat === 'all'} onPress={() => setCat('all')} />
@@ -159,7 +161,7 @@ function PreviewSheet({ ex, onClose, onSelect }: { ex: Exercise | null; onClose:
     <Sheet visible={!!ex} onClose={onClose} title={ex?.name} subtitle={ex ? `${ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')} · ${ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}` : ''} footer={ex ? <Button title="Выбрать" icon="checkmark" size="lg" onPress={() => { onClose(); onSelect(ex); }} /> : undefined}>
       {ex ? (
         <View style={{ gap: 12 }}>
-          <ExerciseMedia exercise={ex} height={240} />
+          {animationFor(ex) ? <ExerciseAnimation ex={ex} anim={animationFor(ex)!} /> : <Anatomy primary={ex.primary} secondary={ex.secondary} />}
           {ex.cues.slice(0, 4).map((c) => (
             <T key={c} v="body" style={{ fontSize: 14 }}>
               • {c}

@@ -1,84 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Easing, Image, Platform, View } from 'react-native';
+import React, { memo } from 'react';
+import { Image, View } from 'react-native';
 import type { Exercise } from '@/types';
-import { colors, themed } from '@/theme';
-import { T } from '@/components/ui';
-import { prefersReducedMotion } from '@/components/motion';
-import { CATEGORY_LABEL, exerciseImages } from '@/data/exercises';
-import { EXERCISE_MEDIA } from '@/data/exerciseMedia';
+import { colors, radius, themed } from '@/theme';
 import { EXERCISE_ANIMATIONS } from '@/data/exerciseAnimations';
+import { MiniFigure } from './Anatomy';
 
-const NATIVE = Platform.OS !== 'web';
-
-function frames(ex: Exercise) {
-  const local = EXERCISE_MEDIA[ex.id];
-  const remote = exerciseImages(ex);
-  if (local) return [local[0], local[1]] as const;
-  if (remote[0]) return [{ uri: remote[0] }, remote[1] ? { uri: remote[1] } : undefined] as const;
-  return null;
-}
-
-function Fallback({ ex, size }: { ex: Exercise; size: number }) {
-  return (
-    <View style={[styles.thumb, { width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface3 }]}>
-      <T v="small" color={colors.textDim} style={{ fontWeight: '800', fontSize: 11 }}>
-        {CATEGORY_LABEL[ex.category].slice(0, 3).toUpperCase()}
-      </T>
-    </View>
-  );
-}
-
-/** Постер 3D-рендера (середина амплитуды) — для упражнений, у которых уже есть 3D-петля */
+/** Постер 3D-рендера (середина амплитуды) — только для упражнений, у которых есть своя 3D-петля */
 function Poster({ src, size }: { src: number; size: number }) {
   return <Image source={src} style={[styles.thumb, styles.poster, { width: size, height: size }]} resizeMode="cover" accessibilityIgnoresInvertColors />;
 }
 
-/** Миниатюра: 3D-постер, иначе конечная фаза движения (по ней понятнее, что за упражнение) */
-export function ExerciseThumb({ ex, size = 64 }: { ex: Exercise; size?: number }) {
+/**
+ * Миниатюра упражнения в списках: постер своей 3D-петли, иначе нейтральная схема мышц —
+ * сторона фигуры с основными мышцами (без фото атлета и без чужих петель).
+ */
+export const ExerciseThumb = memo(function ExerciseThumb({ ex, size = 64 }: { ex: Exercise; size?: number }) {
   const anim = EXERCISE_ANIMATIONS[ex.id];
   if (anim) return <Poster src={anim.poster} size={size} />;
-  const f = frames(ex);
-  if (!f) return <Fallback ex={ex} size={size} />;
-  return <Image source={f[1] ?? f[0]} style={[styles.thumb, { width: size, height: size }]} resizeMode="cover" accessibilityIgnoresInvertColors />;
-}
-
-/**
- * «Гифка» упражнения: старт и конец движения плавно сменяют друг друга по кругу — сразу видно, как оно делается.
- * Кадры встроены в приложение (офлайн). «Уменьшение движения» — статичная конечная фаза.
- */
-export function ExerciseLoop({ ex, size = 64, delay = 0 }: { ex: Exercise; size?: number; delay?: number }) {
-  const poster = EXERCISE_ANIMATIONS[ex.id]?.poster;
-  const f = poster ? null : frames(ex);
-  const [t] = useState(() => new Animated.Value(0));
-  const animate = !!f?.[1] && !prefersReducedMotion();
-  useEffect(() => {
-    if (!animate) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(500 + delay),
-        Animated.timing(t, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: NATIVE }),
-        Animated.delay(500),
-        Animated.timing(t, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: NATIVE }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [animate, t, delay]);
-  // в списках 3D — статичный постер: десятки одновременных петель тратят память и батарею
-  if (poster) return <Poster src={poster} size={size} />;
-  if (!f) return <Fallback ex={ex} size={size} />;
-  if (!animate) return <ExerciseThumb ex={ex} size={size} />;
-  const box = [styles.thumb, { width: size, height: size }];
   return (
-    <View style={box} accessibilityIgnoresInvertColors>
-      <Image source={f[0]} style={[styles.layer, { width: size, height: size }]} resizeMode="cover" />
-      <Animated.Image source={f[1]!} style={[styles.layer, { width: size, height: size, opacity: t }]} resizeMode="cover" />
+    <View style={[styles.thumb, styles.map, { width: size, height: size }]} accessible={false}>
+      <MiniFigure primary={ex.primary} secondary={ex.secondary} size={size} />
     </View>
   );
-}
+});
+
+/** Раньше здесь была «гифка» из двух фото; теперь списки показывают ту же миниатюру (без анимации в каждой строке) */
+export const ExerciseLoop = memo(function ExerciseLoop({ ex, size = 64 }: { ex: Exercise; size?: number; delay?: number }) {
+  return <ExerciseThumb ex={ex} size={size} />;
+});
 
 const styles = themed({
-  thumb: { borderRadius: 12, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  thumb: { borderRadius: radius.md, overflow: 'hidden' },
   poster: { backgroundColor: '#0B0D0F' },
-  layer: { position: 'absolute', left: 0, top: 0 },
+  map: { backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
 });

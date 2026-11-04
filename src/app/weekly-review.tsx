@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
-import { Button, Card, EmptyState, Icon, T, type IconName } from '@/components/ui';
+import { Button, Card, EmptyState, Icon, T, type IconName, linkHit } from '@/components/ui';
 import { toast } from '@/components/Dialog';
 import { Appear, FadeIn } from '@/components/motion';
 import { useProfile } from '@/stores/profile';
@@ -99,7 +99,7 @@ export default function WeeklyReviewScreen() {
             </T>
           </Appear>
           <Appear i={1}>
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: all }} onPress={() => { haptic.tap(); setAll(!all); }} hitSlop={8} style={({ pressed }) => [{ alignSelf: 'flex-start', marginTop: space.md }, pressed && { opacity: 0.6 }]}>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: all }} onPress={() => { haptic.tap(); setAll(!all); }} hitSlop={8} style={({ pressed }) => [{ alignSelf: 'flex-start', marginTop: space.md }, linkHit, pressed && { opacity: 0.6 }]}>
               <T v="body" style={{ fontWeight: '600' }}>
                 {all ? 'Скрыть показатели' : 'Все показатели ›'}
               </T>

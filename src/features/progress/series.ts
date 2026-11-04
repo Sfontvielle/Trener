@@ -1,5 +1,5 @@
 import type { BodyMetric, FoodEntry, ISODate, WeightEntry, WorkoutSession } from '@/types';
-import { addDays, today } from '@/utils/date';
+import { addDays, plural, today } from '@/utils/date';
 import { bestSet } from '@/features/training/progression';
 import { sessionVolume } from '@/features/training/analytics';
 import { weightTrend } from './weightTrend';
@@ -167,5 +167,5 @@ export function progressNarrative(c: PeriodCompare): string | null {
     const tail = extra.length > 1 ? `${extra.slice(0, -1).join(', ')}, а ${extra[extra.length - 1]}` : extra[0];
     text = first ? `${first}${flat ? ', но' : ','} ${tail}` : tail;
   }
-  return `За ${c.days} дн.: ${text}.`;
+  return `За ${c.days} ${plural(c.days, 'день', 'дня', 'дней')}: ${text}.`;
 }

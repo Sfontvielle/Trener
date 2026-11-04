@@ -6,6 +6,8 @@
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const URL = process.env.E2E_URL || 'http://localhost:8081';
 const SCALE = process.env.A11Y_SCALE || '1.5';
+/** A11Y_VO=1: ещё и проверки для VoiceOver — заголовок экрана, цели нажатия, одинаковые названия кнопок */
+const VO = process.env.A11Y_VO === '1';
 const PROFILE = {
   name: 'Анна', sex: 'female', age: 27, heightCm: 166, weightKg: 58, goal: 'bulk', ratePctPerWeek: 0.35, level: 'intermediate', trainingYears: 2,
   daysPerWeek: 4, sessionMinutes: 70, location: 'gym', equipment: ['barbell', 'dumbbell', 'bench', 'machine', 'cable', 'pullupbar', 'ezbar'],
@@ -37,7 +39,7 @@ const PROFILE = {
   await page.getByText('Добавить демо', { exact: true }).click();
   await page.waitForTimeout(800);
 
-  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
+  const routes = ['/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress', '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/training-prefs', '/food/add', '/food/recipe', '/exercise/bench_press', '/labs', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor', '/onboarding'];
   // Дневник: тренировка с суперсетом, планкой и заметкой; черновик конструктора с суперсетом
   const tplId = await page.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('form.workouts'));
@@ -89,6 +91,27 @@ const PROFILE = {
       }
       return out;
     });
+    if (VO) {
+      // Замена прохода VoiceOver в вебе: заголовок экрана, размер целей нажатия, одинаковые названия разных кнопок
+      const vo = await pg.evaluate(() => {
+        const out = { headings: 0, small: [], dup: [] };
+        const vis = (el) => { const rc = el.getBoundingClientRect(); return rc.width > 0 && rc.height > 0 && rc.bottom > 0 && rc.top < window.innerHeight * 3; };
+        out.headings = [...document.querySelectorAll('[role="heading"],h1,h2,h3')].filter(vis).length;
+        const names = new Map();
+        for (const el of document.querySelectorAll('[role="button"],[role="switch"],[role="tab"],[role="radio"],[role="checkbox"],[role="adjustable"],[role="link"],a')) {
+          if (!vis(el)) continue;
+          const rc = el.getBoundingClientRect();
+          const name = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ');
+          if (Math.min(rc.width, rc.height) < 24) out.small.push(`${name.slice(0, 40)} ${Math.round(rc.width)}×${Math.round(rc.height)}`);
+          names.set(name, (names.get(name) || 0) + 1);
+        }
+        for (const [n, c] of names) if (c > 1 && n) out.dup.push(`${n.slice(0, 50)} ×${c}`);
+        return out;
+      });
+      if (!vo.headings) problems.push(`[нет заголовка @ ${r}]`);
+      for (const x of [...new Set(vo.small)].slice(0, 8)) problems.push(`[цель меньше 24 pt @ ${r}] ${x}`);
+      for (const x of vo.dup.slice(0, 8)) problems.push(`[одинаковые названия @ ${r}] ${x}`);
+    }
     for (const o of [...new Set(res.overflow)].slice(0, 6)) problems.push(`[вылезает текст @ ${r}] ${o}`);
     for (const u of [...new Set(res.unnamed)].slice(0, 6)) problems.push(`[кнопка без названия @ ${r}] ${u}`);
   };

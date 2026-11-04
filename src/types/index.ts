@@ -626,19 +626,39 @@ export interface Macros {
   fiber?: number;
 }
 
+/** Единица порции. Масса всегда хранится в граммах; жидкости — через плотность (по умолчанию 1 г/мл) */
+export interface FoodUnit {
+  id: 'g' | 'ml' | 'piece' | 'serving' | 'package';
+  /** «г», «мл», «шт», «порция», «пачка» */
+  label: string;
+  /** Сколько граммов в одной единице */
+  grams: number;
+}
+
+/** Насколько можно доверять КБЖУ: проверено · из базы · с этикетки (своё) · оценка (по фото) */
+export type FoodVerification = 'verified' | 'database' | 'label' | 'estimate';
+
 export interface FoodProduct {
-  id: ID; // 'off:<barcode>' | 'local:<slug>' | 'custom:<uuid>'
+  id: ID; // 'off:<barcode>' | 'local:<slug>' | 'custom:<uuid>' | 'recipe:<id>'
   name: string;
   brand?: string;
   barcode?: string;
   per100: Macros;
   /** Стандартная порция, если известна */
   serving?: { label: string; grams: number };
-  source: 'openfoodfacts' | 'usda' | 'local' | 'custom';
+  source: 'openfoodfacts' | 'usda' | 'local' | 'custom' | 'recipe';
   /** Тэги для подбора «что добрать» */
   tags?: FoodTag[];
   imageUrl?: string;
   fetchedAt?: number;
+  /** v2: единицы порции кроме граммов (шт, порция, пачка, мл) */
+  units?: FoodUnit[];
+  /** v2: плотность для «мл», г/мл */
+  densityGPerMl?: number;
+  /** v2: статус данных; у старых записей выводится из источника (verificationOf) */
+  verification?: FoodVerification;
+  /** v2: атрибуция источника («Open Food Facts (ODbL)») */
+  attribution?: string;
 }
 
 export type FoodTag =
@@ -662,9 +682,40 @@ export interface FoodEntry {
   productId: ID;
   name: string;
   grams: number;
-  macros: Macros; // посчитано на момент добавления
+  /** Снимок КБЖУ на момент добавления, без округления (округляется только при показе) */
+  macros: Macros;
   meal: MealSlot;
   createdAt: number;
+  /** v2: как ввёл человек — «2 шт», «1 порция»; масса всё равно в grams */
+  unit?: { id: FoodUnit['id']; qty: number; label: string };
+  /** v2: запись из рецепта */
+  recipeId?: ID;
+  /** v2: оценка по фото — показывается с меткой «оценка» */
+  estimate?: boolean;
+}
+
+/** Рецепт: ингредиенты (снимок КБЖУ), вес сырых и готового блюда, выход в порциях */
+export interface Recipe {
+  id: ID;
+  name: string;
+  ingredients: { productId: ID; name: string; grams: number; macros: Macros }[];
+  /** Сумма масс ингредиентов, г */
+  rawWeightG: number;
+  /** Вес готового блюда (уварка, ужарка), г; нет — равен сырому */
+  cookedWeightG?: number;
+  /** Выход, порций */
+  servings: number;
+  /** КБЖУ на 100 г готового блюда */
+  per100: Macros;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Корзина добавления: несколько продуктов одним действием; переживает закрытие приложения */
+export interface DiaryDraft {
+  date: ISODate;
+  meal: MealSlot;
+  items: { product: FoodProduct; grams: number; unit?: FoodEntry['unit'] }[];
 }
 
 // ─── Coach ──────────────────────────────────────────────────────────────────

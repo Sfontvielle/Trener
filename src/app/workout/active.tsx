@@ -18,9 +18,7 @@ import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
-import { prefetchExerciseMedia } from '@/features/exercises/ExerciseMedia';
-import { ExerciseLoop } from '@/features/exercises/ExerciseThumb';
-import { Field, inputWidth } from '@/components/inputs';
+import { Field } from '@/components/inputs';
 import { TechniquePanel } from '@/features/exercises/TechniquePanel';
 import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
@@ -39,7 +37,7 @@ import { fmtSec, fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, un
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
-import { prefersReducedMotion, Tap } from '@/components/motion';
+import { prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
 
 const NATIVE = Platform.OS !== 'web';
@@ -99,14 +97,6 @@ export default function ActiveWorkout() {
     const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-  useEffect(() => {
-    active?.exercises.forEach((we) => {
-      const ex = getExercise(we.exerciseId, customs);
-      if (ex) prefetchExerciseMedia(ex);
-    });
-    // только при открытии
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
 
   const idx = active ? currentIndexOf(active) : 0;
   const count = active?.exercises.length ?? 0;
@@ -244,7 +234,7 @@ export default function ActiveWorkout() {
   const collapse = () => (router.canGoBack() ? router.back() : router.replace('/'));
   const nextWarm = ctaSet?.warmup;
   const ctaNo = ctaSet ? we!.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1 : 0;
-  // Главная круглая кнопка внизу: подход → старт удержания → далее → завершить
+  // Главное действие внизу: записать подход → старт удержания → далее → завершить
   const center = !we
     ? null
     : allDone || (!ctaSet && nextI < 0)
@@ -252,30 +242,30 @@ export default function ActiveWorkout() {
       : ctaSet && timed && !nextWarm
         ? { icon: 'play' as const, label: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, onPress: () => startHold(we.id, ctaSet.id) }
         : ctaSet
-          ? { icon: 'checkmark' as const, label: nextWarm ? 'Разминка — готово' : `Завершить подход ${ctaNo}`, onPress: () => complete(we, ctaSet, idx) }
+          ? { icon: 'checkmark' as const, label: nextWarm ? 'Разминка — готово' : `Записать подход ${ctaNo}`, onPress: () => complete(we, ctaSet, idx) }
           : { icon: 'arrow-forward' as const, label: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, onPress: () => goTo(nextI, 1) };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Шапка: позиция слева, секундомер по центру; ▾ — время, калории и завершение */}
-      <View style={[styles.top, { paddingTop: insets.top + 6 }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Все упражнения тренировки" onPress={() => setNavOpen(true)} hitSlop={8} style={styles.pos}>
-          <T v="h3" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }} testID="exercise-position">
-            {count ? `${idx + 1}/${count}` : '—'}
+      {/* Компактная шапка (★3): свернуть · «Упражнение 3 из 7» (список) · время (меню тренировки) · ⋯ */}
+      <View style={[styles.top, { paddingTop: insets.top + 4 }]}>
+        <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" bg="transparent" onPress={collapse} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Список упражнений" onPress={() => setNavOpen(true)} hitSlop={8} style={styles.pos}>
+          <T v="footnote" numberOfLines={1} style={{ textAlign: 'center' }} testID="exercise-position">
+            {count ? `Упражнение ${idx + 1} из ${count}` : 'Нет упражнений'}
           </T>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Тренировка: время, калории, завершение" onPress={() => setWorkoutMenu(true)} hitSlop={6} style={styles.clock}>
-          <T v="num" style={{ fontSize: 34, lineHeight: 40, fontWeight: '500' }} testID="workout-elapsed">
+          <T v="footnote" style={{ fontVariant: ['tabular-nums'] }} testID="workout-elapsed">
             <Elapsed startedAt={active.startedAt} />
           </T>
-          <Icon name="caret-down" size={14} color={colors.textDim} />
         </Pressable>
-        <View style={styles.pos} />
+        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" bg="transparent" disabled={!we} onPress={() => we && setMenuFor(we.id)} />
       </View>
       <AnimatedBar progress={progress} />
 
-      <View style={{ flex: 1, paddingHorizontal: space.md, paddingTop: 12, paddingBottom: 10 }} {...pan.panHandlers}>
-        <Animated.View style={[styles.card, { opacity: fade, transform: [{ translateX: slide }] }]}>
+      <View style={{ flex: 1 }} {...pan.panHandlers}>
+        <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
           {we ? (
             <ExerciseFocus
               key={we.id}
@@ -286,9 +276,6 @@ export default function ActiveWorkout() {
               isLast={nextI < 0}
               allDone={allDone}
               reduced={active.volumeFactor < 1 ? Math.round(active.volumeFactor * 100) : undefined}
-              onMenu={() => setMenuFor(we.id)}
-              onList={() => setNavOpen(true)}
-              onCollapse={collapse}
               onComplete={(set) => complete(we, set, idx)}
               ssLabel={ssLabels[idx]}
               ssNext={(() => {
@@ -306,21 +293,16 @@ export default function ActiveWorkout() {
         </Animated.View>
       </View>
 
+      {/* Одна нижняя панель: ‹ · главное действие · › (таймер удержания — вместо неё) */}
       {we ? (
         holding && hold ? (
           <View style={[styles.holdWrap, { paddingBottom: insets.bottom + 10 }]}>
             <HoldTimer startedAt={hold.startedAt} target={we.sets.find((x) => x.id === hold.setId)?.reps || we.repMax} onStop={stopHold} onCancel={() => setHold(null)} />
           </View>
         ) : (
-          <View style={[styles.bar, { paddingBottom: insets.bottom + 10 }]}>
+          <View style={[styles.bar, { paddingBottom: insets.bottom + space.xs }]}>
             <BarBtn icon="chevron-back" label="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} />
-            <BarBtn icon="add" label="Добавить подход" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} />
-            {center ? (
-              <Tap accessibilityRole="button" accessibilityLabel={center.label} onPress={center.onPress} scaleTo={0.92} style={styles.main}>
-                <Icon name={center.icon} size={34} color={colors.onAccent} />
-              </Tap>
-            ) : null}
-            <BarBtn icon={we.note ? 'document-text' : 'create-outline'} label="Заметка к упражнению" active={!!we.note} onPress={() => { haptic.tap(); setNoteFor(we.id); }} />
+            {center ? <Button title={center.label} icon={center.icon} size="lg" onPress={center.onPress} style={{ flex: 1 }} testID="workout-cta" /> : <View style={{ flex: 1 }} />}
             <BarBtn icon="chevron-forward" label="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} />
           </View>
         )
@@ -353,6 +335,8 @@ export default function ActiveWorkout() {
         {menuWe ? (
           <View style={{ gap: 8 }}>
             <MenuRow icon="information-circle-outline" label="Карточка упражнения и история" onPress={() => { const exId = menuWe.exerciseId; setMenuFor(null); afterModalClose(() => router.push({ pathname: '/exercise/[id]', params: { id: exId } })); }} />
+            <MenuRow icon={menuWe.note ? 'document-text-outline' : 'create-outline'} label="Заметка к упражнению" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setNoteFor(id)); }} />
+            <MenuRow icon="list-outline" label="Все упражнения" onPress={() => { setMenuFor(null); afterModalClose(() => setNavOpen(true)); }} />
             <MenuRow icon="swap-horizontal" label="Заменить упражнение" onPress={() => { const id = menuWe.id; setMenuFor(null); afterModalClose(() => setSwapFor(id)); }} />
             {menuWe.superset || active.exercises.indexOf(menuWe) < count - 1 ? (
               <MenuRow
@@ -656,9 +640,6 @@ function ExerciseFocus({
   we,
   index,
   unit,
-  onMenu,
-  onList,
-  onCollapse,
   nextName,
   isLast,
   allDone,
@@ -670,9 +651,6 @@ function ExerciseFocus({
   we: WorkoutExercise;
   index: number;
   unit: 'kg' | 'lb';
-  onMenu: () => void;
-  onList: () => void;
-  onCollapse: () => void;
   nextName?: string;
   isLast: boolean;
   allDone: boolean;
@@ -720,81 +698,136 @@ function ExerciseFocus({
   const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
   const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
   const recTxt = rec ? `${rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}` : '';
-  const lastTxt = last ? last.sets.map((x) => { const v = timed ? fmtSec(x.reps) : String(x.reps); return x.weight ? `${fmtWeight(x.weight, unit)}×${v}` : v; }).join(' · ') : '';
+  // «24 кг × 10, 10, 9» — если вес во всех подходах один; иначе «80×10 · 85×8»
+  const lastTxt = (() => {
+    if (!last) return '';
+    const v = (x: { reps: number }) => (timed ? fmtSec(x.reps) : String(x.reps));
+    const ws = [...new Set(last.sets.map((x) => x.weight))];
+    if (ws.length === 1) return ws[0] ? `${fmtWeight(ws[0], unit)} ${unitLabel(unit)} × ${last.sets.map(v).join(', ')}` : last.sets.map(v).join(', ');
+    return last.sets.map((x) => (x.weight ? `${fmtWeight(x.weight, unit)}×${v(x)}` : v(x))).join(' · ');
+  })();
+
+  const muscles = [...primary, ...secondary.filter((g) => !primary.includes(g))].map((g, i) => (i ? g.toLowerCase() : g)).join(', ');
+  const weightCol = !timed || !ex.bodyweight || we.sets.some((x) => x.weight > 0);
+  const deltaColor = rec?.action === 'increase' ? colors.accent : rec?.action === 'decrease' || rec?.action === 'deload' ? colors.warning : colors.textDim;
+  const openInfo = () => {
+    haptic.tap();
+    setInfoOpen(true);
+  };
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={styles.cardHead}>
-        <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" bg="transparent" onPress={onCollapse} />
-        <View style={{ flex: 1 }} />
-        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" bg="transparent" onPress={onMenu} />
-      </View>
-      <View style={{ paddingHorizontal: space.lg, alignItems: 'center', gap: 6 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space.md, paddingTop: space.md, paddingBottom: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
         {ssLabel ? (
           <View style={styles.ssChip} testID="superset-chip">
-            <Icon name="link" size={12} color={colors.accent} />
-            <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+            <Icon name="link" size={12} color={colors.textDim} />
+            <T v="footnote" color={colors.text} numberOfLines={1}>
               Суперсет {ssLabel}
               {ssNext ? ` → ${ssNext}` : ''}
             </T>
           </View>
         ) : null}
-        <T v="h2" color={colors.accent} numberOfLines={3} style={{ textAlign: 'center', fontSize: 25, lineHeight: 30, fontWeight: '800' }}>
-          {ex.name}
-        </T>
-        <T v="caption" numberOfLines={1} style={{ textAlign: 'center', letterSpacing: 0.6 }} testID="exercise-muscles">
-          {primary.join(', ').toUpperCase()}
+        {/* Название слева крупно, мышцы обычным регистром; «ⓘ» — рекомендация, история, блины */}
+        <View style={styles.titleRow}>
+          <T v="title1" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={3}>
+            {ex.name}
+          </T>
+          <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" color={colors.textDim} onPress={openInfo} style={{ marginRight: -10 }} />
+        </View>
+        <T v="callout" numberOfLines={2} testID="exercise-muscles">
+          {muscles}
         </T>
         {we.note ? (
-          <T v="small" numberOfLines={2} style={{ fontSize: 12, textAlign: 'center' }} color={colors.text} testID="exercise-note">
-            {we.note}
-          </T>
-        ) : null}
-        {lastTxt ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="last-result">
-            <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
-              Прошлый раз: <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{lastTxt}</T> ›
+          <View style={styles.noteLine}>
+            <Icon name="document-text-outline" size={14} color={colors.textDim} />
+            <T v="footnote" color={colors.text} numberOfLines={2} style={{ flex: 1 }} testID="exercise-note">
+              {we.note}
             </T>
-          </Pressable>
+          </View>
         ) : null}
-        {/* Предложение RYNJI на сегодня — одной строкой; подходы уже заполнены им: отметка подхода — подтвердить, поле — исправить */}
-        {rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight) ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Предложение ${BRAND}: ${recTxt}${rec.delta ? `, ${rec.delta}` : ''}. Почему`} onPress={() => { haptic.tap(); setInfoOpen(true); }} hitSlop={6} testID="rynji-suggestion">
-            <T v="small" numberOfLines={1} style={{ fontSize: 12, textAlign: 'center' }}>
-              <T v="small" color={colors.accent} style={{ fontSize: 12, fontWeight: '800' }}>{`${BRAND}: `}</T>
-              <T v="small" color={colors.text} style={{ fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{recTxt}</T>
-              {rec.delta ? <T v="small" style={{ fontSize: 12 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' || rec.action === 'deload' ? colors.warning : colors.textDim}>{`  ${rec.delta}`}</T> : null}
-            </T>
-          </Pressable>
+
+        {/* «Прошлый раз» и предложение RYNJI — строками StatRow; подходы уже заполнены предложением */}
+        {lastTxt || (rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight)) ? (
+          <View style={styles.refs}>
+            {lastTxt ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={openInfo} style={styles.refRow} testID="last-result">
+                <T v="callout" style={styles.refLabel}>
+                  Прошлый раз
+                </T>
+                <T v="bodyStrong" style={{ flex: 1, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
+                  {lastTxt}
+                </T>
+              </Pressable>
+            ) : null}
+            {rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight) ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`Предложение ${BRAND}: ${recTxt}${rec.delta ? `, ${rec.delta}` : ''}. Почему`} onPress={openInfo} style={styles.refRow} testID="rynji-suggestion">
+                <T v="callout" style={styles.refLabel}>
+                  {BRAND}
+                </T>
+                <T v="bodyStrong" style={{ flex: 1, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
+                  {recTxt}
+                </T>
+                {rec.delta ? (
+                  <T v="callout" color={deltaColor} style={{ fontWeight: '600', flexShrink: 1, textAlign: 'right' }} numberOfLines={2}>
+                    {rec.delta}
+                  </T>
+                ) : null}
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         {reduced ? (
-          <T v="small" color={colors.warning} style={{ fontSize: 12, textAlign: 'center' }}>
+          <T v="footnote" color={colors.warning} style={{ marginTop: space.xs }}>
             Объём {reduced}% по готовности · веса без повышения
           </T>
         ) : null}
-      </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space.sm, paddingTop: 18, paddingBottom: 12 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
         {warm.length ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={6} style={({ pressed }) => [styles.warm, pressed && { opacity: 0.6 }]}>
-            <T v="small" numberOfLines={1} style={{ fontSize: 13, textAlign: 'center' }}>
-              <T v="small" color={colors.text} style={{ fontWeight: '600', fontSize: 13 }}>
-                + Разминка
+            <Icon name="add" size={16} color={colors.textDim} />
+            <T v="callout" numberOfLines={1} style={{ flex: 1 }}>
+              <T v="callout" color={colors.text}>
+                Разминка
               </T>
               {`  ${warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}`}
             </T>
           </Pressable>
         ) : null}
+
+        {/* Подходы — таблицей: № · вес · повторы (время) · RIR · ✓ */}
+        <View style={styles.setHead} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <T v="caption" style={styles.colNo}>
+            №
+          </T>
+          {weightCol ? (
+            <T v="caption" style={styles.headVal}>
+              {ex.bodyweight ? `Доп., ${unitLabel(unit)}` : `Вес, ${unitLabel(unit)}`}
+            </T>
+          ) : null}
+          <T v="caption" style={styles.headVal}>
+            {timed ? 'Время, сек' : 'Повторы'}
+          </T>
+          {!timed ? (
+            <T v="caption" style={styles.headRir}>
+              RIR
+            </T>
+          ) : null}
+          <View style={{ width: 44 }} />
+        </View>
         {we.sets.map((x, i) => (
-          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={onComplete} current={x === nextSet} timed={timed} bodyweight={ex.bodyweight} last={i === we.sets.length - 1} />
+          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={onComplete} current={x === nextSet} timed={timed} weightCol={weightCol} target={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined} />
         ))}
+        <Pressable accessibilityRole="button" accessibilityLabel="Добавить подход" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} hitSlop={6} style={({ pressed }) => [styles.addSet, pressed && { opacity: 0.6 }]}>
+          <Icon name="add" size={18} color={colors.textDim} />
+          <T v="callout">Подход</T>
+        </Pressable>
         {/* Запас повторов спрашиваем только у силовых подходов: у планки и удержаний это бессмысленно */}
         {lastDone && lastDone.rir === undefined && !lastDone.warmup && !timed ? <RirPicker weId={we.id} set={lastDone} /> : null}
         <AutoregTip we={we} step={step} unit={unit} />
         {!nextSet ? (
           <View style={styles.doneLine}>
-            <Icon name={allDone ? 'trophy' : 'checkmark-circle'} size={18} color={colors.accent} />
-            <T v="small" color={colors.text} numberOfLines={2} style={{ flexShrink: 1 }}>
+            <Icon name={allDone ? 'trophy-outline' : 'checkmark-circle'} size={18} color={colors.accent} />
+            <T v="callout" color={colors.text} numberOfLines={2} style={{ flexShrink: 1 }}>
               {allDone ? 'Все упражнения выполнены' : `Готово · ${doneCount}/${we.sets.length}`}
               {!allDone && !isLast && nextName ? ` · далее ${nextName}` : ''}
             </T>
@@ -802,36 +835,29 @@ function ExerciseFocus({
         ) : null}
       </ScrollView>
 
-      {/* Нижний сворачиваемый раздел: техника и (позже) 3D-анимация. Подходы над ним остаются на экране */}
+      {/* «Техника» — одной строкой внизу; раскрывается вверх до 45% высоты, подходы над ней остаются видны */}
       {techOpen ? (
-        <View style={[styles.techPanel, { maxHeight: Math.round(winH * 0.42) }]} testID="technique-inline">
+        <View style={[styles.techPanel, { maxHeight: Math.round(winH * 0.45) }]} testID="technique-inline">
           <ScrollView nestedScrollEnabled contentContainerStyle={{ padding: space.md }} showsVerticalScrollIndicator={false}>
             <TechniquePanel ex={ex} sex={sex} />
           </ScrollView>
         </View>
       ) : null}
-      {/* Низ карточки: список упражнений · «Техника» (раскрывает раздел) · «i» (рекомендация и история) */}
-      <View style={styles.cardFoot}>
-        <IconButton name="list-outline" label="Список упражнений" bg="transparent" onPress={onList} />
-        <View style={{ flex: 1 }} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Техника выполнения"
-          accessibilityState={{ expanded: techOpen }}
-          aria-expanded={techOpen}
-          onPress={() => { haptic.tap(); setTechOpen(!techOpen); }}
-          hitSlop={6}
-          style={({ pressed }) => [styles.techToggle, techOpen && styles.techToggleOn, pressed && { transform: [{ scale: 0.96 }] }]}
-          testID="technique-toggle"
-        >
-          <ExerciseLoop ex={ex} size={34} />
-          <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-            Техника
-          </T>
-          <Icon name={techOpen ? 'chevron-down' : 'chevron-up'} size={14} color={colors.textDim} />
-        </Pressable>
-        <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" onPress={() => { haptic.tap(); setInfoOpen(true); }} />
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Техника выполнения"
+        accessibilityState={{ expanded: techOpen }}
+        aria-expanded={techOpen}
+        onPress={() => { haptic.tap(); setTechOpen(!techOpen); }}
+        style={({ pressed }) => [styles.techRow, pressed && { backgroundColor: colors.surface2 }]}
+        testID="technique-toggle"
+      >
+        <Icon name="information-circle-outline" size={20} color={colors.textDim} />
+        <T v="body" style={{ flex: 1 }}>
+          Техника и мышцы
+        </T>
+        <Icon name={techOpen ? 'chevron-down' : 'chevron-up'} size={16} color={colors.muted} />
+      </Pressable>
 
       <Sheet visible={infoOpen} onClose={() => setInfoOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
         <View style={{ gap: 10 }} testID="rec">
@@ -985,10 +1011,11 @@ function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number
 }
 
 /**
- * Подход строкой: номер в плашке слева (тап — отметить), по центру крупно «55 кг × 12» — тап по цифре правит её.
- * Текущий подход яркий, будущие приглушены, выполненные — с лаймовой галочкой.
+ * Подход строкой таблицы (★3 SetInputRow): № · вес · повторы (время) · RIR · ✓ — фиксированные колонки.
+ * Текущий подход — поля ввода крупными цифрами; выполненный — вторичным цветом с меткой ✓; будущие — приглушены.
+ * Значения уже заполнены предложением RYNJI: ✓ — подтвердить, правка поля — исправить.
  */
-const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current, timed, bodyweight, last }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean; timed?: boolean; bodyweight?: boolean; last?: boolean }) {
+const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current, timed, weightCol, target }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean; timed?: boolean; weightCol: boolean; target?: string }) {
   const [pop] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!set.done) return;
@@ -1010,56 +1037,35 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
     if (parseInt(r, 10) !== set.reps && !(set.reps === 0 && r === '')) setR(set.reps ? String(set.reps) : '');
   }
   const upd = (patch: Partial<ExerciseSet>) => useWorkouts.getState().updateSet(weId, set.id, patch);
-  const big = current ? 46 : 40;
-  const dim = set.done ? colors.textDim : current ? colors.text : colors.muted;
-  // Свой вес без отягощения — только повторы; отягощение можно вписать («+»)
-  const showWeight = !bodyweight || set.weight > 0 || w !== '';
+  const color = set.done ? colors.textDim : current ? colors.text : colors.muted;
+  const box = current && !set.done;
+  const font = box ? 28 : 20;
+  const input = [styles.cellInput, box && styles.cellBox, { fontSize: font, color }];
   return (
-    <View style={[styles.setRow, !last && styles.setLine]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={set.done ? 'Отменить выполнение подхода' : 'Подход выполнен'}
-        onPress={() => onComplete(set)}
-        style={[styles.setNo, set.done && { backgroundColor: colors.accent }, current && !set.done && styles.setNoCurrent]}
-        hitSlop={4}
-      >
-        {set.done ? (
-          <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }}>
-            <Icon name="checkmark" size={20} color={colors.onAccent} />
-          </Animated.View>
-        ) : (
-          <T v="body" style={{ fontWeight: '700' }} color={set.warmup ? colors.muted : colors.textDim}>
-            {no}
-          </T>
-        )}
-      </Pressable>
-      <View style={styles.setValue}>
-        {showWeight ? (
-          <>
-            {bodyweight ? <T v="h3" color={dim}>+</T> : null}
-            <TextInput
-              value={w}
-              onChangeText={(t) => {
-                setW(t);
-                const n = parseDecimal(t);
-                upd({ weight: Number.isFinite(n) ? fromDisplayWeight(n, unit) : 0 });
-              }}
-              placeholder="0"
-              placeholderTextColor={colors.muted}
-              keyboardType="decimal-pad"
-              selectTextOnFocus
-              maxFontSizeMultiplier={1.2}
-              accessibilityLabel={`Вес, подход ${idx + 1}`}
-              style={[styles.bigInput, { fontSize: big, color: dim, width: inputWidth(w || '0', big, 1) }]}
-            />
-            <T v="body" color={colors.textDim} style={{ fontSize: 17 }}>
-              {unitLabel(unit)}
-            </T>
-            <T v="h3" color={colors.muted} style={{ marginHorizontal: 8 }}>
-              ×
-            </T>
-          </>
-        ) : null}
+    <View style={[styles.setRow, box && styles.setRowCurrent]}>
+      <T v="bodyStrong" color={set.warmup ? colors.muted : color} style={styles.colNo}>
+        {no}
+      </T>
+      {weightCol ? (
+        <View style={styles.colVal}>
+          <TextInput
+            value={w}
+            onChangeText={(t) => {
+              setW(t);
+              const n = parseDecimal(t);
+              upd({ weight: Number.isFinite(n) ? fromDisplayWeight(n, unit) : 0 });
+            }}
+            placeholder="—"
+            placeholderTextColor={colors.muted}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+            maxFontSizeMultiplier={1.2}
+            accessibilityLabel={`Вес, подход ${idx + 1}`}
+            style={input}
+          />
+        </View>
+      ) : null}
+      <View style={styles.colVal}>
         <TextInput
           value={r}
           onChangeText={(t) => {
@@ -1067,35 +1073,48 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
             const n = parseInt(t, 10);
             upd({ reps: Number.isFinite(n) ? n : 0 });
           }}
-          placeholder="0"
+          placeholder={!set.done && target ? target : '0'}
           placeholderTextColor={colors.muted}
           keyboardType="number-pad"
           selectTextOnFocus
           maxFontSizeMultiplier={1.2}
           accessibilityLabel={`${timed ? 'Секунды' : 'Повторы'}, подход ${idx + 1}`}
-          style={[styles.bigInput, { fontSize: big, color: dim, width: inputWidth(r || '0', big, 1) }]}
+          style={input}
         />
-        {timed || !showWeight ? (
-          <T v="body" color={colors.textDim} style={{ fontSize: 17 }}>
-            {timed ? 'сек' : 'повт'}
-          </T>
-        ) : null}
       </View>
+      {!timed ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Запас повторов, подход ${idx + 1}`}
+          disabled={!set.done || !!set.warmup}
+          onPress={() => {
+            // Тап — следующее значение 4+ → 3 → 2 → 1 → 0 (поправить без клавиатуры)
+            const v = set.rir === undefined ? 2 : set.rir <= 0 ? 4 : set.rir - 1;
+            haptic.tap();
+            upd({ rir: v, feel: feelForRir(v) });
+          }}
+          style={styles.colRir}
+        >
+          <T v="body" color={set.rir === 0 ? colors.warning : color} style={{ fontVariant: ['tabular-nums'] }}>
+            {set.warmup ? '' : set.done && set.rir !== undefined ? (set.rir >= 4 ? '4+' : String(set.rir)) : '—'}
+          </T>
+        </Pressable>
+      ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Запас повторов, подход ${idx + 1}`}
-        disabled={!set.done || !!set.warmup}
-        onPress={() => {
-          // Тап — следующее значение 4+ → 3 → 2 → 1 → 0 (поправить без клавиатуры)
-          const v = set.rir === undefined ? 2 : set.rir <= 0 ? 4 : set.rir - 1;
-          haptic.tap();
-          upd({ rir: v, feel: feelForRir(v) });
-        }}
-        style={styles.setRir}
+        accessibilityLabel={set.done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
+        accessibilityState={{ checked: !!set.done }}
+        onPress={() => onComplete(set)}
+        style={styles.colOk}
+        hitSlop={4}
       >
-        <T v="small" style={{ fontWeight: '700' }} color={set.rir === 0 ? colors.warning : colors.muted}>
-          {set.warmup || !set.done || set.rir === undefined ? '' : `RIR ${set.rir >= 4 ? '4+' : set.rir}`}
-        </T>
+        <View style={[styles.ok, set.done && { backgroundColor: colors.accent, borderColor: colors.accent }, box && !set.done && { borderColor: colors.text }]}>
+          {set.done ? (
+            <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }}>
+              <Icon name="checkmark" size={18} color={colors.onAccent} />
+            </Animated.View>
+          ) : null}
+        </View>
       </Pressable>
     </View>
   );
@@ -1123,25 +1142,30 @@ function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
 }
 
 const styles = themed({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.md, paddingBottom: 8, backgroundColor: colors.bg },
-  pos: { width: 64, height: 44, justifyContent: 'center' },
-  clock: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  card: { flex: 1, backgroundColor: colors.surface, borderRadius: 28, overflow: 'hidden' },
-  cardHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingTop: 6 },
-  cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 8 },
-  techToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4, paddingRight: 10, height: 42, borderRadius: 21, backgroundColor: colors.surface2 },
-  techToggleOn: { backgroundColor: colors.surface3 },
-  techPanel: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
-  setLine: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  setNo: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  setNoCurrent: { borderWidth: 1.5, borderColor: colors.accentLine },
-  setValue: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
-  setRir: { width: 44, alignItems: 'center' },
-  bigInput: { padding: 0, textAlign: 'center', fontWeight: '400', fontVariant: ['tabular-nums'], letterSpacing: -1 },
-  doneLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 },
-  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: 4 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: space.xxs, paddingHorizontal: space.xs, paddingBottom: space.xxs, backgroundColor: colors.bg },
+  pos: { flex: 1, minHeight: 44, justifyContent: 'center' },
+  clock: { minWidth: 52, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
+  noteLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.xs },
+  refs: { marginTop: space.md, gap: 2 },
+  refRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm, minHeight: 32, paddingVertical: 4 },
+  refLabel: { width: 108 },
+  setHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: space.lg, paddingBottom: space.xs, paddingHorizontal: space.xxs },
+  colNo: { width: 28, textAlign: 'center' },
+  colVal: { flex: 1, alignItems: 'stretch', justifyContent: 'center' },
+  headRir: { width: 44, textAlign: 'center' },
+  headVal: { flex: 1, textAlign: 'center' },
+  colRir: { width: 44, alignItems: 'center', justifyContent: 'center', minHeight: 44, textAlign: 'center' },
+  colOk: { width: 44, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  cellInput: { padding: 0, minHeight: 44, textAlign: 'center', fontWeight: '600', fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  cellBox: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.surface2 },
+  ok: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  addSet: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: space.xxs },
+  techRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
+  techPanel: { borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.surface },
+  doneLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.sm },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.xs, paddingTop: space.xs, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
   barBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  main: { width: 76, height: 76, borderRadius: 38, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.bg, boxShadow: '0px 0px 24px rgba(200,245,60,0.35)' },
   holdWrap: { paddingHorizontal: space.lg, paddingTop: 4 },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
   block: { backgroundColor: colors.surface, borderRadius: radius.xl, paddingHorizontal: 10, paddingVertical: 10 },
@@ -1150,9 +1174,9 @@ const styles = themed({
   techBlock: { gap: space.md, marginTop: space.lg },
   rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
-  setRowCurrent: { backgroundColor: colors.surface2, paddingVertical: 8, borderRadius: radius.md },
-  inputCurrent: { height: 56, fontSize: 30, fontWeight: '800' },
-  ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.surface3, marginBottom: 4, maxWidth: '100%' },
+  setRowCurrent: { paddingVertical: space.xxs },
+  inputCurrent: { height: 56, fontSize: 30, fontWeight: '700' },
+  ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: space.xs, paddingVertical: 2, borderRadius: radius.xs, backgroundColor: colors.surface2, marginBottom: space.xs, maxWidth: '100%' },
   navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },
   doneIcon: { width: 32, height: 32, borderRadius: 18, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
@@ -1160,18 +1184,18 @@ const styles = themed({
   navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md },
   navDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   navDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
-  barTrack: { height: 4, backgroundColor: colors.surface3 },
-  barFill: { height: 4, backgroundColor: colors.accent },
+  barTrack: { height: 2, backgroundColor: colors.surface3 },
+  barFill: { height: 2, backgroundColor: colors.accent },
   spark: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: colors.onAccent },
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 6 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 48, paddingHorizontal: space.xxs },
   input: { flex: 1, minWidth: 0, width: 0, height: 44, borderRadius: radius.sm, backgroundColor: 'transparent', color: colors.text, textAlign: 'center', fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
   check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   feelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 36, paddingBottom: 6 },
   feel: { paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: colors.surface2, justifyContent: 'center' },
-  warm: { paddingVertical: 6, paddingHorizontal: 4, alignItems: 'center' },
+  warm: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginTop: space.sm, paddingHorizontal: space.xxs },
   tip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.surface },
   quick: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: radius.lg, backgroundColor: colors.surface },
   qBtn: { width: 50, height: 48, borderRadius: radius.md, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },

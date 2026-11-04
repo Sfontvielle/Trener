@@ -550,13 +550,6 @@ export const GROUP_LABEL: Record<string, string> = {
   forearms: 'Предплечья',
 };
 
-export const MEDIA_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
-
-export function exerciseImages(ex: Exercise): string[] {
-  if (!ex.media) return [];
-  return [`${MEDIA_BASE}${ex.media}/0.jpg`, `${MEDIA_BASE}${ex.media}/1.jpg`];
-}
-
 /** Сколько секунд в среднем занимает один рабочий подход (без отдыха) */
 export function secondsPerSet(ex: Exercise): number {
   return ex.pattern === 'core' || ex.pattern === 'carry' ? 45 : ex.mechanic === 'compound' ? 50 : 40;

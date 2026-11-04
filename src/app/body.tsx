@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { colors, radius, space, themed } from '@/theme';
 import { Header, Screen } from '@/components/Screen';
 import { Button, Icon, IconButton, T } from '@/components/ui';
-import { Ambient, Appear } from '@/components/motion';
+import { Appear } from '@/components/motion';
 import { TrendChart } from '@/components/charts';
 import { toast } from '@/components/Dialog';
 import { useBody } from '@/stores/body';
@@ -106,8 +106,7 @@ export default function BodyScreen() {
   if (!profile || !a) return null;
   return (
     <Screen>
-      <Ambient tone="calm" height={380} />
-      <Header title="Тело" right={<IconButton name="add" label="Записать замеры и фото" onPress={() => router.push('/measurements')} />} />
+      <Header title="Тело" right={<IconButton name="add" label="Добавить замеры и фото" onPress={() => router.push('/measurements')} />} />
 
       {/* Главное: процент жира диапазоном и что это значит */}
       {bf ? (
@@ -161,7 +160,7 @@ export default function BodyScreen() {
         ) : null}
         {fresh?.qualityNote ? <T v="small">{fresh.qualityNote}</T> : null}
         {recent.length && photoAnalysisAvailable() ? (
-          <Button title={busy ? 'Анализирую…' : fresh ? 'Обновить анализ фото' : 'Проанализировать фото'} icon="sparkles-outline" size="lg" live={!fresh && !busy} disabled={busy} onPress={runPhoto} />
+          <Button title={busy ? 'Анализирую…' : fresh ? 'Обновить анализ фото' : 'Проанализировать фото'} icon="sparkles-outline" size="lg" full disabled={busy} onPress={runPhoto} />
         ) : (
           <Button title="Добавить фото" icon="camera-outline" variant="secondary" onPress={() => router.push('/measurements')} />
         )}

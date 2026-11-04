@@ -5,6 +5,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { prefersReducedMotion } from '@/components/motion';
 import { useNutrition } from '@/stores/nutrition';
 import { FoodApiError, foodErrorText, lookupBarcode } from '@/services/foodApi';
 import { haptic } from '@/services/haptics';
@@ -48,7 +49,10 @@ export default function Scan() {
     // 'on' = одиночная фокусировка (AVCaptureDevice .autoFocus), затем возвращаем continuous
     setFocusPulse('on');
     pulse.setValue(0);
-    Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 160, useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 420, delay: 200, useNativeDriver: true })]).start();
+    if (prefersReducedMotion()) {
+      pulse.setValue(1);
+      setTimeout(() => pulse.setValue(0), 600);
+    } else Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 160, useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 420, delay: 200, useNativeDriver: true })]).start();
     setTimeout(() => setFocusPulse('off'), 700);
   };
 
@@ -168,12 +172,12 @@ export default function Scan() {
               </T>
             </View>
             {phase.kind === 'error' ? (
-              <Button title="Повторить поиск" icon="refresh" live onPress={() => void lookup(phase.code)} />
+              <Button title="Повторить поиск" icon="refresh" full onPress={() => void lookup(phase.code)} />
             ) : (
               <Button
                 title={phase.name ? 'Добавить с этикетки' : 'Создать продукт'}
                 icon="add-circle-outline"
-                live
+                full
                 onPress={() => router.replace({ pathname: '/food/add', params: { date: date ?? '', meal: meal ?? '', manual: '1', barcode: phase.code, name: phase.kind === 'not_found' ? (phase.name ?? '') : '' } })}
               />
             )}

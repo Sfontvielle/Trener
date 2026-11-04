@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { CalcStep, NutritionTarget, WorkoutPlan } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
-import { Card, Icon, T } from '@/components/ui';
+import { Card, Icon, T, linkHit } from '@/components/ui';
 import { WEEKDAYS_SHORT } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { VM_LABEL } from '@/features/training/engine/muscles';
@@ -145,7 +145,7 @@ export function PlanWhy({ plan, onChange }: { plan: WorkoutPlan; onChange: () =>
         <T v="caption" style={{ flex: 1 }}>
           Почему такой план?
         </T>
-        <Pressable accessibilityRole="button" onPress={onChange} hitSlop={8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Изменить: почему такой план" onPress={onChange} hitSlop={8} style={linkHit}>
           <T v="small" color={colors.accent} style={{ fontWeight: '800' }}>
             Изменить
           </T>
@@ -179,7 +179,7 @@ export function PlanWhy({ plan, onChange }: { plan: WorkoutPlan; onChange: () =>
             );
           })}
           {vol.length > 6 ? (
-            <Pressable onPress={() => setAll(!all)} hitSlop={6} accessibilityRole="button">
+            <Pressable onPress={() => setAll(!all)} hitSlop={6} accessibilityRole="button" accessibilityState={{ expanded: all }} style={[{ alignSelf: 'flex-start' }, linkHit]}>
               <T v="small" color={colors.accent} style={{ fontWeight: '700' }}>
                 {all ? 'Свернуть' : `Все группы (${vol.length})`}
               </T>

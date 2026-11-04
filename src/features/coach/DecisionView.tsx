@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, themed } from '@/theme';
-import { T } from '@/components/ui';
+import { T, linkHit } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { BASIS_LABEL } from '@/features/science/sources';
 import { CONFIDENCE_LABEL, type Confidence, type Decision } from './decisions/types';
@@ -45,7 +45,7 @@ export function DecisionCard({ d, compact, last }: { d: Decision; compact?: bool
           {d.why}
         </T>
       ) : null}
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} disabled={compact} hitSlop={8} onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Уверенность: ${CONFIDENCE_LABEL[level]}. ${d.what}`} accessibilityState={{ expanded: open }} disabled={compact} hitSlop={8} onPress={() => setOpen(!open)} style={[{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }, linkHit]}>
         <View style={styles.dots}>
           {[0, 1, 2].map((i) => (
             <View key={i} style={[styles.dot, { backgroundColor: i < dots ? CONF_COLOR[level] : colors.surface3 }]} />

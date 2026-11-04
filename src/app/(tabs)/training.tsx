@@ -7,7 +7,7 @@ import { colors, radius, space, themed } from '@/theme';
 import { TAB_BAR_HEIGHT } from '@/components/Screen';
 import { Banner, Button, Card, EmptyState, Icon, Segmented, T } from '@/components/ui';
 import { haptic } from '@/services/haptics';
-import { Ambient, Appear, FadeIn, Progress, Tap, prefersReducedMotion } from '@/components/motion';
+import { Appear, FadeIn, Progress, Tap, prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
 import { agendaProgress, weekAgenda, type AgendaDay } from '@/features/training/weekAgenda';
 import { usePlan } from '@/stores/plan';
@@ -69,7 +69,6 @@ export default function Training() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.sm }}>
-      <Ambient height={360} />
       <View style={{ paddingHorizontal: space.lg, gap: space.md, marginBottom: space.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {/* Крупный системный шрифт: заголовок ужимается, а кнопки справа остаются на экране */}
@@ -99,7 +98,6 @@ export default function Training() {
           ]}
           value={seg}
           onChange={setSeg}
-          fit
         />
       </View>
       <FadeIn key={seg} style={{ flex: 1, paddingHorizontal: space.lg }} from={6}>
@@ -159,7 +157,7 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: bottom }} showsVerticalScrollIndicator={false}>
-      {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" onAction={resumeActive} /> : null}
+      {active ? <Banner tone="accent" icon="play-circle" text={`Незавершённая тренировка: ${active.name}`} action="Продолжить" actionLabel={`Продолжить тренировку: ${active.name}`} onAction={resumeActive} /> : null}
       {deloadActive ? (
         <Banner tone="warning" icon="battery-charging" text="Идёт разгрузочная неделя: меньше подходов, больше запаса. Это и есть прогресс — сила вырастет после неё." action="Отменить" onAction={() => confirm('Отменить разгрузку?', 'Тренировки вернутся к обычному объёму.', 'Отменить разгрузку', () => { cancelDeload(); toast('Разгрузка отменена'); })} />
       ) : deload.suggest ? (

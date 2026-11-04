@@ -1,132 +1,19 @@
 import { Platform, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+import { ACCENT_LABEL, ACCENT_SWATCH, paletteFor, type AccentName, type Palette, type SchemeName } from './tokens';
 
 /**
- * Система тем FORM.
+ * Система тем RYNJI. Значения цветов — в ./tokens (Precision Performance, docs/design/RYNJI_DESIGN_SYSTEM.md).
  *
  * Палитра = схема (тёмная / светлая) × акцент (лайм / синий / оранжевый). Тёмная + лайм — default.
- * Светлая тема — отдельная палитра, а не инверсия: мягкий серо-белый фон, белые карточки,
- * почти чёрный текст и затемнённый акцент (лайм на белом нечитаем как текст).
  *
  * `colors` — живой объект: при смене темы его значения меняются на месте. Стили, созданные через
  * `themed()`, регистрируются: для каждого цвета запоминается токен, и при смене темы значение
  * подставляется заново. Инлайн-стили читают `colors.*` при рендере и обновляются сами.
  */
 
-export type SchemeName = 'dark' | 'light';
-export type AccentName = 'lime' | 'blue' | 'orange';
+export type { AccentName, Palette, SchemeName };
+export { ACCENT_LABEL, ACCENT_SWATCH, paletteFor };
 export type ThemePref = 'system' | SchemeName;
-
-export interface Palette {
-  bg: string;
-  surface: string;
-  surface2: string;
-  surface3: string;
-  border: string;
-  borderStrong: string;
-  text: string;
-  textDim: string;
-  muted: string;
-  accent: string;
-  accentPressed: string;
-  accentDim: string;
-  accentLine: string;
-  onAccent: string;
-  warning: string;
-  warningDim: string;
-  warningLine: string;
-  danger: string;
-  dangerDim: string;
-  dangerLine: string;
-  secondaryMuscle: string;
-  stabilizerMuscle: string;
-  muscleIdle: string;
-  muscleNeutral: string;
-  protein: string;
-  fat: string;
-  carbs: string;
-  overlay: string;
-  tabBar: string;
-  doneRow: string;
-  barSoft: string;
-}
-
-type AccentSet = Pick<Palette, 'accent' | 'accentPressed' | 'accentDim' | 'accentLine' | 'onAccent' | 'doneRow' | 'barSoft'>;
-
-// Спокойная тёмная тема: настоящий чёрный фон (OLED), поверхности различаются заливкой, а не рамками
-const DARK_BASE: Omit<Palette, keyof AccentSet> = {
-  bg: '#000000',
-  surface: '#121214',
-  surface2: '#1B1B1E',
-  surface3: '#27272B',
-  border: '#1E1E22',
-  borderStrong: '#303035',
-  text: '#F5F5F0',
-  textDim: '#9C9CA2',
-  muted: '#64646A',
-  warning: '#F7B23B',
-  warningDim: 'rgba(247,178,59,0.14)',
-  warningLine: 'rgba(247,178,59,0.42)',
-  danger: '#FF5D52',
-  dangerDim: 'rgba(255,93,82,0.14)',
-  dangerLine: 'rgba(255,93,82,0.45)',
-  secondaryMuscle: '#FF9F2E',
-  stabilizerMuscle: '#8E7CFF',
-  muscleIdle: '#2B2F35',
-  muscleNeutral: '#3A3F46',
-  protein: '#7CC4FF',
-  fat: '#F7B23B',
-  carbs: '#C8F53C',
-  overlay: 'rgba(0,0,0,0.66)',
-  tabBar: 'rgba(8,8,9,0.94)',
-};
-
-const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
-  bg: '#F1F2EE',
-  surface: '#FFFFFF',
-  surface2: '#F5F6F2',
-  surface3: '#E8EAE4',
-  border: '#E1E3DD',
-  borderStrong: '#CBCFC7',
-  text: '#121412',
-  textDim: '#5B6168',
-  muted: '#8C9298',
-  warning: '#C27500',
-  warningDim: 'rgba(194,117,0,0.12)',
-  warningLine: 'rgba(194,117,0,0.4)',
-  danger: '#D63A30',
-  dangerDim: 'rgba(214,58,48,0.1)',
-  dangerLine: 'rgba(214,58,48,0.4)',
-  secondaryMuscle: '#F08A1C',
-  stabilizerMuscle: '#6E5CE6',
-  muscleIdle: '#DADDD6',
-  muscleNeutral: '#C9CDC4',
-  protein: '#2D8BE0',
-  fat: '#C27500',
-  carbs: '#6E9E00',
-  overlay: 'rgba(16,18,16,0.38)',
-  tabBar: 'rgba(255,255,255,0.97)',
-};
-
-const ACCENTS: Record<SchemeName, Record<AccentName, AccentSet>> = {
-  dark: {
-    lime: { accent: '#C8F53C', accentPressed: '#B2DD2A', accentDim: 'rgba(200,245,60,0.12)', accentLine: 'rgba(200,245,60,0.3)', onAccent: '#0B0D06', doneRow: 'rgba(200,245,60,0.06)', barSoft: 'rgba(200,245,60,0.42)' },
-    blue: { accent: '#4DA3FF', accentPressed: '#3A8EEA', accentDim: 'rgba(77,163,255,0.15)', accentLine: 'rgba(77,163,255,0.4)', onAccent: '#04111F', doneRow: 'rgba(77,163,255,0.08)', barSoft: 'rgba(77,163,255,0.45)' },
-    orange: { accent: '#FF8A3D', accentPressed: '#EB7628', accentDim: 'rgba(255,138,61,0.15)', accentLine: 'rgba(255,138,61,0.4)', onAccent: '#1C0B02', doneRow: 'rgba(255,138,61,0.08)', barSoft: 'rgba(255,138,61,0.45)' },
-  },
-  light: {
-    lime: { accent: '#4C8A00', accentPressed: '#3F7400', accentDim: 'rgba(110,170,0,0.13)', accentLine: 'rgba(76,138,0,0.38)', onAccent: '#FFFFFF', doneRow: 'rgba(110,170,0,0.09)', barSoft: 'rgba(76,138,0,0.4)' },
-    blue: { accent: '#0B6AD6', accentPressed: '#0858B4', accentDim: 'rgba(11,106,214,0.1)', accentLine: 'rgba(11,106,214,0.36)', onAccent: '#FFFFFF', doneRow: 'rgba(11,106,214,0.07)', barSoft: 'rgba(11,106,214,0.4)' },
-    orange: { accent: '#D2600E', accentPressed: '#B4500A', accentDim: 'rgba(210,96,14,0.11)', accentLine: 'rgba(210,96,14,0.38)', onAccent: '#FFFFFF', doneRow: 'rgba(210,96,14,0.07)', barSoft: 'rgba(210,96,14,0.4)' },
-  },
-};
-
-export const ACCENT_LABEL: Record<AccentName, string> = { lime: 'Салатовый', blue: 'Синий', orange: 'Оранжевый' };
-/** Образец для выбора акцента (одинаковый в обеих схемах) */
-export const ACCENT_SWATCH: Record<AccentName, string> = { lime: '#C8F53C', blue: '#4DA3FF', orange: '#FF8A3D' };
-
-export function paletteFor(scheme: SchemeName, accent: AccentName = 'lime'): Palette {
-  return { ...(scheme === 'light' ? LIGHT_BASE : DARK_BASE), ...ACCENTS[scheme][accent] };
-}
 
 export function resolveScheme(pref: ThemePref | undefined, system: 'light' | 'dark' | null | undefined): SchemeName {
   if (pref === 'light' || pref === 'dark') return pref;
@@ -160,7 +47,7 @@ export const semantic = {
 // смене темы падала с Render Error. Поэтому для каждой темы строится НОВАЯ копия стилей, а доступ
 // styles.x идёт через геттер, возвращающий копию для текущей темы.
 
-// Акцентные токены — первыми: в тёмной теме «углеводы» совпадают с лаймом, а статичные стили почти всегда про акцент
+// Акцентные токены — первыми: статичные стили чаще всего про акцент. Значения в палитре уникальны (см. tokens.ts)
 const ACCENT_KEYS: (keyof Palette)[] = ['accent', 'accentPressed', 'accentDim', 'accentLine', 'onAccent', 'doneRow', 'barSoft'];
 const TOKENS = [...ACCENT_KEYS, ...(Object.keys(colors) as (keyof Palette)[]).filter((k) => !ACCENT_KEYS.includes(k))];
 const BASE = paletteFor('dark', 'lime');
@@ -224,29 +111,46 @@ export function applyPalette(scheme: SchemeName, accent: AccentName): boolean {
   return true;
 }
 
-export const radius = { xs: 8, sm: 12, md: 16, lg: 22, xl: 28, pill: 999 } as const;
-/** Больше воздуха: поля экрана 20, между смысловыми блоками — 28–40 */
-export const space = { xxs: 4, xs: 6, sm: 10, md: 16, lg: 20, xl: 28, xxl: 40 } as const;
+/** Скругления (5 значений): 8 — чип, 12 — кнопка/поле/строка, 16 — группа/карточка, 24 — верх листа */
+export const radius = { xs: 8, sm: 12, md: 12, lg: 16, xl: 24, pill: 999 } as const;
+/** Шкала отступов 4/8/12/16/24/32: поля экрана 16, между секциями 24, перед крупным разделом 32 */
+export const space = { xxs: 4, xs: 8, sm: 12, md: 16, lg: 16, xl: 24, xxl: 32 } as const;
 
 const family = Platform.select({ ios: 'System', default: undefined });
 const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, Menlo, monospace' });
 
 /**
- * Типографика в духе iOS: крупные заголовки, спокойный основной текст, подписи — обычным регистром
- * (без капса и разрядки), серым. Акцент — размером и жирностью, а не цветом и рамками.
+ * Типографика Precision Performance (docs/design/RYNJI_DESIGN_SYSTEM.md §3): системный SF Pro, начертания 400–700,
+ * табличные цифры, минимум 12 pt. Подписи — обычным регистром. Старые имена (hero, h1–h3, small, caption, num)
+ * — псевдонимы новой шкалы, пока экраны не переведены на новые имена.
  */
+const display = { fontFamily: family, fontSize: 34, lineHeight: 40, fontWeight: '600', letterSpacing: -0.4, fontVariant: ['tabular-nums'], color: colors.text } as const;
+const title1 = { fontFamily: family, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.3, color: colors.text } as const;
+const title2 = { fontFamily: family, fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: -0.2, color: colors.text } as const;
+const headline = { fontFamily: family, fontSize: 19, lineHeight: 24, fontWeight: '600', letterSpacing: -0.1, color: colors.text } as const;
+const body = { fontFamily: family, fontSize: 16, lineHeight: 22, fontWeight: '400', color: colors.text } as const;
+const callout = { fontFamily: family, fontSize: 15, lineHeight: 20, fontWeight: '400', color: colors.textDim } as const;
+const footnote = { fontFamily: family, fontSize: 13, lineHeight: 18, fontWeight: '400', color: colors.textDim } as const;
+
 export const type = themed({
-  /** Главный акцент экрана — одно слово или имя тренировки */
-  hero: { fontFamily: family, fontSize: 50, lineHeight: 54, fontWeight: '800', letterSpacing: -1.6, color: colors.text },
-  display: { fontFamily: family, fontSize: 40, fontWeight: '800', letterSpacing: -1.1, color: colors.text },
-  h1: { fontFamily: family, fontSize: 32, fontWeight: '800', letterSpacing: -0.8, color: colors.text },
-  h2: { fontFamily: family, fontSize: 22, fontWeight: '700', letterSpacing: -0.4, color: colors.text },
-  h3: { fontFamily: family, fontSize: 18, fontWeight: '700', letterSpacing: -0.3, color: colors.text },
-  body: { fontFamily: family, fontSize: 16, fontWeight: '500', color: colors.text },
-  bodyDim: { fontFamily: family, fontSize: 16, fontWeight: '500', color: colors.textDim },
-  small: { fontFamily: family, fontSize: 14, fontWeight: '500', color: colors.textDim },
-  caption: { fontFamily: family, fontSize: 13, fontWeight: '600', color: colors.textDim },
-  num: { fontFamily: family, fontWeight: '800', fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.5 },
+  display,
+  title1,
+  title2,
+  headline,
+  body,
+  bodyStrong: { ...body, fontWeight: '600' },
+  callout,
+  footnote,
+  caption: { fontFamily: family, fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.1, color: colors.textDim },
+  metric: { fontFamily: family, fontSize: 22, lineHeight: 26, fontWeight: '600', letterSpacing: -0.2, fontVariant: ['tabular-nums'], color: colors.text },
+  // ── Псевдонимы старых имён ──
+  hero: display,
+  h1: title1,
+  h2: title2,
+  h3: headline,
+  bodyDim: { ...body, color: colors.textDim },
+  small: callout,
+  num: { fontFamily: family, fontWeight: '600', fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.3 },
   mono: { fontFamily: mono, fontVariant: ['tabular-nums'] },
 });
 

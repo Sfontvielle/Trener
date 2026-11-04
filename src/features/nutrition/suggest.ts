@@ -127,13 +127,15 @@ export function suggestMeals(args: {
   type Cand = { items: SuggestionItem[]; total: Macros; score: number; key: string };
   const cands: Cand[] = [];
 
-  const scoreOf = (m: Macros, pref: number): number => {
-    const pe = needProtein ? Math.abs(m.protein - Rv.protein) / Math.max(20, Rv.protein) : Math.max(0, m.protein - Math.max(0, Rv.protein) - 10) / 30;
-    const ce = needCarbs ? Math.abs(m.carbs - Rv.carbs) / Math.max(30, Rv.carbs) : Math.max(0, m.carbs - Math.max(0, Rv.carbs)) / 30;
-    const ke = Math.max(0, m.kcal - Rv.kcal) / 150 + Math.max(0, Rv.kcal - m.kcal) / 600;
-    const fo = Math.max(0, m.fat - Math.max(0, Rv.fat)) / 6;
+  // Оценка по четырём числам, без объекта: во внутреннем цикле перебора это сотни тысяч вызовов (замер фазы F)
+  const score4 = (kcal: number, protein: number, fat: number, carbs: number, pref: number): number => {
+    const pe = needProtein ? Math.abs(protein - Rv.protein) / Math.max(20, Rv.protein) : Math.max(0, protein - Math.max(0, Rv.protein) - 10) / 30;
+    const ce = needCarbs ? Math.abs(carbs - Rv.carbs) / Math.max(30, Rv.carbs) : Math.max(0, carbs - Math.max(0, Rv.carbs)) / 30;
+    const ke = Math.max(0, kcal - Rv.kcal) / 150 + Math.max(0, Rv.kcal - kcal) / 600;
+    const fo = Math.max(0, fat - Math.max(0, Rv.fat)) / 6;
     return pe * 2.2 + ce * 1.2 + ke * 1.5 + fo * 2.5 - pref;
   };
+  const scoreOf = (m: Macros, pref: number): number => score4(m.kcal, m.protein, m.fat, m.carbs, pref);
 
   // Реалистичные порции: плотные продукты — меньше, штучные — до 3 порций
   const gramsRange = (p: FoodProduct, max: number): number[] => {
@@ -148,26 +150,30 @@ export function suggestMeals(args: {
   };
 
   if (needProtein) {
+    // Порции и КБЖУ гарниров не зависят от белкового продукта — считаем один раз, а не в каждом проходе (замер фазы F)
+    const NONE: Macros = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
+    const carbList = needCarbs
+      ? carbs.map((C) => ({ C, pref: preferenceBonus(C, profile, recentIds, eatenToday, hour), opts: gramsRange(C, 400).map((g) => ({ g, m: macrosFor(C.per100, g) })) }))
+      : [{ C: undefined, pref: 0, opts: [{ g: 0, m: NONE }] }];
     for (const P of proteins) {
       const prefP = preferenceBonus(P, profile, recentIds, eatenToday, hour);
-      const gP = gramsRange(P, 350);
-      const carbList = needCarbs ? carbs : [undefined];
-      for (const C of carbList) {
+      const gP = gramsRange(P, 350).map((g) => ({ g, m: macrosFor(P.per100, g) }));
+      for (const { C, pref: prefC, opts } of carbList) {
         if (C && !compatible(P, C)) continue;
-        const prefC = C ? preferenceBonus(C, profile, recentIds, eatenToday, hour) : 0;
         let best: Cand | undefined;
-        for (const gp of gP) {
-          const mp = macrosFor(P.per100, gp);
+        for (const { g: gp, m: mp } of gP) {
           if (mp.protein > Rv.protein + 15) break;
-          for (const gc of C ? gramsRange(C, 400) : [0]) {
-            const mc = C ? macrosFor(C.per100, gc) : { kcal: 0, protein: 0, fat: 0, carbs: 0 };
-            const m = add(mp, mc);
-            if (m.kcal > Rv.kcal + 120) break;
-            const s = scoreOf(m, prefP + prefC);
+          for (const { g: gc, m: mc } of opts) {
+            const kcal = mp.kcal + mc.kcal;
+            if (kcal > Rv.kcal + 120) break;
+            const protein = mp.protein + mc.protein;
+            const fat = mp.fat + mc.fat;
+            const carbsG = mp.carbs + mc.carbs;
+            const s = score4(kcal, protein, fat, carbsG, prefP + prefC);
             if (!best || s < best.score) {
               const items: SuggestionItem[] = [{ product: P, grams: gp, macros: mp }];
               if (C) items.push({ product: C, grams: gc, macros: mc });
-              best = { items, total: m, score: s, key: P.id };
+              best = { items, total: { kcal, protein, fat, carbs: carbsG }, score: s, key: P.id };
             }
           }
         }

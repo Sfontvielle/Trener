@@ -65,8 +65,8 @@ export function workoutActivityProps(s: WorkoutSession, d: ActivityDeps): Workou
     progress: allSets ? Math.round((doneSets / allSets) * 100) / 100 : 0,
     startedAt: s.startedAt,
     allDone,
-    accentDark: d.accent?.dark ?? '#C8F53C',
-    accentLight: d.accent?.light ?? '#4C8A00',
+    accentDark: d.accent?.dark ?? '#B5F56B',
+    accentLight: d.accent?.light ?? '#357000',
   };
   if (!we) return { ...base, exercise: s.name, superset: '', setNo: 0, setTotal: 0, setText: 'Добавь упражнения', target: '', timed: false, next: '' };
 

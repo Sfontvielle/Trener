@@ -10,6 +10,9 @@
       ],
       "expo-constants": [
         "./scripts/stubs/expo-constants.ts"
+      ],
+      "expo-notifications": [
+        "./scripts/stubs/expo-notifications.ts"
       ]
     }
   }
