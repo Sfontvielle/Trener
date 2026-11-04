@@ -61,7 +61,7 @@ const kg = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFi
 
 export function decideCalories(i: CalorieDecisionInput): CalorieDecision {
   const basis: Basis = { kind: 'heuristic', sources: ['iraki2019', 'helms2023', 'hall2008', 'frankenfield2005'], note: 'темпы — из обзоров; допуски и шаги — правила RYNJI' };
-  if (i.actualKgPerWeek === null) return { action: 'insufficient', deltaKcal: 0, reasons: ['Нужно ≥5 взвешиваний за 10+ дней — пока решения по одному весу не принимаются.'], summary: 'Пока мало взвешиваний — калории не меняем, по одному весу решения не принимаются.', basis };
+  if (i.actualKgPerWeek === null) return { action: 'insufficient', deltaKcal: 0, reasons: ['Нужно ≥3 взвешиваний за 2+ недели (раз в неделю достаточно) — пока решения по одному весу не принимаются.'], summary: 'Пока мало взвешиваний — калории не меняем, по одному весу решения не принимаются.', basis };
   const r = i.actualKgPerWeek;
   const t = i.targetKgPerWeek;
   const tol = Math.max(0.1, Math.abs(t) * 0.5, i.bodyWeightKg * 0.0012);

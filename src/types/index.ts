@@ -109,6 +109,8 @@ export interface AppSettings {
   lastAutoBackupAt?: number;
   /** Еженедельный отчёт по понедельникам */
   weeklyReview?: boolean;
+  /** Взвешивание раз в неделю (понедельник, утро). Нет поля — включено: по весу недели подстраиваются калории и КБЖУ */
+  weighInReminder?: boolean;
   /** Оформление: системная / тёмная / светлая и цвет акцента */
   theme: 'system' | 'dark' | 'light';
   accent: 'lime' | 'blue' | 'orange';
@@ -155,6 +157,8 @@ export interface NutritionTarget {
   /** Персональный расход (дневник + тренд веса), если он участвовал в расчёте; в старых целях отсутствует */
   observedTdee?: number;
   observedConfidence?: 'medium' | 'high';
+  /** Вес (тренд), под который посчитаны белок и жиры; изменился на ≥1 кг — КБЖУ пересчитываются */
+  basisWeightKg?: number;
   steps: CalcStep[];
   computedAt: number;
 }

@@ -278,7 +278,7 @@ test('Итоги недели и быстрое логирование еды', 
   const plan = generatePlan(base);
   const lastMon = addDays(startOfWeek(today()), -7);
   const entry = (date: string, id: string, meal: FoodEntry['meal'], kcal = 600, protein = 40): FoodEntry => ({ id: date + id + meal, date, productId: id, name: id, grams: 100, macros: { kcal, protein, fat: 10, carbs: 50 }, meal, createdAt: 0 });
-  const entries = [entry(lastMon, 'local:cottage_5', 'breakfast', 2000, 140), entry(addDays(lastMon, 1), 'local:cottage_5', 'breakfast', 2500, 100)];
+  const entries = [entry(lastMon, 'local:cottage_5', 'breakfast', 2000, 160), entry(addDays(lastMon, 1), 'local:cottage_5', 'breakfast', 2500, 100)];
   const sessions: WorkoutSession[] = [{ id: 'a', date: addDays(lastMon, 1), name: 'x', focus: '', source: 'plan', startedAt: 1, finishedAt: 2, volumeFactor: 1, status: 'completed', exercises: [] }];
   const w = lastWeekSummary({ sessions, plan, entries, target: computeNutritionTarget(base), weights: [], checkins: {} });
   assert.ok(w);

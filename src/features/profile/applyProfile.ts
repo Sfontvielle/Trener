@@ -11,7 +11,7 @@ import { useHealth } from '@/stores/health';
 import { estimateRecovery } from '@/features/training/engine/recovery';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { generatePlan } from '@/features/training/planGenerator';
-import { computeNutritionTarget, GOAL_LABEL, shiftTargetKcal } from '@/features/nutrition/targets';
+import { computeNutritionTarget, GOAL_LABEL, retargetForWeight, shiftTargetKcal } from '@/features/nutrition/targets';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { today } from '@/utils/date';
 
@@ -92,4 +92,36 @@ export function recalibrateCalories(): { ok: boolean; message: string } {
   ps.setTarget(target);
   ps.addAdjustment({ kind: 'calories', summary: `Калибровка по фактическому расходу ~${mt.kcal} ккал: ${delta > 0 ? '+' : ''}${delta} ккал`, source: 'adaptive', deltaKcal: delta });
   return { ok: true, message: `Цель: ${target.kcal} ккал (${delta > 0 ? '+' : ''}${delta})` };
+}
+
+/**
+ * КБЖУ следуют за весом (R1): тренд веса ушёл на ≥1 кг от веса, под который считались белок и жиры, —
+ * пересчитать их под новый вес при той же калорийности (углеводы — остаток). Цели, посчитанные до правила
+ * «2 г/кг белка, 1 г/кг жиров» (без basisWeightKg), пересчитываются один раз. Калорийность здесь не меняется:
+ * её двигает только обзор по тренду веса — с подтверждением.
+ */
+export function syncTargetToWeight(): boolean {
+  const profile = useProfile.getState().profile;
+  const ps = usePlan.getState();
+  if (!profile || !ps.target) return false;
+  const w = latestTrendWeight(useBody.getState().weights) ?? profile.weightKg;
+  const basis = ps.target.basisWeightKg;
+  if (basis !== undefined && Math.abs(w - basis) < 1) return false;
+  const t = retargetForWeight(profile, ps.target, w);
+  ps.setTarget(t);
+  if (t.protein === ps.target.protein && t.fat === ps.target.fat && t.carbs === ps.target.carbs) return false;
+  const why = basis === undefined ? 'новое правило: белок 2 г/кг, жиры 1 г/кг, углеводы — остаток' : `вес ${String(Math.round(w * 10) / 10).replace('.', ',')} кг`;
+  ps.addAdjustment({ kind: 'calories', summary: `КБЖУ пересчитаны (${why}): белок ${t.protein} г, жиры ${t.fat} г, углеводы ${t.carbs} г`, source: 'adaptive', deltaKcal: 0 });
+  return true;
+}
+
+/** Следить за взвешиваниями: новый вес → КБЖУ под него (один подписчик на запуск) */
+let weightSyncOn = false;
+export function startWeightTargetSync(): void {
+  if (weightSyncOn) return;
+  weightSyncOn = true;
+  syncTargetToWeight();
+  useBody.subscribe((s, prev) => {
+    if (s.weights !== prev.weights) syncTargetToWeight();
+  });
 }

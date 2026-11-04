@@ -89,7 +89,7 @@ export default function Profile() {
     return () => clearTimeout(t);
   }, [edit, profile]);
 
-  const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify' | 'weeklyReview', v: boolean) => {
+  const toggleReminder = async (key: 'morningReminder' | 'trainingReminder' | 'restNotify' | 'weeklyReview' | 'weighInReminder', v: boolean) => {
     if (v && Platform.OS !== 'web') {
       const ok = await ensurePermission();
       setNotifDenied(!ok);
@@ -117,7 +117,7 @@ export default function Profile() {
 
   const gymLine = settings.gym ? `Гриф ${settings.gym.barKg} кг · гантели шаг ${String(settings.gym.dumbbellStep).replace('.', ',')} · тренажёры ${String(settings.gym.machineStep).replace('.', ',')}` : 'Стандартный зал — диски и шаги';
   const lifeLine = `${fmtValue(profile.stepsPerDay)} шагов · ${profile.workStyle === 'desk' ? 'сидячая' : profile.workStyle === 'mixed' ? 'смешанная' : 'физическая'} работа${profile.sleepHours ? ` · сон ~${String(profile.sleepHours).replace('.', ',')} ч` : ''}`;
-  const notifLine = [settings.morningReminder && 'чек-ин', settings.trainingReminder && 'тренировка', settings.weeklyReview && 'отчёт недели'].filter(Boolean).join(', ') || 'Выключены';
+  const notifLine = [settings.morningReminder && 'чек-ин', settings.weighInReminder !== false && 'взвешивание', settings.trainingReminder && 'тренировка', settings.weeklyReview && 'отчёт недели'].filter(Boolean).join(', ') || 'Выключены';
   const themeLine = settings.theme === 'light' ? 'Светлая' : settings.theme === 'system' ? 'Как в системе' : 'Тёмная';
 
   return (
@@ -235,6 +235,7 @@ export default function Profile() {
               ))}
             </View>
           ) : null}
+          <Toggle value={settings.weighInReminder !== false} onChange={(v) => toggleReminder('weighInReminder', v)} label="Взвешивание раз в неделю" sub="По понедельникам утром: по весу недели подстраиваются калории и КБЖУ" />
           <Toggle value={!!settings.weeklyReview} onChange={(v) => toggleReminder('weeklyReview', v)} label="Отчёт недели" sub="По понедельникам: итоги и что изменить" />
           <Toggle value={settings.trainingReminder} onChange={(v) => toggleReminder('trainingReminder', v)} label="Тренировка по плану" sub="Только в дни тренировок, следует за расписанием" />
           {settings.trainingReminder ? (

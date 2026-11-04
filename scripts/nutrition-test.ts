@@ -19,6 +19,10 @@ import { sumMacros } from '../src/features/nutrition/status';
 import { isCountedDay, nutritionPeriod, weightLinkText } from '../src/features/nutrition/analytics';
 import type { NutritionTarget, WeightEntry } from '../src/types';
 import { addDays } from '../src/utils/date';
+import { computeNutritionTarget as targetFor, macrosFor as macrosForWeight, retargetForWeight, shiftTargetKcal } from '../src/features/nutrition/targets';
+import { weeklyRate, weightTrend } from '../src/features/progress/weightTrend';
+import { decideCalories } from '../src/features/science/calories';
+import type { UserProfile } from '../src/types';
 
 // Фикстура хранилища v1 — в том виде, в каком его писало приложение до фазы C (macrosFor с округлением)
 const V1 = {
@@ -232,4 +236,69 @@ test('Подсказка по остатку: молчит без повода; 
   assert.equal(low?.text, 'Например, творог 5% 250 г: ≈ 303 ккал и 43 г белка.');
   // Без варианта — только остаток
   assert.equal(remainderHint({ target: T, eaten: M(1500, 80), entries: 3, progress: 0.7 })?.text, undefined);
+});
+
+// ─── R1: КБЖУ владельца — белок 2 г/кг, жиры 1 г/кг, углеводы остаток; взвешивание раз в неделю ───
+
+const owner: UserProfile = {
+  name: 'Тест', sex: 'male', age: 30, heightCm: 180, weightKg: 77, goal: 'bulk', ratePctPerWeek: 0.35, level: 'intermediate', trainingYears: 2,
+  daysPerWeek: 4, sessionMinutes: 70, location: 'gym', equipment: ['barbell'], limitations: '', avoidExerciseIds: [], likedFoods: [], dislikedFoods: [], dietRestrictions: [],
+  activity: 'moderate', stepsPerDay: 8000, workStyle: 'desk', preferredTime: 'evening', preferredDays: [], createdAt: 0, updatedAt: 0,
+};
+
+test('КБЖУ: набор 77 кг — белок 2 г/кг, жиры 1 г/кг, углеводы — остаток и в пояснении г/кг', () => {
+  const m = macrosForWeight(owner, 77, 2800);
+  assert.equal(m.protein, 155); // 2 × 77 = 154 → округление до 5
+  assert.equal(m.fat, 75); // 1 × 77 → 75
+  assert.equal(m.carbs, Math.round((2800 - 155 * 4 - 75 * 9) / 4 / 5) * 5);
+  assert.ok(m.carbsPerKg >= 3 && m.carbsPerKg <= 5, `углеводы ${m.carbsPerKg} г/кг в ориентире 3–5`);
+  assert.match(m.steps.find((s) => s.label === 'Углеводы')!.note!, /г\/кг \(ориентир 3–5 г\/кг\)/);
+  // Пример владельца: ~3000 ккал при 77 кг — углеводов больше 5 г/кг, это объяснено
+  assert.match(macrosForWeight(owner, 77, 3000).steps.find((s) => s.label === 'Углеводы')!.note!, /выше 5 г\/кг/);
+  // Сушка: белок 2,2, жиры 0,8
+  const cut = macrosForWeight({ ...owner, goal: 'cut' }, 77, 2200);
+  assert.equal(cut.protein, 170);
+  assert.equal(cut.fat, 60);
+  // Мало калорий — углеводы ниже ориентира, это сказано прямо
+  assert.match(macrosForWeight({ ...owner, goal: 'cut' }, 77, 1700).steps.find((s) => s.label === 'Углеводы')!.note!, /ниже ориентира/);
+});
+
+test('КБЖУ: прибавка калорий на наборе уходит в углеводы, белок и жиры не меняются', () => {
+  const t = targetFor(owner, { weightKg: 77 });
+  const more = shiftTargetKcal(owner, t, 77, 150, 'вес не растёт');
+  assert.equal(more.kcal, t.kcal + 150);
+  assert.equal(more.protein, t.protein);
+  assert.equal(more.fat, t.fat);
+  assert.ok(more.carbs - t.carbs >= 35 && more.carbs - t.carbs <= 40, `углеводы +${more.carbs - t.carbs} г`);
+});
+
+test('КБЖУ: вес изменился — белок и жиры под новый вес, калорийность та же', () => {
+  const t = targetFor(owner, { weightKg: 77 });
+  assert.equal(t.basisWeightKg, 77);
+  const r = retargetForWeight(owner, t, 80);
+  assert.equal(r.kcal, t.kcal);
+  assert.equal(r.protein, 160);
+  assert.equal(r.fat, 80);
+  assert.ok(r.carbs < t.carbs, 'углеводы — остаток');
+  assert.equal(r.basisWeightKg, 80);
+});
+
+test('Взвешивание раз в неделю: темп виден по 3 взвешиваниям за 2 недели; вес стоит на наборе → +ккал', () => {
+  const d0 = '2026-10-05';
+  const weekly = (kgs: number[]): WeightEntry[] => kgs.map((kg, i) => ({ date: addDays(d0, i * 7), kg }) as WeightEntry);
+  // Две недели, три взвешивания — темп уже есть (раньше требовалось 5 взвешиваний за 10 дней)
+  const r = weeklyRate(weightTrend(weekly([77, 77.4, 77.8])))!;
+  assert.ok(r, 'темп посчитан');
+  assert.equal(r.sparse, true);
+  assert.ok(Math.abs(r.kgPerWeek - 0.4) < 0.01, `${r.kgPerWeek}`);
+  // Два взвешивания — ещё рано
+  assert.equal(weeklyRate(weightTrend(weekly([77, 77.4]))), null);
+  // Вес стоит 3 недели на наборе → предложение добавить калории (их возьмут углеводы)
+  const flat = weeklyRate(weightTrend(weekly([77, 77.1, 76.9, 77])))!;
+  const dec = decideCalories({ goal: 'bulk', targetKgPerWeek: 0.27, actualKgPerWeek: flat.kgPerWeek, waistCmPerWeek: null, waistDays: 0, strength: 'unknown', coverage: 0.3, daysSinceLastChange: 999, bodyWeightKg: 77, trendDays: flat.days });
+  assert.equal(dec.action, 'increase');
+  assert.ok(dec.deltaKcal >= 100 && dec.deltaKcal <= 150);
+  // Через неделю после прибавки — ждём эффекта, не накидываем каждую неделю
+  const wait = decideCalories({ goal: 'bulk', targetKgPerWeek: 0.27, actualKgPerWeek: flat.kgPerWeek, waistCmPerWeek: null, waistDays: 0, strength: 'unknown', coverage: 0.3, daysSinceLastChange: 7, bodyWeightKg: 77, trendDays: flat.days });
+  assert.equal(wait.action, 'wait');
 });

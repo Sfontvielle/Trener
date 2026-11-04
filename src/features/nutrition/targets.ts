@@ -81,8 +81,15 @@ function proteinBaseWeight(heightCm: number, weightKg: number): number {
   return 27 * h * h;
 }
 
-export const PROTEIN_PER_KG: Record<GoalType, number> = { bulk: 1.8, cut: 2.2, recomp: 2.0, maintain: 1.6 };
-export const FAT_PER_KG: Record<GoalType, number> = { bulk: 0.9, cut: 0.8, recomp: 0.85, maintain: 0.9 };
+/**
+ * Правило владельца (R1): белок 2 г/кг, жиры 1 г/кг, углеводы — остаток калорий (ориентир 3–5 г/кг).
+ * На сушке белка больше и жиров меньше: 2,2 и 0,8 г/кг — белок бережёт мышцы в дефиците (Helms 2014).
+ * Прибавка калорий на наборе (вес стоит) целиком уходит в углеводы — белок и жиры привязаны к весу тела.
+ */
+export const PROTEIN_PER_KG: Record<GoalType, number> = { bulk: 2.0, cut: 2.2, recomp: 2.0, maintain: 2.0 };
+export const FAT_PER_KG: Record<GoalType, number> = { bulk: 1.0, cut: 0.8, recomp: 1.0, maintain: 1.0 };
+/** Ориентир углеводов для силовых тренировок, г/кг */
+export const CARBS_RANGE_PER_KG: [number, number] = [3, 5];
 
 export function computeNutritionTarget(
   profile: UserProfile,
@@ -149,22 +156,32 @@ export function computeNutritionTarget(
     adjustmentKcal: adj,
     observedTdee: source === 'adaptive' ? Math.round(opts.observedTdee!) : undefined,
     observedConfidence: source === 'adaptive' ? opts.observedConfidence ?? 'medium' : undefined,
+    basisWeightKg: Math.round(w * 10) / 10,
     steps,
     computedAt: Date.now(),
   };
 }
 
 /**
- * Макросы под калорийность: белок в г/кг (1,6–2,2 г/кг — Morton 2018, Nunes 2022; на сушке выше — Helms 2014),
- * жиры не ниже 0,8–0,9 г/кг и 22% энергии (AMDR 20–35%, IOM 2005), углеводы — остаток, клетчатка 14 г/1000 ккал.
- * Вызывается при ЛЮБОМ изменении калорий — КБЖУ всегда согласованы с калорийностью.
+ * Макросы под калорийность: белок и жиры — в г/кг (PROTEIN_PER_KG, FAT_PER_KG), углеводы — остаток калорий.
+ * Жиры не ниже 20% энергии (нижняя граница AMDR, IOM 2005), клетчатка 14 г/1000 ккал.
+ * Вызывается при ЛЮБОМ изменении калорий и веса — КБЖУ всегда согласованы с калорийностью и весом.
  */
-export function macrosFor(profile: Pick<UserProfile, 'goal' | 'heightCm'>, w: number, kcal: number): { protein: number; fat: number; carbs: number; fiber: number; proteinPerKg: number; fatPerKg: number; steps: CalcStep[] } {
+export function macrosFor(profile: Pick<UserProfile, 'goal' | 'heightCm'>, w: number, kcal: number): { protein: number; fat: number; carbs: number; fiber: number; proteinPerKg: number; fatPerKg: number; carbsPerKg: number; steps: CalcStep[] } {
   const pBase = proteinBaseWeight(profile.heightCm, w);
   const protein = round(pBase * PROTEIN_PER_KG[profile.goal], 5);
-  const fat = round(Math.max(w * FAT_PER_KG[profile.goal], (kcal * 0.22) / 9), 5);
+  const fat = round(Math.max(w * FAT_PER_KG[profile.goal], (kcal * 0.2) / 9), 5);
   const carbs = Math.max(60, round((kcal - protein * 4 - fat * 9) / 4, 5));
   const fiber = fiberTarget(kcal);
+  const carbsPerKg = Math.round((carbs / w) * 10) / 10;
+  const [lo, hi] = CARBS_RANGE_PER_KG;
+  const kgTxt = (x: number) => String(x).replace('.', ',');
+  const carbsNote =
+    carbsPerKg < lo
+      ? `Остаток калорий: ${kgTxt(carbsPerKg)} г/кг — ниже ориентира ${lo}–${hi} г/кг для силовых; на тяжёлых тренировках может не хватать энергии`
+      : carbsPerKg > hi
+        ? `Остаток калорий: ${kgTxt(carbsPerKg)} г/кг — выше ${hi} г/кг: так бывает на наборе с большим расходом`
+        : `Остаток калорий: ${kgTxt(carbsPerKg)} г/кг (ориентир ${lo}–${hi} г/кг)`;
   return {
     protein,
     fat,
@@ -172,13 +189,24 @@ export function macrosFor(profile: Pick<UserProfile, 'goal' | 'heightCm'>, w: nu
     fiber,
     proteinPerKg: PROTEIN_PER_KG[profile.goal],
     fatPerKg: FAT_PER_KG[profile.goal],
+    carbsPerKg,
     steps: [
-      { label: 'Белок', value: `${protein} г`, note: `${PROTEIN_PER_KG[profile.goal]} г/кг${pBase !== w ? ' (от референсного веса)' : ''}; диапазон 1,6–2,2 г/кг (Morton 2018)` },
-      { label: 'Жиры', value: `${fat} г`, note: `≥${FAT_PER_KG[profile.goal]} г/кг и ≥22% калорий` },
-      { label: 'Углеводы', value: `${carbs} г`, note: 'Остаток калорий' },
+      { label: 'Белок', value: `${protein} г`, note: `${kgTxt(PROTEIN_PER_KG[profile.goal])} г/кг${pBase !== w ? ' (от референсного веса)' : ''}` },
+      { label: 'Жиры', value: `${fat} г`, note: `${kgTxt(FAT_PER_KG[profile.goal])} г/кг, не меньше 20% калорий` },
+      { label: 'Углеводы', value: `${carbs} г`, note: carbsNote },
       { label: 'Клетчатка', value: `${fiber} г`, note: '14 г на 1000 ккал (IOM)' },
     ],
   };
+}
+
+/**
+ * Вес изменился — пересчитать КБЖУ под новый вес при той же калорийности: белок и жиры следуют за весом,
+ * углеводы — остаток. Калорийность меняет только адаптивный обзор (по тренду веса, с подтверждением).
+ */
+export function retargetForWeight(profile: Pick<UserProfile, 'goal' | 'heightCm'>, prev: NutritionTarget, w: number): NutritionTarget {
+  const m = macrosFor(profile, w, prev.kcal);
+  const keep = prev.steps.filter((s) => !['Белок', 'Жиры', 'Углеводы', 'Клетчатка'].includes(s.label));
+  return { ...prev, protein: m.protein, fat: m.fat, carbs: m.carbs, fiber: m.fiber, basisWeightKg: Math.round(w * 10) / 10, steps: [...keep, ...m.steps], computedAt: Date.now() };
 }
 
 /**
@@ -197,6 +225,7 @@ export function shiftTargetKcal(profile: UserProfile, prev: NutritionTarget, w: 
     carbs: m.carbs,
     fiber: m.fiber,
     adjustmentKcal: (prev.adjustmentKcal ?? 0) + delta,
+    basisWeightKg: Math.round(w * 10) / 10,
     steps: [...keep, { label: 'Адаптивная корректировка', value: `${delta > 0 ? '+' : ''}${delta} ккал`, note }, ...m.steps],
     computedAt: Date.now(),
   };
