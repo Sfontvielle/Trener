@@ -18,8 +18,11 @@ export function Screen({
   keyboard = false,
   padded = true,
   refreshControl,
+  footer,
 }: {
   children: React.ReactNode;
+  /** Закреплённая панель внизу (главное действие экрана): не уезжает при прокрутке */
+  footer?: React.ReactNode;
   scroll?: boolean;
   tabBar?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -30,7 +33,7 @@ export function Screen({
 }) {
   const insets = useSafeAreaInsets();
   const { scrollRef, rootRef, pad, ensure, onScroll } = useKeyboardAwareScroll();
-  const bottom = (tabBar ? TAB_BAR_HEIGHT + insets.bottom : insets.bottom) + space.lg;
+  const bottom = footer ? space.lg : (tabBar ? TAB_BAR_HEIGHT + insets.bottom : insets.bottom) + space.lg;
   const inner = scroll ? (
     <ScrollView
       ref={scrollRef}
@@ -60,6 +63,7 @@ export function Screen({
       ) : (
         inner
       )}
+      {footer ? <View style={[styles.footer, { paddingBottom: insets.bottom + space.sm }]}>{footer}</View> : null}
     </View>
   );
 }
@@ -91,5 +95,6 @@ export function Header({ title, subtitle, right, onBack, large }: { title: strin
 
 const styles = themed({
   root: { flex: 1, backgroundColor: colors.bg },
+  footer: { paddingHorizontal: space.lg, paddingTop: space.sm, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: space.md, minHeight: 48 },
 });

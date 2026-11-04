@@ -287,13 +287,12 @@ export default function Builder() {
                   ) : null}
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <NumberStepper compact label="Подходы" value={pe.sets} onChange={(v) => patch(i, { sets: Math.round(v) })} min={1} max={10} style={{ flex: 1 }} />
-                    <NumberStepper compact label="RIR" value={pe.targetRir} onChange={(v) => patch(i, { targetRir: Math.round(v) })} min={0} max={5} style={{ flex: 1 }} />
+                    <NumberStepper compact label="Отдых, сек" value={pe.restSec} onChange={(v) => patch(i, { restSec: Math.round(v) })} step={15} min={15} max={600} style={{ flex: 1 }} />
                   </View>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <NumberStepper compact label={timed ? 'Сек от' : 'Повт. от'} value={pe.repMin} onChange={(v) => patch(i, { repMin: Math.round(v), repMax: Math.max(pe.repMax, Math.round(v)) })} min={timed ? 5 : 1} max={timed ? 600 : 60} step={timed ? 5 : 1} style={{ flex: 1 }} />
                     <NumberStepper compact label="до" value={pe.repMax} onChange={(v) => patch(i, { repMax: Math.round(v), repMin: Math.min(pe.repMin, Math.round(v)) })} min={timed ? 5 : 1} max={timed ? 600 : 60} step={timed ? 5 : 1} style={{ flex: 1 }} />
                   </View>
-                  <NumberStepper compact label="Отдых, сек" value={pe.restSec} onChange={(v) => patch(i, { restSec: Math.round(v) })} step={15} min={15} max={600} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <IconButton name="arrow-up" label="Выше" onPress={() => move(i, -1)} disabled={i === 0} />
                     <IconButton name="arrow-down" label="Ниже" onPress={() => move(i, 1)} disabled={i === exercises.length - 1} />

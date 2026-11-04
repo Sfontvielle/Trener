@@ -2,10 +2,11 @@ import React, { memo, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BodyArea, Exercise, ExerciseSet, SetFeel, WorkoutExercise, WorkoutSession } from '@/types';
+import type { BodyArea, Exercise, ExerciseSet, WorkoutExercise, WorkoutSession } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
+import { SwipeRow } from '@/components/ds/SwipeRow';
 import { DrawerScroll, SideDrawer } from '@/components/SideDrawer';
 import { confirm, toast, useDialog } from '@/components/Dialog';
 import { useWorkouts, hasProgress } from '@/stores/workouts';
@@ -32,13 +33,14 @@ import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, 
 import { warmupPlan } from '@/features/training/warmup';
 import { DEFAULT_GYM, equipmentStep, loadKind, plateLayout } from '@/features/training/equipment';
 import { autoregulate } from '@/features/training/autoreg';
-import { formatDuration, today } from '@/utils/date';
+import { formatDuration, plural, today } from '@/utils/date';
 import { fmtSec, fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
 import { prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
+import { cancelRestEnd, ensurePermission, scheduleRestEnd } from '@/services/notifications';
 
 const NATIVE = Platform.OS !== 'web';
 
@@ -46,7 +48,7 @@ const NATIVE = Platform.OS !== 'web';
 let swipeGo: ((dir: 1 | -1) => void) | null = null;
 const swipeNav = (dir: 1 | -1) => swipeGo?.(dir);
 
-/** Как прошёл подход — понятными словами; внутри переводится в запас повторов (RIR) для прогрессии */
+/** Где дискомфорт — для «Дискомфорт при выполнении» (упражнение перестаёт назначаться автоматически) */
 const PAIN_AREAS: { label: string; area?: BodyArea }[] = [
   { label: 'Плечо', area: 'shoulder' },
   { label: 'Спина / поясница', area: 'lower_back' },
@@ -77,6 +79,10 @@ export default function ActiveWorkout() {
   // Подход на время: идёт таймер удержания (планка и т. п.)
   const [hold, setHold] = useState<{ weId: string; setId: string; startedAt: number } | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
+  // Таймер отдыха — только если человек сам включил его кнопкой ⏱ (по умолчанию выключен)
+  const restOn = useProfile((s) => !!s.settings.restTimer);
+  const [rest, setRest] = useState<{ endsAt: number; total: number } | null>(null);
+  const [restOpen, setRestOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [slide] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(1));
@@ -147,8 +153,23 @@ export default function ActiveWorkout() {
   const timed = isTimed(curEx);
   const holding = !!hold && !!we && hold.weId === we.id && we.sets.some((x) => x.id === hold.setId && !x.done);
   const onPrCb = (text: string) => setPr({ text, n: (pr?.n ?? 0) + 1 });
-  const complete = (w: WorkoutExercise, set: ExerciseSet, i: number) => completeSetFor({ we: w, set, index: i, unit, onPr: onPrCb, onNavigate: (j) => setTimeout(() => goTo(j, j > i ? 1 : -1), 260) });
+  const startRest = (nextLabel?: string) => {
+    const st = useProfile.getState().settings;
+    if (!st.restTimer) return;
+    const sec = st.defaultRestSec || 120;
+    setRest(restFor(sec));
+    if (st.restNotify) void scheduleRestEnd(sec, nextLabel);
+  };
+  const stopRest = () => {
+    setRest(null);
+    void cancelRestEnd();
+  };
+  const complete = (w: WorkoutExercise, set: ExerciseSet, i: number) => {
+    if (rest) stopRest();
+    completeSetFor({ we: w, set, index: i, unit, onPr: onPrCb, onNavigate: (j) => setTimeout(() => goTo(j, j > i ? 1 : -1), 260), onRest: startRest });
+  };
   const startHold = (weId: string, setId: string) => {
+    if (rest) stopRest();
     haptic.timerStart();
     setHold(holdStart(weId, setId));
   };
@@ -235,15 +256,16 @@ export default function ActiveWorkout() {
   const nextWarm = ctaSet?.warmup;
   const ctaNo = ctaSet ? we!.sets.filter((x) => !x.warmup).indexOf(ctaSet) + 1 : 0;
   // Главное действие внизу: записать подход → старт удержания → далее → завершить
+  // title — коротко, чтобы влезало в одну строку рядом с ⏱; label — полностью, для VoiceOver
   const center = !we
     ? null
     : allDone || (!ctaSet && nextI < 0)
-      ? { icon: 'flag' as const, label: 'Завершить тренировку', onPress: askFinish }
+      ? { icon: 'flag' as const, title: 'Завершить', label: 'Завершить тренировку', onPress: askFinish }
       : ctaSet && timed && !nextWarm
-        ? { icon: 'play' as const, label: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, onPress: () => startHold(we.id, ctaSet.id) }
+        ? { icon: 'play' as const, title: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, label: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, onPress: () => startHold(we.id, ctaSet.id) }
         : ctaSet
-          ? { icon: 'checkmark' as const, label: nextWarm ? 'Разминка — готово' : `Записать подход ${ctaNo}`, onPress: () => complete(we, ctaSet, idx) }
-          : { icon: 'arrow-forward' as const, label: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, onPress: () => goTo(nextI, 1) };
+          ? { icon: 'checkmark' as const, title: nextWarm ? 'Разминка' : `Подход ${ctaNo}`, label: nextWarm ? 'Разминка — готово' : `Записать подход ${ctaNo}`, onPress: () => complete(we, ctaSet, idx) }
+          : { icon: 'arrow-forward' as const, title: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, label: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, onPress: () => goTo(nextI, 1) };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -300,10 +322,14 @@ export default function ActiveWorkout() {
             <HoldTimer startedAt={hold.startedAt} target={we.sets.find((x) => x.id === hold.setId)?.reps || we.repMax} onStop={stopHold} onCancel={() => setHold(null)} />
           </View>
         ) : (
-          <View style={[styles.bar, { paddingBottom: insets.bottom + space.xs }]}>
-            <BarBtn icon="chevron-back" label="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} />
-            {center ? <Button title={center.label} icon={center.icon} size="lg" onPress={center.onPress} style={{ flex: 1 }} testID="workout-cta" /> : <View style={{ flex: 1 }} />}
-            <BarBtn icon="chevron-forward" label="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} />
+          <View>
+            {rest ? <RestStrip key={rest.endsAt} endsAt={rest.endsAt} total={rest.total} onChange={(endsAt) => { setRest({ endsAt, total: rest.total + Math.round((endsAt - rest.endsAt) / 1000) }); const st = useProfile.getState().settings; if (st.restNotify) void scheduleRestEnd((endsAt - Date.now()) / 1000); }} onSkip={stopRest} onEnd={() => setRest(null)} /> : null}
+            <View style={[styles.bar, { paddingBottom: insets.bottom + space.xs }]}>
+              <BarBtn icon="chevron-back" label="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} />
+              {center ? <Button title={center.title} accessibilityLabel={center.label} icon={center.icon} size="lg" onPress={center.onPress} style={{ flex: 1 }} testID="workout-cta" /> : <View style={{ flex: 1 }} />}
+              <BarBtn icon="timer-outline" label={restOn ? `Таймер отдыха: ${fmtSec(useProfile.getState().settings.defaultRestSec || 120)}` : 'Таймер отдыха: выключен'} active={restOn} onPress={() => setRestOpen(true)} small />
+              <BarBtn icon="chevron-forward" label="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} />
+            </View>
           </View>
         )
       ) : null}
@@ -440,6 +466,7 @@ export default function ActiveWorkout() {
         </View>
       </Sheet>
       <EnergySheet visible={energyOpen} onClose={() => setEnergyOpen(false)} energy={energy} weightKg={bodyW} />
+      <RestSheet visible={restOpen} onClose={() => setRestOpen(false)} onOff={stopRest} />
       <DiscardSheet visible={discardOpen} onClose={() => setDiscardOpen(false)} />
     </View>
   );
@@ -449,7 +476,7 @@ export default function ActiveWorkout() {
  * Отметка подхода (из строки подхода или «липкой» кнопки). Сохраняется сразу — persist пишет на диск,
  * поэтому подход не теряется при сворачивании/закрытии приложения.
  */
-function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void; onNavigate?: (i: number) => void }) {
+function completeSetFor({ we, set, index, unit, onPr, onNavigate, onRest }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void; onNavigate?: (i: number) => void; onRest?: (nextLabel?: string) => void }) {
   const st = useWorkouts.getState();
   const customs = st.customExercises;
   const ex = getExercise(we.exerciseId, customs);
@@ -482,7 +509,18 @@ function completeSetFor({ we, set, index, unit, onPr, onNavigate }: { we: Workou
   // Суперсет: после рабочего подхода — сразу к следующему участнику, после круга — снова к первому
   const nav = set.warmup ? { index, rest: true } : afterSetTarget(a, index);
   if (nav.index !== index) onNavigate?.(nav.index);
-  // Таймера отдыха нет (решение пользователя): отдых — в своём темпе
+  // Отдых — после рабочего подхода (в суперсете — после круга), если таймер включён кнопкой ⏱
+  if (!set.warmup && nav.rest && onRest) {
+    const target = a.exercises[nav.index];
+    const left = target?.sets.find((x) => !x.done);
+    const name = target ? getExercise(target.exerciseId, customs)?.name : undefined;
+    onRest(left ? `${name ?? 'подход'}${left.weight ? ` · ${fmtWeight(left.weight, unit)} ${unitLabel(unit)} × ${left.reps}` : ''}` : undefined);
+  }
+}
+
+/** Отдых с этого момента (вне рендера: время берётся в момент отметки подхода) */
+function restFor(sec: number) {
+  return { endsAt: Date.now() + sec * 1000, total: sec };
 }
 
 /** Старт удержания для подхода на время (вне рендера: время берётся в момент нажатия) */
@@ -680,7 +718,6 @@ function ExerciseFocus({
   const rec = we.recommendation;
   const nextSet = we.sets.find((s) => !s.done);
   const doneCount = we.sets.filter((s) => s.done).length;
-  const lastDone = [...we.sets].reverse().find((s) => s.done);
   const timed = isTimed(ex);
 
   const primary = ex.groups.primary.map((g) => GROUP_LABEL[g]);
@@ -713,6 +750,11 @@ function ExerciseFocus({
   const openInfo = () => {
     haptic.tap();
     setInfoOpen(true);
+  };
+  /** Свайп влево по подходу: удалить сразу, с «Отменить» — подход вернётся на своё место */
+  const deleteSet = (x: ExerciseSet, i: number) => {
+    useWorkouts.getState().removeSet(we.id, x.id);
+    toast(x.done ? 'Подход удалён' : 'Подход убран', 'trash-outline', { label: 'Отменить', onPress: () => useWorkouts.getState().insertSet(we.id, x, i) });
   };
 
   return (
@@ -794,35 +836,37 @@ function ExerciseFocus({
           </Pressable>
         ) : null}
 
-        {/* Подходы — таблицей: № · вес · повторы (время) · RIR · ✓ */}
-        <View style={styles.setHead} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <T v="caption" style={styles.colNo}>
-            №
-          </T>
-          {weightCol ? (
-            <T v="caption" style={styles.headVal}>
-              {ex.bodyweight ? `Доп., ${unitLabel(unit)}` : `Вес, ${unitLabel(unit)}`}
-            </T>
-          ) : null}
-          <T v="caption" style={styles.headVal}>
-            {timed ? 'Время, сек' : 'Повторы'}
-          </T>
-          {!timed ? (
-            <T v="caption" style={styles.headRir}>
-              RIR
-            </T>
-          ) : null}
-          <View style={{ width: 44 }} />
+        {/* Подходы — крупными строками «65 кг × 10»: номер слева (тап — отметить), цель над строкой, свайп влево — удалить */}
+        <View style={styles.sets}>
+          {we.sets.map((x, i) => {
+            const k = we.sets.slice(0, i).filter((y) => !y.warmup).length;
+            const no = x.warmup ? 'Р' : String(k + 1);
+            const prev = x.warmup ? undefined : (last?.sets[k] ?? undefined);
+            return (
+              <SetRow
+                key={x.id}
+                weId={we.id}
+                set={x}
+                idx={i}
+                no={no}
+                unit={unit}
+                onComplete={onComplete}
+                onDelete={deleteSet}
+                current={x === nextSet}
+                timed={timed}
+                weightCol={weightCol}
+                bodyweight={!!ex.bodyweight}
+                prev={prev}
+                range={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined}
+                last={i === we.sets.length - 1}
+              />
+            );
+          })}
         </View>
-        {we.sets.map((x, i) => (
-          <SetRow key={x.id} weId={we.id} set={x} idx={i} no={x.warmup ? 'Р' : String(we.sets.slice(0, i + 1).filter((y) => !y.warmup).length)} unit={unit} onComplete={onComplete} current={x === nextSet} timed={timed} weightCol={weightCol} target={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined} />
-        ))}
         <Pressable accessibilityRole="button" accessibilityLabel="Добавить подход" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} hitSlop={6} style={({ pressed }) => [styles.addSet, pressed && { opacity: 0.6 }]}>
           <Icon name="add" size={18} color={colors.textDim} />
           <T v="callout">Подход</T>
         </Pressable>
-        {/* Запас повторов спрашиваем только у силовых подходов: у планки и удержаний это бессмысленно */}
-        {lastDone && lastDone.rir === undefined && !lastDone.warmup && !timed ? <RirPicker weId={we.id} set={lastDone} /> : null}
         <AutoregTip we={we} step={step} unit={unit} />
         {!nextSet ? (
           <View style={styles.doneLine}>
@@ -930,41 +974,94 @@ function ExerciseNoteSheet({ we, onClose }: { we: WorkoutExercise | undefined; o
 }
 
 /** Кнопка нижней панели тренировки */
-function BarBtn({ icon, label, onPress, disabled, active }: { icon: React.ComponentProps<typeof Icon>['name']; label: string; onPress: () => void; disabled?: boolean; active?: boolean }) {
+function BarBtn({ icon, label, onPress, disabled, active, small }: { icon: React.ComponentProps<typeof Icon>['name']; label: string; onPress: () => void; disabled?: boolean; active?: boolean; small?: boolean }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.barBtn, disabled && { opacity: 0.25 }, pressed && { opacity: 0.5 }]}>
-      <Icon name={icon} size={28} color={active ? colors.accent : colors.textDim} />
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.barBtn, small && { width: 40 }, disabled && { opacity: 0.25 }, pressed && { opacity: 0.5 }]}>
+      <Icon name={icon} size={small ? 24 : 28} color={active ? colors.accent : colors.textDim} />
     </Pressable>
   );
 }
 
-/**
- * После подхода — один тап: «Сколько повторений осталось?» (RIR, Zourdos 2016). Таймера отдыха нет.
- * RIR сохраняется в подход и маппится в «ощущение» для старых экранов (0 → до отказа, 1 → тяжело, 2 → нормально, 3+ → легко).
- */
-const RIR_OPTS = [0, 1, 2, 3, 4] as const;
-export function feelForRir(rir: number): SetFeel {
-  return rir <= 0 ? 'max' : rir === 1 ? 'hard' : rir === 2 ? 'ok' : 'easy';
-}
-function RirPicker({ weId, set }: { weId: string; set: ExerciseSet }) {
-  const pick = (r: number) => {
+const REST_OPTIONS = [60, 90, 120, 150, 180, 240];
+
+/** Таймер отдыха: выключен по умолчанию; человек сам включает его и выбирает длительность */
+function RestSheet({ visible, onClose, onOff }: { visible: boolean; onClose: () => void; onOff: () => void }) {
+  const on = useProfile((s) => !!s.settings.restTimer);
+  const sec = useProfile((s) => s.settings.defaultRestSec || 120);
+  const pick = (v: number | null) => {
     haptic.tap();
-    useWorkouts.getState().updateSet(weId, set.id, { rir: r, feel: feelForRir(r) });
+    const st = useProfile.getState();
+    if (v === null) {
+      st.updateSettings({ restTimer: false });
+      onOff();
+    } else {
+      st.updateSettings({ restTimer: true, defaultRestSec: v });
+      // Разрешение на уведомления — чтобы конец отдыха был слышен и со свёрнутым приложением
+      if (st.settings.restNotify) void ensurePermission();
+    }
+    onClose();
+  };
+  const row = (v: number | null, label: string) => {
+    const sel = v === null ? !on : on && sec === v;
+    return (
+      <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: sel }} accessibilityLabel={label} onPress={() => pick(v)} style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.7 }]}>
+        <T v="body" style={{ flex: 1, fontVariant: ['tabular-nums'] }} color={colors.text}>
+          {label}
+        </T>
+        {sel ? <Icon name="checkmark" size={20} color={colors.accent} /> : null}
+      </Pressable>
+    );
   };
   return (
-    <View style={styles.feelCard} testID="rir-picker">
-      <T v="small" color={colors.text} style={{ fontWeight: '700' }}>
-        Сколько повторений осталось в запасе?
-      </T>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        {RIR_OPTS.map((r) => (
-          <Pressable key={r} accessibilityRole="button" accessibilityLabel={`Запас ${r === 4 ? '4 и больше' : r}`} onPress={() => pick(r)} style={[styles.feel, { flex: 1 }]}>
-            <T v="h3" style={{ textAlign: 'center' }} color={r === 0 ? colors.warning : colors.text}>
-              {r === 4 ? '4+' : r}
-            </T>
-          </Pressable>
-        ))}
+    <Sheet visible={visible} onClose={onClose} title="Таймер отдыха" subtitle="Отсчёт после каждого рабочего подхода. В конце — вибрация и уведомление, если приложение свёрнуто">
+      <View style={{ gap: 8 }} testID="rest-sheet">
+        {row(null, 'Выключен')}
+        {REST_OPTIONS.map((v) => row(v, fmtSec(v)))}
       </View>
+    </Sheet>
+  );
+}
+
+/** Полоса отдыха над нижней панелью: обратный отсчёт, −15/+15 с, «Пропустить»; в конце — вибрация */
+function RestStrip({ endsAt, total, onChange, onSkip, onEnd }: { endsAt: number; total: number; onChange: (endsAt: number) => void; onSkip: () => void; onEnd: () => void }) {
+  const [t, setT] = useState(() => Date.now());
+  const left = Math.max(0, Math.ceil((endsAt - t) / 1000));
+  const over = left === 0;
+  useEffect(() => {
+    const id = setInterval(() => setT(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!over) return;
+    haptic.timerEnd();
+    const id = setTimeout(onEnd, 4000);
+    return () => clearTimeout(id);
+    // onEnd — колбэк родителя, срабатывает один раз на конец отдыха
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [over]);
+  const pct = total > 0 ? Math.min(1, Math.max(0, 1 - (endsAt - t) / (total * 1000))) : 1;
+  return (
+    <View style={styles.rest} testID="rest-strip" accessibilityLiveRegion="polite">
+      <View style={[styles.restFill, { width: `${Math.round(pct * 100)}%` }]} />
+      <Icon name="timer-outline" size={18} color={over ? colors.accent : colors.textDim} />
+      <T v="headline" color={over ? colors.accent : colors.text} style={{ flex: 1, fontVariant: ['tabular-nums'] }} accessibilityLabel={over ? 'Отдых окончен' : `Отдых, осталось ${fmtSec(left)}`}>
+        {over ? 'Отдых окончен' : `Отдых ${fmtSec(left)}`}
+      </T>
+      {!over ? (
+        <>
+          <Pressable accessibilityRole="button" accessibilityLabel="Отдых на 15 секунд короче" hitSlop={6} onPress={() => onChange(Math.max(Date.now() + 1000, endsAt - 15000))} style={styles.restBtn}>
+            <T v="callout" color={colors.text}>−15</T>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Отдых на 15 секунд длиннее" hitSlop={6} onPress={() => onChange(endsAt + 15000)} style={styles.restBtn}>
+            <T v="callout" color={colors.text}>+15</T>
+          </Pressable>
+        </>
+      ) : null}
+      <Pressable accessibilityRole="button" accessibilityLabel={over ? 'Скрыть' : 'Пропустить отдых'} hitSlop={6} onPress={onSkip} style={styles.restBtn}>
+        <T v="callout" color={colors.accent} style={{ fontWeight: '600' }}>
+          {over ? 'OK' : 'Пропустить'}
+        </T>
+      </Pressable>
     </View>
   );
 }
@@ -978,7 +1075,7 @@ function AutoregTip({ we, step, unit }: { we: WorkoutExercise; step: number; uni
   const apply = () => {
     if (tip.kind !== 'increase' && tip.kind !== 'decrease') return;
     const st = useWorkouts.getState();
-    we.sets.filter((x) => !x.done && !x.warmup).forEach((x) => st.updateSet(we.id, x.id, { weight: tip.weight }));
+    we.sets.filter((x) => !x.done && !x.warmup).forEach((x) => st.updateSet(we.id, x.id, { weight: tip.weight, ...(x.target ? { target: { ...x.target, weight: tip.weight } } : {}) }));
     haptic.success();
     setHiddenAt(doneN);
   };
@@ -1010,12 +1107,48 @@ function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number
   return n > 0 ? n : undefined;
 }
 
+/** Ширина поля под число: поле не тянется на всю строку, «65 кг × 10» стоит по центру как одна надпись */
+const SET_FS = 32;
+const fieldW = (text: string, placeholder: string) => Math.ceil(Math.max(1, (text || placeholder).length) * SET_FS * 0.62) + 8;
+
 /**
- * Подход строкой таблицы (★3 SetInputRow): № · вес · повторы (время) · RIR · ✓ — фиксированные колонки.
- * Текущий подход — поля ввода крупными цифрами; выполненный — вторичным цветом с меткой ✓; будущие — приглушены.
- * Значения уже заполнены предложением RYNJI: ✓ — подтвердить, правка поля — исправить.
+ * Подход — крупной строкой «65 кг × 10» (R1, по образцу владельца): номер слева, над числами — цель на этот подход
+ * и прошлый результат, свайп влево — удалить. Тап по номеру — подход выполнен (повторный — отменить), так же как
+ * главная кнопка внизу. Значения уже заполнены целью: ✓ — сделал как задумано, тап по числу — исправить.
  */
-const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, current, timed, weightCol, target }: { weId: string; set: ExerciseSet; idx: number; no: string; unit: 'kg' | 'lb'; onComplete: (s: ExerciseSet) => void; current?: boolean; timed?: boolean; weightCol: boolean; target?: string }) {
+const SetRow = memo(function SetRow({
+  weId,
+  set,
+  idx,
+  no,
+  unit,
+  onComplete,
+  onDelete,
+  current,
+  timed,
+  weightCol,
+  bodyweight,
+  prev,
+  range,
+  last,
+}: {
+  weId: string;
+  set: ExerciseSet;
+  idx: number;
+  no: string;
+  unit: 'kg' | 'lb';
+  onComplete: (s: ExerciseSet) => void;
+  onDelete: (s: ExerciseSet, i: number) => void;
+  current?: boolean;
+  timed?: boolean;
+  weightCol: boolean;
+  bodyweight: boolean;
+  /** Этот же подход в прошлый раз */
+  prev?: { weight: number; reps: number };
+  /** Диапазон повторов (секунд) — подсказка, если цели нет */
+  range?: string;
+  last?: boolean;
+}) {
   const [pop] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!set.done) return;
@@ -1027,96 +1160,120 @@ const SetRow = memo(function SetRow({ weId, set, idx, no, unit, onComplete, curr
   const [r, setR] = useState(set.reps ? String(set.reps) : '');
   // Синхронизация только при внешнем изменении (перенос веса из прошлого подхода, смена единиц).
   // Если значение совпадает с тем, что уже введено, текст не трогаем — иначе «82,» превращалось бы в «82».
-  const [prev, setPrev] = useState({ weight: set.weight, reps: set.reps, unit });
-  if (prev.weight !== set.weight || prev.reps !== set.reps || prev.unit !== unit) {
-    setPrev({ weight: set.weight, reps: set.reps, unit });
+  const [prevVal, setPrevVal] = useState({ weight: set.weight, reps: set.reps, unit });
+  if (prevVal.weight !== set.weight || prevVal.reps !== set.reps || prevVal.unit !== unit) {
+    setPrevVal({ weight: set.weight, reps: set.reps, unit });
     const typedW = parseDecimal(w);
-    if (prev.unit !== unit || !(Number.isFinite(typedW) && fromDisplayWeight(typedW, unit) === set.weight) && !(set.weight === 0 && w === '')) {
+    if (prevVal.unit !== unit || !(Number.isFinite(typedW) && fromDisplayWeight(typedW, unit) === set.weight) && !(set.weight === 0 && w === '')) {
       setW(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
     }
     if (parseInt(r, 10) !== set.reps && !(set.reps === 0 && r === '')) setR(set.reps ? String(set.reps) : '');
   }
   const upd = (patch: Partial<ExerciseSet>) => useWorkouts.getState().updateSet(weId, set.id, patch);
-  const color = set.done ? colors.textDim : current ? colors.text : colors.muted;
-  const box = current && !set.done;
-  const font = box ? 28 : 20;
-  const input = [styles.cellInput, box && styles.cellBox, { fontSize: font, color }];
-  return (
-    <View style={[styles.setRow, box && styles.setRowCurrent]}>
-      <T v="bodyStrong" color={set.warmup ? colors.muted : color} style={styles.colNo}>
-        {no}
+  const done = !!set.done;
+  const live = current && !done;
+  const color = done || live ? colors.text : colors.textDim;
+  const input = [styles.setInput, { color }];
+  const u = unitLabel(unit);
+  const rTxt = (x: number) => (timed ? fmtSec(x) : String(x));
+
+  // Цель над строкой: «Цель 65 кг × 10 · было 9»; рост к прошлому разу — акцентом со стрелкой
+  const t = set.warmup ? undefined : set.target;
+  let goal: React.ReactNode = null;
+  if (t) {
+    const pickWeight = t.weight === 0 && !bodyweight && !timed;
+    const main = pickWeight ? `подбери вес · ${range ?? rTxt(t.reps)}` : `${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${u} × ` : ''}${rTxt(t.reps)}${timed || t.weight > 0 ? '' : ` ${plural(t.reps, 'повтор', 'повтора', 'повторов')}`}`;
+    const up = !!prev && !pickWeight && (t.weight > prev.weight || (t.weight === prev.weight && t.reps > prev.reps));
+    const was = prev ? `было ${prev.weight !== t.weight && prev.weight > 0 ? `${fmtWeight(prev.weight, unit)} × ` : ''}${rTxt(prev.reps)}` : '';
+    goal = (
+      <T v="footnote" numberOfLines={1} style={{ textAlign: 'center' }} testID={`set-goal-${idx}`}>
+        <T v="footnote" color={done ? colors.textDim : up ? colors.accent : colors.text} style={{ fontWeight: '600' }}>
+          {`${up && !done ? '↑ ' : ''}Цель ${main}`}
+        </T>
+        {was ? ` · ${was}` : ''}
       </T>
-      {weightCol ? (
-        <View style={styles.colVal}>
-          <TextInput
-            value={w}
-            onChangeText={(t) => {
-              setW(t);
-              const n = parseDecimal(t);
-              upd({ weight: Number.isFinite(n) ? fromDisplayWeight(n, unit) : 0 });
-            }}
-            placeholder="—"
-            placeholderTextColor={colors.muted}
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-            maxFontSizeMultiplier={1.2}
-            accessibilityLabel={`Вес, подход ${idx + 1}`}
-            style={input}
-          />
-        </View>
-      ) : null}
-      <View style={styles.colVal}>
-        <TextInput
-          value={r}
-          onChangeText={(t) => {
-            setR(t);
-            const n = parseInt(t, 10);
-            upd({ reps: Number.isFinite(n) ? n : 0 });
-          }}
-          placeholder={!set.done && target ? target : '0'}
-          placeholderTextColor={colors.muted}
-          keyboardType="number-pad"
-          selectTextOnFocus
-          maxFontSizeMultiplier={1.2}
-          accessibilityLabel={`${timed ? 'Секунды' : 'Повторы'}, подход ${idx + 1}`}
-          style={input}
-        />
-      </View>
-      {!timed ? (
+    );
+  }
+
+  return (
+    <SwipeRow onDelete={() => onDelete(set, idx)} a11yLabel={`Удалить подход ${no}`} bg={colors.bg} testID={`set-row-${idx}`}>
+      <View style={[styles.setRow, live && styles.setRowCurrent, !last && styles.setLine]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Запас повторов, подход ${idx + 1}`}
-          disabled={!set.done || !!set.warmup}
-          onPress={() => {
-            // Тап — следующее значение 4+ → 3 → 2 → 1 → 0 (поправить без клавиатуры)
-            const v = set.rir === undefined ? 2 : set.rir <= 0 ? 4 : set.rir - 1;
-            haptic.tap();
-            upd({ rir: v, feel: feelForRir(v) });
-          }}
-          style={styles.colRir}
+          accessibilityLabel={done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
+          accessibilityState={{ checked: done }}
+          onPress={() => onComplete(set)}
+          hitSlop={6}
+          style={[styles.badge, live && styles.badgeLive, done && styles.badgeDone]}
         >
-          <T v="body" color={set.rir === 0 ? colors.warning : color} style={{ fontVariant: ['tabular-nums'] }}>
-            {set.warmup ? '' : set.done && set.rir !== undefined ? (set.rir >= 4 ? '4+' : String(set.rir)) : '—'}
-          </T>
-        </Pressable>
-      ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={set.done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
-        accessibilityState={{ checked: !!set.done }}
-        onPress={() => onComplete(set)}
-        style={styles.colOk}
-        hitSlop={4}
-      >
-        <View style={[styles.ok, set.done && { backgroundColor: colors.accent, borderColor: colors.accent }, box && !set.done && { borderColor: colors.text }]}>
-          {set.done ? (
+          {done ? (
             <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }}>
-              <Icon name="checkmark" size={18} color={colors.onAccent} />
+              <Icon name="checkmark" size={20} color={colors.onAccent} />
             </Animated.View>
-          ) : null}
+          ) : (
+            <T v="callout" color={live ? colors.text : colors.textDim} style={{ fontWeight: '600', fontVariant: ['tabular-nums'] }}>
+              {no}
+            </T>
+          )}
+        </Pressable>
+        <View style={styles.setMid}>
+          {goal}
+          <View style={styles.setVals}>
+            {weightCol ? (
+              <>
+                <TextInput
+                  value={w}
+                  onChangeText={(v) => {
+                    setW(v);
+                    const n = parseDecimal(v);
+                    upd({ weight: Number.isFinite(n) ? fromDisplayWeight(n, unit) : 0 });
+                  }}
+                  placeholder="—"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  maxFontSizeMultiplier={1.2}
+                  accessibilityLabel={`Вес, подход ${idx + 1}`}
+                  style={[input, { width: fieldW(w, '—') }]}
+                />
+                <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                  {bodyweight ? `+${u}` : u}
+                </T>
+                <T v="callout" color={colors.muted} maxFontSizeMultiplier={1.4} style={styles.setTimes}>
+                  ×
+                </T>
+              </>
+            ) : null}
+            <TextInput
+              value={r}
+              onChangeText={(v) => {
+                setR(v);
+                const n = parseInt(v, 10);
+                upd({ reps: Number.isFinite(n) ? n : 0 });
+              }}
+              placeholder={!done && range ? range : '0'}
+              placeholderTextColor={colors.muted}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              maxFontSizeMultiplier={1.2}
+              accessibilityLabel={`${timed ? 'Секунды' : 'Повторы'}, подход ${idx + 1}`}
+              style={[input, { width: fieldW(r, !done && range ? range : '0') }]}
+            />
+            {timed ? (
+              <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                сек
+              </T>
+            ) : !weightCol ? (
+              <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                повт.
+              </T>
+            ) : null}
+          </View>
         </View>
-      </Pressable>
-    </View>
+        {/* Противовес номеру слева: числа остаются ровно по центру строки */}
+        <View style={styles.badgeSpace} />
+      </View>
+    </SwipeRow>
   );
 });
 
@@ -1150,22 +1307,26 @@ const styles = themed({
   refs: { marginTop: space.md, gap: 2 },
   refRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm, minHeight: 32, paddingVertical: 4 },
   refLabel: { width: 108 },
-  setHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: space.lg, paddingBottom: space.xs, paddingHorizontal: space.xxs },
-  colNo: { width: 28, textAlign: 'center' },
-  colVal: { flex: 1, alignItems: 'stretch', justifyContent: 'center' },
-  headRir: { width: 44, textAlign: 'center' },
-  headVal: { flex: 1, textAlign: 'center' },
-  colRir: { width: 44, alignItems: 'center', justifyContent: 'center', minHeight: 44, textAlign: 'center' },
-  colOk: { width: 44, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
-  cellInput: { padding: 0, minHeight: 44, textAlign: 'center', fontWeight: '600', fontVariant: ['tabular-nums'], outlineWidth: 0 },
-  cellBox: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.surface2 },
-  ok: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  sets: { marginTop: space.lg },
+  setLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  setMid: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2 },
+  setVals: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
+  setInput: { padding: 0, minHeight: 44, textAlign: 'center', fontSize: SET_FS, fontWeight: '500', fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  setUnit: { marginLeft: 2 },
+  setTimes: { marginHorizontal: 8 },
+  badge: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  badgeLive: { borderWidth: 1.5, borderColor: colors.accent, backgroundColor: colors.surface },
+  badgeDone: { backgroundColor: colors.accent },
+  badgeSpace: { width: 40 },
   addSet: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: space.xxs },
   techRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
   techPanel: { borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.surface },
   doneLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.sm },
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.xs, paddingTop: space.xs, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
   barBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  rest: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 52, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.surface, overflow: 'hidden' },
+  restFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.accentDim },
+  restBtn: { minHeight: 36, minWidth: 44, paddingHorizontal: 10, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   holdWrap: { paddingHorizontal: space.lg, paddingTop: 4 },
   note: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: radius.md, backgroundColor: colors.warningDim },
   block: { backgroundColor: colors.surface, borderRadius: radius.xl, paddingHorizontal: 10, paddingVertical: 10 },
@@ -1174,8 +1335,7 @@ const styles = themed({
   techBlock: { gap: space.md, marginTop: space.lg },
   rec: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   last: { padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
-  setRowCurrent: { paddingVertical: space.xxs },
-  inputCurrent: { height: 56, fontSize: 30, fontWeight: '700' },
+  setRowCurrent: { backgroundColor: colors.surface, borderRadius: radius.lg, borderBottomColor: 'transparent' },
   ssChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: space.xs, paddingVertical: 2, borderRadius: radius.xs, backgroundColor: colors.surface2, marginBottom: space.xs, maxWidth: '100%' },
   navItemSs: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.surface },
@@ -1189,7 +1349,7 @@ const styles = themed({
   spark: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: colors.onAccent },
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 48, paddingHorizontal: space.xxs },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 76, paddingVertical: space.sm, paddingHorizontal: space.xs },
   input: { flex: 1, minWidth: 0, width: 0, height: 44, borderRadius: radius.sm, backgroundColor: 'transparent', color: colors.text, textAlign: 'center', fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
   check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },

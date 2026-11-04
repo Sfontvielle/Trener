@@ -18,7 +18,11 @@ export function configureNotifications() {
   if (!native || configured) return;
   configured = true;
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
+    // Конец отдыха при открытом приложении показывает сам экран тренировки — баннер не дублируем
+    handleNotification: async (n) => {
+      const rest = n.request.identifier === REST_ID;
+      return { shouldPlaySound: !rest, shouldSetBadge: false, shouldShowBanner: !rest, shouldShowList: !rest };
+    },
   });
 }
 
@@ -53,11 +57,31 @@ async function cancel(id: string) {
   }
 }
 
-/** Снять уведомления об отдыхе, запланированные прошлыми версиями (таймера отдыха больше нет) */
+/** Снять уведомление о конце отдыха (пропуск отдыха, следующий подход, конец тренировки) */
 export async function cancelRestEnd() {
   if (native) {
     await cancel(REST_ID);
     await cancel(REST_WARN_ID);
+  }
+}
+
+/**
+ * Таймер отдыха (включается вручную): уведомление о конце отдыха, если приложение свёрнуто.
+ * Без разрешения на уведомления — тихо ничего не делает: в приложении отсчёт виден и так.
+ */
+export async function scheduleRestEnd(seconds: number, nextLabel?: string) {
+  if (!native) return;
+  await cancelRestEnd();
+  try {
+    const perm = await Notifications.getPermissionsAsync();
+    if (!perm.granted) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: REST_ID,
+      content: { title: 'Отдых окончен', body: nextLabel ? `Дальше: ${nextLabel}` : 'Время следующего подхода', sound: true },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.max(1, Math.round(seconds)) },
+    });
+  } catch {
+    /* не критично */
   }
 }
 

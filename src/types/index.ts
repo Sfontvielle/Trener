@@ -96,6 +96,8 @@ export interface AppSettings {
   coachApiUrl: string; // пусто → берётся из EXPO_PUBLIC_COACH_API_URL
   /** Уведомление об окончании отдыха, когда приложение свёрнуто */
   restNotify: boolean;
+  /** Таймер отдыха после рабочего подхода — включается вручную кнопкой ⏱ (по умолчанию выключен); длительность — defaultRestSec */
+  restTimer?: boolean;
   /** Утреннее напоминание: чек-ин + взвешивание */
   morningReminder: boolean;
   morningTime: { hour: number; minute: number };
@@ -508,6 +510,8 @@ export interface ExerciseSet {
   warmup?: boolean;
   completedAt?: number;
   restSec?: number; // фактический отдых перед подходом
+  /** Цель на этот подход (число над строкой подхода): вес и повторы/секунды. Нет — у старых тренировок */
+  target?: { weight: number; reps: number };
 }
 
 export interface Recommendation {

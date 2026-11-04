@@ -788,7 +788,7 @@ const closeSheet = async (pg) => {
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: подход → RIR одним тапом → таймера отдыха нет; заметка к упражнению; замена с причинами; блины; разминка', async () => {
+  await check('36. Тренировка: цель над подходом; свайп влево удаляет подход («Отменить» возвращает); таймер отдыха выключен, включается ⏱; заметка; замена; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -826,16 +826,52 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Записать подход» → таймера отдыха нет совсем → RIR одним тапом
+    // Над каждым рабочим подходом — цель на этот подход
+    const goals = page.getByTestId(/^set-goal-\d+$/);
+    assert.ok((await goals.count()) >= 2, 'цель над рабочими подходами');
+    assert.match(await goals.first().innerText(), /Цель/);
+    // Рабочий подход: один тап «Записать подход» → таймер отдыха по умолчанию выключен → отсчёта нет, RIR не спрашиваем
     await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(500);
-    assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
-    assert.equal(await page.getByLabel('Таймер отдыха', { exact: true }).count(), 0, 'и кнопки таймера отдыха нет');
-    assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
-    await page.getByLabel('Запас 2', { exact: true }).click();
+    assert.equal(await page.getByTestId('rest-strip').count(), 0, 'по умолчанию отдыха нет');
+    assert.ok(!/Сколько повторений осталось в запасе|\bRIR\b/.test(await page.evaluate(() => document.body.innerText)), 'RIR больше не спрашиваем');
+    // Свайп влево по невыполненному подходу → удалён; «Отменить» возвращает его на место
+    const setIds = () => page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets.map((x) => x.id); });
+    const before = await setIds();
+    const lastRow = page.getByTestId(`set-row-${before.length - 1}`);
+    await lastRow.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
-    assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
-    // Заметка к упражнению (вместо кнопки таймера): сохраняется и видна под названием
+    const box = await lastRow.boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: box.y + box.height / 2 }] });
+    await touch('touchStart', box.x + box.width - 30);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', box.x + box.width - 30 - i * 25); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal((await setIds()).length, before.length - 1, 'подход удалён свайпом');
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.deepEqual(await setIds(), before, '«Отменить» вернул подход на место');
+    // Таймер отдыха: ⏱ → 1:30 → после следующего подхода идёт отсчёт; «Пропустить» убирает его
+    await page.getByLabel('Таймер отдыха: выключен', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('1:30', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('Добавить подход', { exact: true }).click();
+    await page.waitForTimeout(300);
+    await page.getByLabel(/^Записать подход 2$/).first().click();
+    await page.waitForTimeout(600);
+    assert.ok(await page.getByTestId('rest-strip').isVisible(), 'идёт отсчёт отдыха');
+    assert.match(await page.getByTestId('rest-strip').innerText(), /Отдых 1:(29|30|2\d)/);
+    await page.getByLabel('Пропустить отдых', { exact: true }).click();
+    await page.waitForTimeout(400);
+    assert.equal(await page.getByTestId('rest-strip').count(), 0, 'отдых пропущен');
+    // Выключить обратно — по умолчанию таймера нет и у следующих сценариев
+    await page.getByLabel(/^Таймер отдыха: 1:30$/).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('Выключен', { exact: true }).click();
+    await page.waitForTimeout(600);
+    // Заметка к упражнению: сохраняется и видна под названием
     await page.getByLabel('Действия с упражнением').first().click();
     await page.waitForTimeout(600);
     await page.getByLabel('Заметка к упражнению', { exact: true }).click();
