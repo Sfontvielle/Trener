@@ -7,7 +7,7 @@
 | 3D-анимации техники (зацикленный WebP) и постеры | `assets/anim/*.webp`, `assets/anim/posters/*.jpg` | собственный 3D-пайплайн RYNJI (`tools/anim`): процедурная фигура three.js, позы по биомеханике, рендер в headless Chromium | права наши (сгенерировано кодом этого репозитория); исходный код рендера — в `tools/anim` |
 | Иллюстрации интерфейса: атлет на приветствии, атлет в карточке тренировки на главной, торсы целей, гантель, блин «Совета RYNJI» | `assets/art/*.webp` | тот же пайплайн (`tools/anim/web/stills.js` → `tools/anim/stills.cjs` → `tools/anim/art.py`) | права наши |
 | Слой «энергии» на приветствии (зелёные разряды) | `assets/art/energy.webp` | генерация `tools/anim/energy.py` (Pillow, фрактальная молния) | права наши |
-| ~~Фото фаз движения для упражнений без 3D-петли~~ — удалены в фазе E (RYNJI 2.0): техника и миниатюры показывают нейтральную схему мышц (react-native-body-highlighter, MIT) до лицензированной 3D-модели | был `assets/exercises/*.jpg` (есть в истории git) | free-exercise-db (github.com/yuhonas/free-exercise-db) | Unlicense (общественное достояние) |
+| ~~Фото фаз движения для упражнений без 3D-петли~~ — удалены в фазе E (RYNJI 2.0): техника и миниатюры показывают анатомическую карту — собственную фигуру RYNJI (раунд 4, `src/features/exercises/anatomy`, права наши) | был `assets/exercises/*.jpg` (есть в истории git) | free-exercise-db (github.com/yuhonas/free-exercise-db) | Unlicense (общественное достояние) |
 | Значки интерфейса, знак-бицепс | `@expo/vector-icons` (Ionicons, MaterialCommunityIcons) | npm | Ionicons — MIT; Material Design Icons — Apache 2.0 |
 | Иконка приложения и заставка | `assets/icon.png`, `assets/splash-icon.png` | из проекта | права владельца проекта |
 

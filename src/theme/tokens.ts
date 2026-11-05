@@ -36,6 +36,19 @@ export interface Palette {
   stabilizerMuscle: string;
   muscleIdle: string;
   muscleNeutral: string;
+  /**
+   * Анатомическая карта: цвета не зависят от акцента темы (владелец: «строго зелёный и жёлтый»).
+   * musclePrimary — мышца работает (зелёный), muscleSecondary — задействована слегка (светло-жёлтый)
+   */
+  musclePrimary: string;
+  muscleSecondary: string;
+  /** Фигура: просветы между мышцами, голова/кисти/стопы, мышцы в покое, сухожилия, волокна, причёска */
+  anatomySkin: string;
+  anatomyNeutral: string;
+  anatomyIdle: string;
+  anatomyTendon: string;
+  anatomyFiber: string;
+  anatomyHair: string;
   protein: string;
   fat: string;
   carbs: string;
@@ -72,6 +85,14 @@ export const DARK_BASE: Omit<Palette, keyof AccentSet> = {
   stabilizerMuscle: '#8E7CFF',
   muscleIdle: '#29323F',
   muscleNeutral: '#3A4555',
+  musclePrimary: '#3DDC84',
+  muscleSecondary: '#F4DE77',
+  anatomySkin: '#0F141B',
+  anatomyNeutral: '#252E3B',
+  anatomyIdle: '#2C3644',
+  anatomyTendon: '#4C576A',
+  anatomyFiber: 'rgba(0,0,0,0.38)',
+  anatomyHair: '#3A4454',
   protein: '#A48BFF',
   fat: '#FF7EA6',
   carbs: '#F2D45C',
@@ -103,6 +124,14 @@ export const LIGHT_BASE: Omit<Palette, keyof AccentSet> = {
   stabilizerMuscle: '#6E5CE6',
   muscleIdle: '#DCE1E8',
   muscleNeutral: '#C8CFD9',
+  musclePrimary: '#1FA855',
+  muscleSecondary: '#E3BE2E',
+  anatomySkin: '#9AA3B0',
+  anatomyNeutral: '#BAC1CB',
+  anatomyIdle: '#CDD3DC',
+  anatomyTendon: '#EEF1F5',
+  anatomyFiber: 'rgba(0,0,0,0.13)',
+  anatomyHair: '#7D8693',
   protein: '#6A4FE0',
   fat: '#B32F5C',
   carbs: '#806200',

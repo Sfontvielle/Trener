@@ -1850,10 +1850,58 @@ const closeSheet = async (pg) => {
     let all = await media();
     assert.equal(all.filter((x) => /assets\/exercises\/|free-exercise-db/.test(x)).length, 0, 'в библиотеке нет фото атлета');
     assert.ok((await page.locator('svg path').count()) > 50, 'миниатюры — схемы мышц');
-    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1]);
+    // у профиля женщины — тот же ролик с женской фигурой (<id>_f)
+    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1].replace(/_f$/, ''));
     const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift'];
     assert.ok(posters.every((p) => own.includes(p)), `постеры только своих петель: ${posters}`);
     await shot('library-thumbs');
+  });
+
+  await check('68. Экран упражнения: длинное название видно целиком (до двух строк, без многоточия)', async () => {
+    for (const [id, name] of [['decline_bench_press', 'Жим штанги с отрицательным наклоном'], ['pec_deck', 'Сведение рук в тренажёре (бабочка)'], ['good_morning', 'Наклоны со штангой (гуд-монинг)']]) {
+      await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(500);
+      const cut = await page.evaluate((n) => {
+        const el = [...document.querySelectorAll('[role="heading"]')].find((h) => h.textContent.trim() === n);
+        if (!el) return 'нет заголовка';
+        return el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1 ? 'обрезано' : '';
+      }, name);
+      assert.equal(cut, '', `${name}: ${cut}`);
+    }
+  });
+
+  await check('69. Анатомия: зелёный и жёлтый в любой теме, точный пучок мышцы, женская фигура для профиля женщины', async () => {
+    const setProfile = (patch) => page.evaluate((p) => {
+      const raw = JSON.parse(localStorage.getItem('form.profile'));
+      if (p.accent) raw.state.settings.accent = p.accent;
+      if (p.sex) raw.state.profile.sex = p.sex;
+      localStorage.setItem('form.profile', JSON.stringify(raw));
+    }, patch);
+    const before = await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('form.profile')); return { accent: r.state.settings.accent || 'lime', sex: r.state.profile.sex }; });
+    for (const accent of ['orange', 'blue']) {
+      await setProfile({ accent, sex: 'male' });
+      await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      await dismiss();
+      const map = page.getByTestId('technique-muscles');
+      await map.scrollIntoViewIfNeeded();
+      const stops = await map.evaluate((el) => [...el.querySelectorAll('stop')].map((s) => (s.getAttribute('stop-color') || s.getAttribute('stopColor') || '').toUpperCase()));
+      assert.ok(stops.includes('#3DDC84') && stops.includes('#F4DE77'), `${accent}: зелёный и жёлтый (${[...new Set(stops)].join(' ')})`);
+      assert.ok(!stops.includes('#FF8A3D') && !stops.includes('#6CB6FF'), `${accent}: без цвета акцента`);
+      assert.ok((await map.locator('path').count()) > 120, 'подробная фигура: отдельные мышцы и волокна');
+      assert.equal(await page.getByTestId('anatomy-figure-male').count(), 1, 'мужская фигура');
+      const legend = await map.innerText();
+      assert.match(legend, /Работают:\s*Средний пучок дельты/, 'махи в стороны — средний пучок');
+      assert.match(legend, /Задействованы слегка:.*Передний пучок дельты/, 'передний пучок — слегка');
+    }
+    await setProfile({ sex: 'female', accent: 'lime' });
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(800);
+    await dismiss();
+    assert.equal(await page.getByTestId('anatomy-figure-female').count(), 1, 'женская фигура для профиля женщины');
+    const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
+    assert.match(media, /bench_press_f/, '3D-ролик с женской фигурой');
+    await setProfile(before);
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

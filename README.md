@@ -139,7 +139,7 @@ scripts/logic-test.ts  автотесты логики
 ## Данные и источники
 
 - Кадры фаз движения: [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain), встроены в приложение (работают офлайн).
-- Анатомические контуры: `react-native-body-highlighter` (MIT).
+- Анатомическая карта: собственная фигура RYNJI (`src/features/exercises/anatomy`), мужская и женская, без сторонних рисунков.
 - Продукты: [Open Food Facts](https://world.openfoodfacts.org) (ODbL) — поиск и штрихкоды; запасные базы по штрихкоду —
   [USDA FoodData Central](https://fdc.nal.usda.gov) (брендовые товары с GTIN; ключ `EXPO_PUBLIC_FDC_KEY`, без него — DEMO_KEY)
   и [UPCitemdb](https://www.upcitemdb.com) (только название — КБЖУ дописываются с этикетки). Найденные и созданные с этикетки

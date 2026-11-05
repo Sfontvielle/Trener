@@ -8,6 +8,8 @@ import type { MuscleSlug } from '@/types';
 export interface ExerciseAnimation {
   loop: number;
   poster: number;
+  loopF?: number;
+  posterF?: number;
   primary: MuscleSlug[];
   secondary: MuscleSlug[];
   checked: boolean;

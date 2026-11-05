@@ -23,14 +23,12 @@ export function TechniqueView({ ex, sex, onSurface }: { ex: Exercise; sex?: Sex;
   const block = onSurface ? [styles.block, styles.raised] : styles.block;
   return (
     <View style={{ gap: space.md }}>
-      {/* 3D-петля — только если она есть; иначе нейтральная схема мышц (без фото атлета — до лицензированной модели) */}
-      {anim ? (
-        <ExerciseAnimation ex={ex} anim={anim} stabilizers={t.stabilizers} />
-      ) : (
-        <View testID="technique-muscles">
-          <Anatomy primary={ex.primary} secondary={ex.secondary} stabilizers={t.stabilizers} sex={sex ?? profile?.sex} large />
-        </View>
-      )}
+      {/* 3D-петля движения (если есть) и анатомическая карта — у каждого упражнения: какие мышцы работают
+          (зелёным) и какие задействованы слегка (светло-жёлтым), фигура — по полу из профиля */}
+      {anim ? <ExerciseAnimation ex={ex} anim={anim} legend={false} /> : null}
+      <View testID="technique-muscles">
+        <Anatomy primary={ex.primary} secondary={ex.secondary} stabilizers={t.stabilizers} sex={sex ?? profile?.sex} exerciseId={ex.id} large />
+      </View>
       {!allowed.ok && allowed.reason !== 'нет оборудования' ? (
         <View style={[block, styles.warn]}>
           <Head icon="medkit-outline" title="С учётом твоего профиля" color={colors.warning} />

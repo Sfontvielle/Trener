@@ -12,6 +12,8 @@ const ROOT = path.resolve(__dirname, '../..');
 const ANIM = path.join(ROOT, 'assets/anim');
 const manifest: Record<string, { checked?: boolean; camera?: string; notes?: string }> = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const has = (id: string) => fs.existsSync(path.join(ANIM, `${id}.webp`)) && fs.existsSync(path.join(ANIM, 'posters', `${id}.jpg`));
+/** Женская фигура: <id>_f.webp и posters/<id>_f.jpg (рендер SEX=female) */
+const hasF = (id: string) => has(`${id}_f`);
 
 async function main() {
 // подсветка мышц берётся из самих сцен — легенда в приложении совпадает с тем, что окрашено на рендере
@@ -24,11 +26,14 @@ const ts = [
   '',
   '/**',
   ' * 3D-анимации техники (зацикленный WebP, офлайн) и постеры для списков. Собственный рендер RYNJI (tools/anim).',
-  ' * primary / secondary — мышцы, подсвеченные на рендере (ярко-зелёные / бледные).',
+  ' * primary / secondary — мышцы, подсвеченные на рендере (зелёные / светло-жёлтые).',
+  ' * loopF / posterF — тот же ролик с женской фигурой (для профиля женщины).',
   ' */',
   'export interface ExerciseAnimation {',
   '  loop: number;',
   '  poster: number;',
+  '  loopF?: number;',
+  '  posterF?: number;',
   '  primary: MuscleSlug[];',
   '  secondary: MuscleSlug[];',
   '  checked: boolean;',
@@ -42,7 +47,8 @@ const ts = [
     const known = new Set<string>([...e.primary, ...e.secondary]);
     const extra = [...m.primary, ...m.secondary].filter((x) => !known.has(x));
     if (extra.length) throw new Error(`${e.id}: подсвечены мышцы не из каталога: ${extra.join(', ')}`);
-    return `  ${e.id}: {\n    loop: require('../../assets/anim/${e.id}.webp'),\n    poster: require('../../assets/anim/posters/${e.id}.jpg'),\n    primary: ${q(m.primary)},\n    secondary: ${q(m.secondary)},\n    checked: ${!!manifest[e.id]?.checked},\n  },`;
+    const female = hasF(e.id) ? `\n    loopF: require('../../assets/anim/${e.id}_f.webp'),\n    posterF: require('../../assets/anim/posters/${e.id}_f.jpg'),` : '';
+    return `  ${e.id}: {\n    loop: require('../../assets/anim/${e.id}.webp'),\n    poster: require('../../assets/anim/posters/${e.id}.jpg'),${female}\n    primary: ${q(m.primary)},\n    secondary: ${q(m.secondary)},\n    checked: ${!!manifest[e.id]?.checked},\n  },`;
   }),
   '};',
   '',
@@ -62,7 +68,7 @@ const md = [
   '',
   'Источник всех файлов — собственный 3D-пайплайн RYNJI (`tools/anim`): процедурная анатомическая фигура (three.js), движения по биомеханике упражнения, рендер в headless Chromium (WebGL2) → зацикленный WebP. Сторонние модели, фото и лицензированные анимации не используются. Воспроизведение офлайн (файлы в сборке).',
   '',
-  'Подсветка: основные мышцы — ярко-зелёные, вспомогательные — бледно-жёлто-зелёные, остальные — серые.',
+  'Подсветка: основные мышцы — зелёные, вспомогательные — светло-жёлтые, остальные — серые (те же цвета, что у анатомической карты приложения, в любой теме). У каждого ролика есть версия с женской фигурой (`<id>_f.webp`) — для профиля женщины.',
   '',
   '| exercise_id | название | тип | мышцы (основные / вспомогательные) | animation_asset | источник / лицензия | offline_ok | checked |',
   '|---|---|---|---|---|---|---|---|',

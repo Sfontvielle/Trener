@@ -79,7 +79,8 @@ export function Header({ title, subtitle, right, onBack, large }: { title: strin
         style={{ marginLeft: -4 }}
       />
       <View style={{ flex: 1, paddingHorizontal: 6 }}>
-        <T v={large ? 'title1' : 'title2'} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {/* До двух строк: длинное название упражнения («Жим штанги с отрицательным наклоном») видно целиком, без многоточия */}
+        <T v={large ? 'title1' : 'title2'} accessibilityRole="header" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>
           {title}
         </T>
         {subtitle ? (
@@ -88,7 +89,8 @@ export function Header({ title, subtitle, right, onBack, large }: { title: strin
           </T>
         ) : null}
       </View>
-      {right ?? <View style={{ width: 44 }} />}
+      {/* Без кнопки справа место отдаём заголовку (он выровнен влево, симметрия не нужна) */}
+      {right ?? null}
     </View>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
-import type { Exercise, MuscleSlug } from '@/types';
+import type { Exercise, MuscleSlug, Sex } from '@/types';
+import { useProfile } from '@/stores/profile';
 import { colors, radius, themed } from '@/theme';
 import { Icon, T } from '@/components/ui';
 import { prefersReducedMotion } from '@/components/motion';
@@ -9,18 +10,24 @@ import { MUSCLE_LABEL } from '@/data/exercises';
 import { EXERCISE_ANIMATIONS, type ExerciseAnimation as Anim } from '@/data/exerciseAnimations';
 
 const NATIVE = Platform.OS !== 'web';
-/** Цвета подсветки зашиты в рендер (tools/anim/web/body.js) — легенда повторяет их, а не акцент темы */
-const PRIMARY = '#A6EA2A';
-const SECONDARY = '#D8D58A';
+/** Значок «3D» — цвет подсветки работающих мышц в рендере (tools/anim/web/body.js), не акцент темы */
+const PRIMARY = '#3DDC84';
 const RATIO = 4 / 3;
 
 export const animationFor = (ex: Exercise): Anim | undefined => EXERCISE_ANIMATIONS[ex.id];
+
+/** Ролик и постер под пол из профиля: у женщины — женская фигура (если её версия отрендерена) */
+export function mediaFor(anim: Anim, sex: Sex | undefined): { loop: number; poster: number } {
+  return sex === 'female' && anim.loopF && anim.posterF ? { loop: anim.loopF, poster: anim.posterF } : { loop: anim.loop, poster: anim.poster };
+}
 
 /**
  * 3D-анимация техники: зацикленный рендер анатомической фигуры с подсветкой работающих мышц.
  * Файлы встроены в приложение (офлайн). Касание — пауза/пуск; «Уменьшение движения» — стоп-кадр, пуск вручную.
  */
-export function ExerciseAnimation({ ex, anim, stabilizers = [] }: { ex: Exercise; anim: Anim; stabilizers?: MuscleSlug[] }) {
+export function ExerciseAnimation({ ex, anim, stabilizers = [], legend = true }: { ex: Exercise; anim: Anim; stabilizers?: MuscleSlug[]; /** false — легенду показывает анатомическая карта под роликом */ legend?: boolean }) {
+  const sex = useProfile((s) => s.profile?.sex);
+  const media = mediaFor(anim, sex);
   const [playing, setPlaying] = useState(() => !prefersReducedMotion());
   const [full, setFull] = useState(false);
   const ref = useRef<Image>(null);
@@ -37,7 +44,7 @@ export function ExerciseAnimation({ ex, anim, stabilizers = [] }: { ex: Exercise
           <Image
             ref={ref}
             // на вебе остановить WebP нельзя — на паузе показываем стоп-кадр
-            source={!NATIVE && !playing ? anim.poster : anim.loop}
+            source={!NATIVE && !playing ? media.poster : media.loop}
             autoplay={playing}
             contentFit="cover"
             transition={0}
@@ -70,12 +77,13 @@ export function ExerciseAnimation({ ex, anim, stabilizers = [] }: { ex: Exercise
           </Pressable>
         </View>
       </View>
-      <View style={styles.legend} accessible accessibilityLabel={`Основные мышцы: ${names(anim.primary)}. Дополнительные: ${names(anim.secondary) || 'нет'}${stabilizers.length ? `. Стабилизаторы: ${names(stabilizers)}` : ''}`}>
-        <Legend color={PRIMARY} title="Основные мышцы" text={names(anim.primary)} />
-        {anim.secondary.length ? <Legend color={SECONDARY} title="Дополнительные" text={names(anim.secondary)} /> : null}
-        {stabilizers.length ? <Legend color={colors.stabilizerMuscle} title="Стабилизаторы" text={names(stabilizers)} /> : null}
-      </View>
-      <FullScreen visible={full} anim={anim} title={ex.name} onClose={() => setFull(false)} />
+      {legend ? (
+        <View style={styles.legend} accessible accessibilityLabel={`Работают: ${names(anim.primary)}. Задействованы слегка: ${names([...anim.secondary, ...stabilizers]) || 'нет'}`}>
+          <Legend color={colors.musclePrimary} title="Работают" text={names(anim.primary)} />
+          {anim.secondary.length || stabilizers.length ? <Legend color={colors.muscleSecondary} title="Задействованы слегка" text={names([...anim.secondary, ...stabilizers])} /> : null}
+        </View>
+      ) : null}
+      <FullScreen visible={full} media={media} title={ex.name} onClose={() => setFull(false)} />
     </View>
   );
 }
@@ -96,7 +104,7 @@ function Legend({ color, title, text }: { color: string; title: string; text: st
   );
 }
 
-function FullScreen({ visible, anim, title, onClose }: { visible: boolean; anim: Anim; title: string; onClose: () => void }) {
+function FullScreen({ visible, media, title, onClose }: { visible: boolean; media: { loop: number; poster: number }; title: string; onClose: () => void }) {
   const { width, height } = useWindowDimensions();
   const w = Math.min(width, (height - 120) * RATIO);
   return (
@@ -110,7 +118,7 @@ function FullScreen({ visible, anim, title, onClose }: { visible: boolean; anim:
             <Icon name="close" size={26} color="#FFFFFF" />
           </Pressable>
         </View>
-        {visible ? <Image source={anim.loop} placeholder={anim.poster} contentFit="contain" style={{ width: w, aspectRatio: RATIO }} accessibilityIgnoresInvertColors /> : null}
+        {visible ? <Image source={media.loop} placeholder={media.poster} contentFit="contain" style={{ width: w, aspectRatio: RATIO }} accessibilityIgnoresInvertColors /> : null}
       </View>
     </Modal>
   );
