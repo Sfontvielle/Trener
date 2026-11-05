@@ -131,7 +131,8 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
           ].map((r) => (
             <View key={r.label} style={styles.readyRow}>
               <Icon name={r.icon} size={20} color={colors.accent} />
-              <T v="body" style={{ flex: 1, fontWeight: '600' }}>
+              {/* minWidth: 0 — при крупном шрифте длинное слово переносится, а не выталкивает галочку за край */}
+              <T v="body" style={{ flex: 1, minWidth: 0, fontWeight: '600' }}>
                 {r.label}
               </T>
               <Icon name="checkmark" size={20} color={colors.accent} />

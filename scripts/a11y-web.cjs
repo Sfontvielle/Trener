@@ -145,10 +145,10 @@ const PROFILE = {
   await page.waitForTimeout(800);
   await audit('/workout/active (таймер удержания)');
   routes.push('/workout/active (суперсет, таймер)');
-  // Техника — нижний раздел экрана тренировки
+  // Техника — шторкой по фото упражнения
   await page.getByLabel('Техника выполнения').click();
   await page.waitForTimeout(800);
-  await audit('/workout/active (раздел техники)');
+  await audit('/workout/active (шторка техники)');
   routes.push('/workout/active (техника)');
   // Первый запуск на чистом устройстве: приветствие → вход → анкета (5 этапов) → старт
   const fctx = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });

@@ -351,11 +351,13 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByTestId('workout-list').count(), 0, 'закрыта тапом по фону');
   });
 
-  await check('15. Экран подхода: одно упражнение — название, мышцы, прошлый раз, подходы; техника — свёрнутый раздел внизу', async () => {
+  await check('15. Экран подхода как на образце: название по центру, мышцы, подходы; внизу карточки — заметка, фото техники и «i»', async () => {
     await page.goto(`${URL}/workout/active`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     const tech = await page.getByLabel('Техника выполнения').boundingBox();
-    assert.equal(await page.getByLabel('Техника выполнения').getAttribute('aria-expanded'), 'false', 'раздел техники свёрнут');
+    // Как на образце владельца: без «прошлый раз», целей и подсветки — только название, мышцы и подходы
+    for (const gone of ['last-result', 'rynji-suggestion']) assert.equal(await page.getByTestId(gone).count(), 0, `${gone} — в «i», не на экране`);
+    assert.equal(await page.getByTestId(/^set-goal-\d+$/).count(), 0, 'без подписей целей над подходами');
     const cta = await page.getByLabel(/^Записать подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
     assert.ok(tech && cta && tech.y < cta.y, `миниатюра техники — в карточке над панелью: ${tech && tech.y} < ${cta && cta.y}`);
     assert.ok(cta.y + cta.height <= 956, `главная кнопка на экране: y=${cta.y}`);
@@ -381,18 +383,15 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByTestId('workout-list').count(), 0, 'шторка закрыта');
   });
 
-  await check('16б. Техника — нижний сворачиваемый раздел: раскрывается под подходами, без заглушек, сворачивается', async () => {
+  await check('16б. Техника — отдельной шторкой по фото упражнения: без заглушек, закрывается', async () => {
     await page.getByLabel('Техника выполнения').click();
-    await page.waitForTimeout(700);
-    assert.ok(await page.getByTestId('technique-inline').isVisible(), 'раздел раскрыт');
+    await page.waitForTimeout(800);
+    assert.ok(await page.getByTestId('technique-inline').isVisible(), 'шторка техники открыта');
     assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек «появится позже»');
     assert.match(await page.getByTestId('technique-inline').innerText(), /Положение тела/);
-    const panel = await page.getByTestId('technique-inline').boundingBox();
-    const sets = await page.getByLabel(/^Записать подход \d$|^Разминка — готово$|^Далее: |^Завершить тренировку$|^Старт · /).first().boundingBox();
-    assert.ok(panel && sets, 'подходы и раздел на одном экране');
-    await page.getByLabel('Техника выполнения').click();
-    await page.waitForTimeout(500);
-    assert.equal(await page.getByTestId('technique-inline').count(), 0, 'раздел свёрнут');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(600);
+    assert.equal(await page.getByTestId('technique-inline').count(), 0, 'шторка закрыта');
   });
 
   await check('22. Тренировки → «Программы»: неделя сверху, объём — шторкой', async () => {
@@ -857,13 +856,18 @@ const closeSheet = async (pg) => {
     assert.match(await page.getByTestId('set-edit-0').innerText(), /100/);
     // Заметка — на виду, кнопкой под подходами
     assert.ok(await page.getByTestId('note-button').isVisible(), 'кнопка «Заметка» на экране');
-    // Разминка: предложена для 100 кг, вставляется одним тапом
-    const warm = page.getByLabel('Добавить разминку');
+    // Разминка: в «i» (на экране ничего лишнего), для 100 кг вставляется одним тапом
+    await page.getByLabel('Рекомендация, почему').first().click();
+    await page.waitForTimeout(600);
+    assert.ok(await page.getByTestId('last-result').isVisible(), 'прошлый раз — в «i»');
+    const warm = page.getByLabel(/^Добавить разминку/);
     if (await warm.count()) {
       await warm.click();
-      await page.waitForTimeout(400);
-      assert.ok((await page.getByText('Р', { exact: true }).count()) >= 2, 'разминочные подходы в таблице');
-      await page.getByLabel('Убрать подход').count();
+      await page.waitForTimeout(700);
+      assert.ok((await page.getByText('Р', { exact: true }).count()) >= 2, 'разминочные подходы в списке');
+    } else {
+      await page.getByLabel('Закрыть').last().click();
+      await page.waitForTimeout(500);
     }
     // Блины — в пояснении к рекомендации (тап по рекомендации), если вес на штанге
     await page.getByLabel('Рекомендация, почему').first().click();
@@ -884,13 +888,13 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Над каждым рабочим подходом — цель на этот подход
-    const goals = page.getByTestId(/^set-goal-\d+$/);
-    assert.ok((await goals.count()) >= 2, 'цель над рабочими подходами');
-    assert.match(await goals.first().innerText(), /Цель/);
-    // Рабочий подход: один тап «Записать подход» → таймер отдыха по умолчанию выключен → отсчёта нет, RIR не спрашиваем
+    // Цель подхода — в подписи строки для VoiceOver (на экране — только значения, они и есть цель)
+    assert.match(await page.getByTestId(/^set-edit-\d+$/).last().getAttribute('aria-label'), /цель/);
+    // Рабочий подход: большая ✓ внизу → справа от подхода появляется галочка; таймер отдыха по умолчанию выключен
+    const firstWork = await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets.findIndex((x) => !x.warmup && !x.done); });
     await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(500);
+    assert.ok(await page.getByTestId(`set-done-${firstWork}`).isVisible(), 'галочка справа от выполненного подхода');
     assert.equal(await page.getByTestId('rest-strip').count(), 0, 'по умолчанию отдыха нет');
     assert.ok(!/Сколько повторений осталось в запасе|\bRIR\b/.test(await page.evaluate(() => document.body.innerText)), 'RIR больше не спрашиваем');
     // Свайп влево по невыполненному подходу → удалён; «Отменить» возвращает его на место
@@ -1398,8 +1402,13 @@ const closeSheet = async (pg) => {
     // Основная зона: прошлый раз и предложение RYNJI; подходы заполнены предложением
     const r0 = a.exercises[0].recommendation;
     if (r0 && r0.action !== 'new' && r0.weight > 0) {
+      // Прошлый раз и предложение RYNJI — в «i» (на экране только подходы, как на образце)
+      await page.getByLabel('Рекомендация, почему').first().click();
+      await page.waitForTimeout(600);
       assert.ok(await page.getByTestId('last-result').isVisible(), 'прошлый раз');
-      assert.match(await page.getByTestId('rynji-suggestion').innerText(), /RYNJI\s+[\d,]+ кг × \d+–\d+/);
+      assert.match(await page.getByTestId('rec').innerText(), /[\d,]+ кг × \d+–\d+/);
+      await page.getByLabel('Закрыть').last().click();
+      await page.waitForTimeout(500);
       assert.equal(a.exercises[0].sets.find((x) => !x.warmup).weight, r0.weight, 'подход заполнен предложением');
     }
     await page.getByLabel(/^Записать подход 1$/).first().click();
