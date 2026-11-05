@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, InputAccessoryView, Keyboard, PanResponder, PixelRatio, Platform, Pressable, ScrollView, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, WorkoutExercise, WorkoutSession } from '@/types';
@@ -13,7 +13,7 @@ import { useProfile } from '@/stores/profile';
 import { useCheckins } from '@/stores/checkins';
 import { useHealth } from '@/stores/health';
 import { getExercise, GROUP_LABEL } from '@/data/exercises';
-import { effectiveIncrement, historyFor, isPersonalRecord, PR_HISTORY, TIME_STEP_SEC } from '@/features/training/progression';
+import { effectiveIncrement, historyFor, isPersonalRecord, PR_HISTORY } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
@@ -40,6 +40,7 @@ import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
 import { Tap, prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
+import { useKeyboardAwareScroll } from '@/components/keyboard';
 import { cancelRestEnd, ensurePermission, scheduleRestEnd } from '@/services/notifications';
 
 const NATIVE = Platform.OS !== 'web';
@@ -486,8 +487,11 @@ export default function ActiveWorkout() {
  * Отметка подхода (из строки подхода или «липкой» кнопки). Сохраняется сразу — persist пишет на диск,
  * поэтому подход не теряется при сворачивании/закрытии приложения.
  */
-function completeSetFor({ we, set, index, unit, onPr, onNavigate, onRest }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void; onNavigate?: (i: number) => void; onRest?: (nextLabel?: string) => void }) {
+function completeSetFor({ we: weArg, set: setArg, index, unit, onPr, onNavigate, onRest }: { we: WorkoutExercise; set: ExerciseSet; index: number; unit: 'kg' | 'lb'; onPr: (t: string) => void; onNavigate?: (i: number) => void; onRest?: (nextLabel?: string) => void }) {
   const st = useWorkouts.getState();
+  // Свежие значения из хранилища: число могли только что поправить в строке подхода
+  const we = st.active?.exercises.find((x) => x.id === weArg.id) ?? weArg;
+  const set = we.sets.find((x) => x.id === setArg.id) ?? setArg;
   const customs = st.customExercises;
   const ex = getExercise(we.exerciseId, customs);
   if (!ex) return;
@@ -717,8 +721,22 @@ function ExerciseFocus({
   const [infoOpen, setInfoOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [platesOpen, setPlatesOpen] = useState(false);
-  // Редактор подхода (R2): тап по строке — лист с крупными «−/+» и вводом с клавиатуры
-  const [editId, setEditId] = useState<string | null>(null);
+  // Ввод прямо в строке подхода (R3): какое число набирается; черновик и геометрия строк — в ref,
+  // чтобы экран не перерисовывался на каждую цифру
+  const [edit, setEdit] = useState<{ id: string; f: EditField } | null>(null);
+  const curId = we.sets.find((x) => !x.done)?.id;
+  const order = we.sets.map((x) => x.id).join(',');
+  const live = useRef<Live>({ edit: null, draft: null, rows: {}, order: order.split(','), cur: curId, shown: false, scrollY: 0, viewH: 0 });
+  // Строка, где набирается число, — над клавиатурой (общий механизм экранов и шторок)
+  const { scrollRef, rootRef, pad: kbPad, ensure: ensureVisible, onScroll: onKbScroll } = useKeyboardAwareScroll();
+  // Подсветка текущего подхода: одна на карточку, после «✓» съезжает к следующему подходу
+  const [hl] = useState(() => ({ y: new Animated.Value(0), o: new Animated.Value(0) }));
+  const [hlH, setHlH] = useState(0);
+  useEffect(() => {
+    live.current.cur = curId;
+    live.current.order = order.split(',');
+    placeHighlight(live.current, hl, setHlH, scrollRef.current);
+  }, [curId, order, hl, scrollRef]);
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
@@ -760,6 +778,67 @@ function ExerciseFocus({
     toast(x.done ? 'Подход удалён' : 'Подход убран', 'trash-outline', { label: 'Отменить', onPress: () => useWorkouts.getState().insertSet(we.id, x, i) });
   };
 
+  /** Сохранить набранное число (один раз, когда ввод закончен); пустое или неверное — оставить как было */
+  const commitEdit = (e: { id: string; f: EditField }) => {
+    const L = live.current;
+    const v = L.draft;
+    L.draft = null;
+    if (v == null || !v.trim()) return;
+    const st = useWorkouts.getState();
+    const cur = st.active?.exercises.find((x) => x.id === we.id)?.sets.find((x) => x.id === e.id);
+    if (!cur) return;
+    if (e.f === 'w') {
+      const n = parseDecimal(v);
+      if (!Number.isFinite(n) || n < 0) return;
+      const kg = fromDisplayWeight(n, unit);
+      if (kg !== cur.weight) st.updateSet(we.id, e.id, { weight: kg });
+    } else {
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0) return;
+      if (n !== cur.reps) st.updateSet(we.id, e.id, { reps: n });
+    }
+  };
+  const startEdit = (id: string, f: EditField) => {
+    const L = live.current;
+    if (L.edit) commitEdit(L.edit);
+    L.edit = { id, f };
+    L.draft = null;
+    setEdit(L.edit);
+    // Клавиатура уже открыта (переход между числами) — докрутить строку над ней
+    ensureVisible();
+  };
+  const finishEdit = () => {
+    const L = live.current;
+    if (L.edit) commitEdit(L.edit);
+    L.edit = null;
+    setEdit(null);
+    Keyboard.dismiss();
+  };
+  /** Поле потеряло фокус (тап мимо, прокрутка) — сохранить, если это всё ещё оно */
+  const endEdit = (id: string, f: EditField) => {
+    const L = live.current;
+    if (!L.edit || L.edit.id !== id || L.edit.f !== f) return;
+    commitEdit(L.edit);
+    L.edit = null;
+    setEdit(null);
+  };
+  /** «Далее»: вес → повторы того же подхода; на повторах — готово */
+  const submitField = (id: string, f: EditField) => (f === 'w' ? startEdit(id, 'r') : finishEdit());
+  /** Высота строки изменилась (появилась, крупный шрифт) — подсветку пересчитать: от высот зависит её место */
+  const onRowLayout = (id: string, h: number) => {
+    const L = live.current;
+    if (L.rows[id] === h) return;
+    L.rows[id] = h;
+    placeHighlight(L, hl, setHlH, scrollRef.current);
+  };
+  /** Отметка подхода во время набора: сначала сохранить набранное, затем записать подход со свежими значениями */
+  const completeSet = (x: ExerciseSet) => {
+    if (live.current.edit) finishEdit();
+    onComplete(useWorkouts.getState().active?.exercises.find((y) => y.id === we.id)?.sets.find((y) => y.id === x.id) ?? x);
+  };
+  const editSet = edit ? we.sets.find((x) => x.id === edit.id) : undefined;
+  const editTitle = editSet ? `${editSet.warmup ? 'Разминка' : `Подход ${we.sets.filter((x) => !x.warmup).indexOf(editSet) + 1}`} · ${edit?.f === 'w' ? `вес, ${unitLabel(unit)}` : timed ? 'время, сек' : 'повторы'}` : '';
+
   const tip = autoregulate(we, step);
   return (
     <View style={styles.cardWrap}>
@@ -790,31 +869,53 @@ function ExerciseFocus({
         <View style={styles.cardLine} />
 
         {/* Подходы: номер слева, «70 кг × 10» по центру, справа — галочка, когда подход выполнен.
-            Тап по числам — редактор подхода, свайп влево — удалить */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: space.md }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {we.sets.map((x, i) => {
-            const k = we.sets.slice(0, i).filter((y) => !y.warmup).length;
-            const no = x.warmup ? 'Р' : String(k + 1);
-            return (
-              <SetRow
-                key={x.id}
-                weId={we.id}
-                set={x}
-                idx={i}
-                no={no}
-                unit={unit}
-                onComplete={onComplete}
-                onDelete={deleteSet}
-                onEdit={() => setEditId(x.id)}
-                timed={timed}
-                weightCol={weightCol}
-                bodyweight={!!ex.bodyweight}
-                range={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined}
-                last={i === we.sets.length - 1}
-              />
-            );
-          })}
-        </ScrollView>
+            Текущий подход подсвечен; тап по числу — ввод прямо в строке, свайп влево — удалить */}
+        <View ref={rootRef} style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: space.md + kbPad }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={32}
+            onScroll={(e) => {
+              live.current.scrollY = e.nativeEvent.contentOffset.y;
+              onKbScroll(e);
+            }}
+            onLayout={(e) => (live.current.viewH = e.nativeEvent.layout.height)}
+          >
+            {we.sets.map((x, i) => {
+              const k = we.sets.slice(0, i).filter((y) => !y.warmup).length;
+              const no = x.warmup ? 'Р' : String(k + 1);
+              return (
+                <SetRow
+                  key={x.id}
+                  set={x}
+                  idx={i}
+                  no={no}
+                  unit={unit}
+                  current={x.id === curId}
+                  editing={edit?.id === x.id ? edit.f : null}
+                  onComplete={completeSet}
+                  onDelete={deleteSet}
+                  onStartEdit={startEdit}
+                  onDraft={(v) => (live.current.draft = v)}
+                  onEndEdit={endEdit}
+                  onSubmitField={submitField}
+                  onRowLayout={onRowLayout}
+                  timed={timed}
+                  weightCol={weightCol}
+                  bodyweight={!!ex.bodyweight}
+                  range={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined}
+                  last={i === we.sets.length - 1}
+                />
+              );
+            })}
+            {/* Подсветка поверх строк (строки непрозрачные из-за свайпа), касания проходят насквозь */}
+            <Animated.View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" testID="set-highlight" style={[styles.hl, { height: hlH, opacity: hl.o, transform: [{ translateY: hl.y }] }]} />
+          </ScrollView>
+        </View>
 
         <View style={styles.cardLine} />
         <View style={styles.cardFoot}>
@@ -843,7 +944,28 @@ function ExerciseFocus({
         </View>
       </Sheet>
 
-      <SetEditor we={we} setId={editId} onClose={() => setEditId(null)} unit={unit} step={step} timed={timed} weightCol={weightCol} bodyweight={!!ex.bodyweight} onComplete={onComplete} />
+      {/* Над цифровой клавиатурой iOS: что набирается, «Далее» (вес → повторы) и «Готово» */}
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={KBD_ID} backgroundColor={colors.surface2}>
+          <View style={styles.kbdBar}>
+            <T v="callout" color={colors.textDim} numberOfLines={1} style={{ flex: 1 }}>
+              {editTitle}
+            </T>
+            {edit?.f === 'w' ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Далее: повторы" onPress={() => submitField(edit.id, 'w')} hitSlop={8} style={styles.kbdBtn}>
+                <T v="headline" color={colors.accent}>
+                  Далее
+                </T>
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="button" accessibilityLabel="Готово" onPress={finishEdit} hitSlop={8} style={styles.kbdBtn}>
+              <T v="headline" color={colors.accent} style={{ fontWeight: '700' }}>
+                Готово
+              </T>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
 
       <Sheet visible={infoOpen} onClose={() => setInfoOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
         <View style={{ gap: 10 }} testID="rec">
@@ -1062,33 +1184,95 @@ function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number
   return n > 0 ? n : undefined;
 }
 
+/** Состояние карточки подходов вне рендера: набор числа, геометрия строк, прокрутка */
+type Live = { edit: { id: string; f: EditField } | null; draft: string | null; rows: Record<string, number>; order: string[]; cur?: string; shown: boolean; scrollY: number; viewH: number };
+
 /**
- * Подход (R2, по образцу владельца): номер слева в спокойной плашке, «70 кг × 10» крупно по центру, справа пусто —
- * после выполнения появляется галочка. Без подсветки текущего подхода и рамок. Тап по номеру — выполнен / отменить,
- * тап по числам — редактор подхода, свайп влево — удалить. Значения уже заполнены целью на этот подход.
+ * Место строки в списке — сумма высот строк выше (строки идут подряд). Не берём y из onLayout:
+ * в браузере он не приходит, если строка только сдвинулась (вставили разминку выше).
+ */
+function rowBox(L: Live, id: string): { y: number; h: number } | undefined {
+  let y = 0;
+  for (const k of L.order) {
+    const h = L.rows[k];
+    if (h == null) return undefined;
+    if (k === id) return { y, h };
+    y += h;
+  }
+  return undefined;
+}
+
+/** Подсветка — на текущий подход: первый раз на месте, дальше пружиной вниз (вверх при отмене); все сделаны — гаснет */
+function placeHighlight(L: Live, hl: { y: Animated.Value; o: Animated.Value }, setH: (h: number) => void, sv: ScrollViewInstance | null) {
+  const r = L.cur ? rowBox(L, L.cur) : undefined;
+  const reduce = prefersReducedMotion();
+  if (!r) {
+    if (L.shown) {
+      L.shown = false;
+      if (reduce) hl.o.setValue(0);
+      else Animated.timing(hl.o, { toValue: 0, duration: 220, useNativeDriver: NATIVE }).start();
+    }
+    return;
+  }
+  setH(r.h);
+  if (!L.shown || reduce) {
+    hl.y.setValue(r.y);
+    if (reduce) hl.o.setValue(1);
+    else Animated.timing(hl.o, { toValue: 1, duration: 200, useNativeDriver: NATIVE }).start();
+  } else Animated.spring(hl.y, { toValue: r.y, friction: 9, tension: 70, useNativeDriver: NATIVE }).start();
+  L.shown = true;
+  // Текущий подход всегда на виду
+  if (sv && L.viewH && r.y + r.h > L.scrollY + L.viewH) sv.scrollTo({ y: r.y + r.h - L.viewH + space.md, animated: !reduce });
+  else if (sv && r.y < L.scrollY) sv.scrollTo({ y: Math.max(0, r.y - space.xs), animated: !reduce });
+}
+
+/** Какое число подхода сейчас набирается: вес или повторы (секунды) */
+type EditField = 'w' | 'r';
+/** Общая панель над цифровой клавиатурой iOS («Далее» / «Готово»): у number-pad своей клавиши ввода нет */
+const KBD_ID = 'set-kbd';
+
+/**
+ * Подход (R3, по образцу владельца): номер слева, «70 кг × 10» крупно по центру, справа — галочка после выполнения.
+ * Текущий подход подсвечен (подсветка общая на карточку и съезжает вниз после «✓»).
+ * Тап по весу или повторам — число прямо в строке становится полем с цифровой клавиатурой (без шторок);
+ * значение сохраняется один раз, когда ввод закончен. Тап по номеру — выполнен / отменить, свайп влево — удалить.
  */
 const SetRow = memo(function SetRow({
   set,
   idx,
   no,
   unit,
+  current,
+  editing,
   onComplete,
   onDelete,
-  onEdit,
+  onStartEdit,
+  onDraft,
+  onEndEdit,
+  onSubmitField,
+  onRowLayout,
   timed,
   weightCol,
   bodyweight,
   range,
   last,
 }: {
-  weId: string;
   set: ExerciseSet;
   idx: number;
   no: string;
   unit: 'kg' | 'lb';
+  /** Текущий (первый невыполненный) подход */
+  current: boolean;
+  /** Поле, которое сейчас набирается в этой строке */
+  editing: EditField | null;
   onComplete: (s: ExerciseSet) => void;
   onDelete: (s: ExerciseSet, i: number) => void;
-  onEdit: () => void;
+  onStartEdit: (setId: string, f: EditField) => void;
+  onDraft: (v: string) => void;
+  onEndEdit: (setId: string, f: EditField) => void;
+  /** Клавиша ввода (Android / веб): вес → повторы, повторы → готово */
+  onSubmitField: (setId: string, f: EditField) => void;
+  onRowLayout: (setId: string, h: number) => void;
   timed?: boolean;
   weightCol: boolean;
   bodyweight: boolean;
@@ -1110,167 +1294,102 @@ const SetRow = memo(function SetRow({
   const repsTxt = set.reps ? rTxt(set.reps) : range ?? '—';
   const t = set.warmup ? undefined : set.target;
   const goal = t ? `, цель ${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${u} × ` : ''}${rTxt(t.reps)}` : '';
-  const valueLabel = `${weightCol ? `${wTxt} ${bodyweight ? `доп. ${u}` : u} × ` : ''}${repsTxt}${timed ? ' сек' : ' повторов'}`;
+  const state = `${done ? ', выполнен' : current ? ', текущий' : ''}`;
+  const wUnit = bodyweight ? `доп. ${u}` : u;
+
+  /** Число в покое (кнопка) или поле ввода на его месте */
+  const num = (f: EditField) => {
+    const isW = f === 'w';
+    if (editing === f) {
+      const init = isW ? (set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '') : set.reps ? String(set.reps) : '';
+      return (
+        <TextInput
+          autoFocus
+          defaultValue={init}
+          placeholder={isW ? '0' : range ?? '0'}
+          placeholderTextColor={colors.muted}
+          onChangeText={(v) => onDraft(v.replace(/[^0-9.,]/g, ''))}
+          onBlur={() => onEndEdit(set.id, f)}
+          onSubmitEditing={() => onSubmitField(set.id, f)}
+          keyboardType={isW ? 'decimal-pad' : 'number-pad'}
+          returnKeyType={isW && weightCol ? 'next' : 'done'}
+          blurOnSubmit={false}
+          selectTextOnFocus
+          inputAccessoryViewID={Platform.OS === 'ios' ? KBD_ID : undefined}
+          maxLength={isW ? 6 : 4}
+          maxFontSizeMultiplier={1.3}
+          accessibilityLabel={`Подход ${no}: ${isW ? `вес, ${wUnit}` : timed ? 'время, секунд' : 'повторы'}`}
+          style={[styles.numInput, { width: Math.round((isW ? 104 : 80) * Math.min(PixelRatio.getFontScale(), 1.3)) }]}
+          testID={`set-${f}-input-${idx}`}
+        />
+      );
+    }
+    const label = isW
+      ? `Подход ${no}: вес ${wTxt} ${wUnit}${state}. Изменить`
+      : `Подход ${no}: ${timed ? `время ${repsTxt} секунд` : `${repsTxt} повторов`}${goal}${state}. Изменить`;
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { haptic.tap(); onStartEdit(set.id, f); }} hitSlop={{ top: 14, bottom: 14, left: 8, right: 8 }} style={({ pressed }) => [styles.numBtn, pressed && { opacity: 0.55 }]} testID={`set-${f}-${idx}`}>
+        <T v="metric" color={isW || set.reps ? colors.text : colors.muted} style={styles.setNum}>
+          {isW ? wTxt : repsTxt}
+        </T>
+      </Pressable>
+    );
+  };
 
   return (
-    <SwipeRow onDelete={() => onDelete(set, idx)} a11yLabel={`Удалить подход ${no}`} bg={colors.surface} testID={`set-row-${idx}`}>
-      <View style={[styles.setRow, !last && styles.setLine]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
-          accessibilityState={{ checked: done }}
-          onPress={() => onComplete(set)}
-          hitSlop={6}
-          style={styles.badge}
-        >
-          <T v="callout" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }}>
-            {no}
-          </T>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Подход ${no}: ${valueLabel}${goal}${done ? ', выполнен' : ''}. Изменить`} onPress={() => { haptic.tap(); onEdit(); }} style={({ pressed }) => [styles.setMid, pressed && { opacity: 0.55 }]} testID={`set-edit-${idx}`}>
-          <View style={styles.setVals}>
-            {weightCol ? (
-              <>
-                <T v="metric" style={styles.setNum}>
-                  {wTxt}
-                </T>
-                <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
-                  {bodyweight ? `+${u}` : u}
-                </T>
-                <T v="callout" color={colors.muted} maxFontSizeMultiplier={1.4} style={styles.setTimes}>
-                  ×
-                </T>
-              </>
-            ) : null}
-            <T v="metric" color={set.reps ? colors.text : colors.muted} style={styles.setNum}>
-              {repsTxt}
+    <View onLayout={(e) => onRowLayout(set.id, e.nativeEvent.layout.height)}>
+      <SwipeRow onDelete={() => onDelete(set, idx)} a11yLabel={`Удалить подход ${no}`} bg={colors.surface} testID={`set-row-${idx}`}>
+        <View style={[styles.setRow, !last && styles.setLine]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
+            accessibilityState={{ checked: done }}
+            onPress={() => onComplete(set)}
+            hitSlop={6}
+            style={[styles.badge, current && styles.badgeCur]}
+            testID={current ? 'set-current' : undefined}
+          >
+            <T v="callout" color={current ? colors.onAccent : colors.textDim} style={{ fontVariant: ['tabular-nums'], fontWeight: current ? '700' : '400' }}>
+              {no}
             </T>
-            {timed ? (
-              <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
-                сек
-              </T>
-            ) : !weightCol ? (
-              <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
-                повт.
-              </T>
+          </Pressable>
+          <View style={styles.setMid}>
+            <View style={styles.setVals}>
+              {weightCol ? (
+                <>
+                  {num('w')}
+                  <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                    {bodyweight ? `+${u}` : u}
+                  </T>
+                  <T v="callout" color={colors.muted} maxFontSizeMultiplier={1.4} style={styles.setTimes}>
+                    ×
+                  </T>
+                </>
+              ) : null}
+              {num('r')}
+              {timed ? (
+                <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                  сек
+                </T>
+              ) : !weightCol ? (
+                <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
+                  повт.
+                </T>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.setRight}>
+            {done ? (
+              <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }} testID={`set-done-${idx}`}>
+                <Icon name="checkmark" size={26} color={colors.accent} />
+              </Animated.View>
             ) : null}
           </View>
-        </Pressable>
-        <View style={styles.setRight}>
-          {done ? (
-            <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }} testID={`set-done-${idx}`}>
-              <Icon name="checkmark" size={26} color={colors.accent} />
-            </Animated.View>
-          ) : null}
         </View>
-      </View>
-    </SwipeRow>
-  );
-});
-
-/** Кнопка «−/+» редактора: крупная, с отдачей; удержание повторяет шаг */
-function StepBtn({ icon, label, onPress }: { icon: 'add' | 'remove'; label: string; onPress: () => void }) {
-  const rep = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stop = () => {
-    if (rep.current) clearInterval(rep.current);
-    rep.current = null;
-  };
-  useEffect(() => stop, []);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={() => { haptic.tap(); onPress(); }}
-      onLongPress={() => { stop(); rep.current = setInterval(onPress, 110); }}
-      onPressOut={stop}
-      delayLongPress={350}
-      hitSlop={6}
-      style={({ pressed }) => [styles.stepBtn, pressed && { backgroundColor: colors.surface3 }]}
-    >
-      <Icon name={icon} size={28} color={colors.text} />
-    </Pressable>
-  );
-}
-
-/** Поле редактора: подпись, «−», крупное число (тап — клавиатура), «+» */
-function StepField({ label, value, onChange, step, decimals, testID }: { label: string; value: string; onChange: (v: string) => void; step: number; decimals: boolean; testID: string }) {
-  const num = parseDecimal(value);
-  const cur = Number.isFinite(num) ? num : 0;
-  const fmt = (x: number) => (decimals ? String(Math.round(x * 100) / 100).replace('.', ',') : String(Math.round(x)));
-  return (
-    <View style={styles.field}>
-      <T v="footnote" style={{ textAlign: 'center' }}>
-        {label}
-      </T>
-      <View style={styles.fieldRow}>
-        <StepBtn icon="remove" label={`${label}: меньше на ${String(step).replace('.', ',')}`} onPress={() => onChange(fmt(Math.max(0, cur - step)))} />
-        <TextInput
-          value={value}
-          onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
-          keyboardType={decimals ? 'decimal-pad' : 'number-pad'}
-          selectTextOnFocus
-          maxFontSizeMultiplier={1.3}
-          accessibilityLabel={label}
-          placeholder="0"
-          placeholderTextColor={colors.muted}
-          style={styles.fieldInput}
-          testID={testID}
-        />
-        <StepBtn icon="add" label={`${label}: больше на ${String(step).replace('.', ',')}`} onPress={() => onChange(fmt(cur + step))} />
-      </View>
+      </SwipeRow>
     </View>
   );
-}
-
-/**
- * Редактор подхода (R2): вес и повторы (секунды) крупно, «−/+» с шагом снаряда, число можно набрать.
- * Изменения сохраняются одним действием — «Сохранить» или «Записать подход».
- */
-function SetEditor({ we, setId, onClose, unit, step, timed, weightCol, bodyweight, onComplete }: { we: WorkoutExercise; setId: string | null; onClose: () => void; unit: 'kg' | 'lb'; step: number; timed: boolean; weightCol: boolean; bodyweight: boolean; onComplete: (s: ExerciseSet) => void }) {
-  const set = setId ? we.sets.find((x) => x.id === setId) : undefined;
-  const [draft, setDraft] = useState<{ id: string; w: string; r: string } | null>(null);
-  // Новый подход в редакторе — черновик из его значений (паттерн «состояние от пропсов» без эффекта)
-  if (set && draft?.id !== set.id) setDraft({ id: set.id, w: set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '', r: set.reps ? String(set.reps) : '' });
-  const k = set ? we.sets.filter((x) => !x.warmup).indexOf(set) + 1 : 0;
-  const title = set ? (set.warmup ? 'Разминочный подход' : `Подход ${k}`) : '';
-  const commit = (): ExerciseSet | null => {
-    if (!set || !draft) return null;
-    const w = parseDecimal(draft.w);
-    const r = parseInt(draft.r, 10);
-    const patch: Partial<ExerciseSet> = { weight: Number.isFinite(w) ? fromDisplayWeight(w, unit) : 0, reps: Number.isFinite(r) ? r : 0 };
-    useWorkouts.getState().updateSet(we.id, set.id, patch);
-    return { ...set, ...patch };
-  };
-  const t = set?.target;
-  const wStep = unit === 'lb' ? 5 : step;
-  return (
-    <Sheet visible={!!set} onClose={onClose} title={title} subtitle={t && !set?.warmup ? `Цель: ${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? fmtSec(t.reps) : t.reps}` : undefined}>
-      {set && draft ? (
-        <View style={{ gap: space.lg }} testID="set-editor">
-          {weightCol ? <StepField label={bodyweight ? `Доп. вес, ${unitLabel(unit)}` : `Вес, ${unitLabel(unit)}`} value={draft.w} onChange={(w) => setDraft({ ...draft, w })} step={wStep} decimals testID="edit-weight" /> : null}
-          <StepField label={timed ? 'Время, сек' : 'Повторы'} value={draft.r} onChange={(r) => setDraft({ ...draft, r })} step={timed ? TIME_STEP_SEC : 1} decimals={false} testID="edit-reps" />
-          <View style={{ gap: space.xs }}>
-            {!set.done ? (
-              <Button
-                title="Записать подход"
-                icon="checkmark"
-                size="lg"
-                full
-                onPress={() => {
-                  const s2 = commit();
-                  onClose();
-                  if (s2) afterModalClose(() => onComplete(s2));
-                }}
-                testID="edit-complete"
-              />
-            ) : null}
-            <Button title="Сохранить" variant={set.done ? 'primary' : 'secondary'} size={set.done ? 'lg' : 'md'} full onPress={() => { commit(); onClose(); }} testID="edit-save" />
-          </View>
-        </View>
-      ) : null}
-    </Sheet>
-  );
-}
+});
 
 /** Ни одного выполненного подхода: тренировку нечего сохранять — удалить или продолжить */
 function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -1323,14 +1442,17 @@ const styles = themed({
   underSets: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface2 },
   clockWrap: { position: 'absolute', left: 0, right: 0, height: 44, alignItems: 'center', justifyContent: 'center' },
-  field: { gap: space.xs },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  fieldInput: { flex: 1, minWidth: 0, height: 64, borderRadius: radius.lg, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontFamily: DISPLAY.semibold, fontSize: 36, fontVariant: ['tabular-nums'], outlineWidth: 0 },
-  stepBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   setUnit: { marginLeft: 2 },
   setTimes: { marginHorizontal: 8 },
   badge: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   setLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  badgeCur: { backgroundColor: colors.accent },
+  hl: { position: 'absolute', left: space.xxs, right: space.xxs, top: 0, borderRadius: radius.md, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.accentLine },
+  numBtn: { minHeight: 44, justifyContent: 'center' },
+  // Поле на месте числа: та же высота строки (отрицательный отступ), чтобы при наборе строки ниже не сдвигались
+  numInput: { height: 52, marginVertical: -6, paddingHorizontal: 8, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 2, borderColor: colors.accent, color: colors.text, textAlign: 'center', fontFamily: DISPLAY.semibold, fontSize: 30, fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  kbdBar: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
+  kbdBtn: { minHeight: 44, justifyContent: 'center' },
   badgeLive: { borderWidth: 1.5, borderColor: colors.accent, backgroundColor: colors.surface },
   badgeDone: { backgroundColor: colors.accent },
   addSet: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: space.xxs },

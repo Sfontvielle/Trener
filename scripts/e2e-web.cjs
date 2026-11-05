@@ -831,7 +831,7 @@ const closeSheet = async (pg) => {
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: цель над подходом; свайп влево удаляет подход («Отменить» возвращает); таймер отдыха выключен, включается ⏱; заметка; замена; блины; разминка', async () => {
+  await check('36. Тренировка: вес и повторы цифрами прямо в строке; подсветка текущего подхода съезжает после ✓; свайп влево удаляет подход («Отменить» возвращает); таймер отдыха выключен, включается ⏱; заметка; замена; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -840,20 +840,38 @@ const closeSheet = async (pg) => {
     const again = page.getByText('Начать новую', { exact: true });
     if (await again.count()) { await again.click(); await page.waitForTimeout(800); }
     await page.waitForTimeout(1000);
-    // Редактор подхода (R2): тап по числам → шторка с крупными «−/+» и вводом; «Сохранить» — одним действием
-    await page.getByTestId('set-edit-0').click();
-    await page.waitForTimeout(600);
-    assert.ok(await page.getByTestId('set-editor').isVisible(), 'редактор подхода');
-    await page.getByTestId('edit-weight').fill('97,5');
-    await page.getByLabel(/^Вес, кг: больше на 2,5$/).click();
-    await page.getByLabel(/^Повторы: больше на 1$/).click();
-    const reps0 = await page.getByTestId('edit-reps').inputValue();
-    await page.getByTestId('edit-save').click();
-    await page.waitForTimeout(600);
-    const s0 = await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets[0]; });
-    assert.equal(s0.weight, 100, 'вес 97,5 + 2,5');
-    assert.equal(String(s0.reps), reps0, 'повторы из редактора');
-    assert.match(await page.getByTestId('set-edit-0').innerText(), /100/);
+    // Ввод прямо в строке (R3): тап по весу → на месте числа поле с цифровой клавиатурой, без шторки;
+    // Enter («Далее») → повторы того же подхода, Enter («Готово») → сохранено одним действием
+    await page.getByTestId('set-w-0').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.getByTestId('set-editor').count(), 0, 'без шторки редактора');
+    assert.ok(await page.getByTestId('set-w-input-0').isVisible(), 'поле веса в строке подхода');
+    await page.keyboard.type('97,5');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    assert.ok(await page.getByTestId('set-r-input-0').isVisible(), 'после веса — повторы того же подхода');
+    await page.keyboard.type('9');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    const sNow = () => page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets[0]; });
+    let s0 = await sNow();
+    assert.equal(s0.weight, 97.5, 'вес набран цифрами');
+    assert.equal(s0.reps, 9, 'повторы набраны цифрами');
+    assert.equal(await page.getByTestId('set-r-input-0').count(), 0, 'после «Готово» поле снова число');
+    assert.match(await page.getByTestId('set-w-0').innerText(), /97,5/);
+    // Тап по другому числу во время набора — набранное сохраняется; стёртое поле значение не обнуляет
+    await page.getByTestId('set-w-0').click();
+    await page.waitForTimeout(200);
+    await page.keyboard.type('100');
+    await page.getByTestId('set-r-0').click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Backspace');
+    await page.getByTestId('exercise-muscles').click();
+    await page.waitForTimeout(400);
+    s0 = await sNow();
+    assert.equal(s0.weight, 100, 'переход к повторам сохранил вес');
+    assert.equal(s0.reps, 9, 'пустое поле — значение прежнее');
+    assert.match(await page.getByTestId('set-w-0').innerText(), /100/);
     // Заметка — на виду, кнопкой под подходами
     assert.ok(await page.getByTestId('note-button').isVisible(), 'кнопка «Заметка» на экране');
     // Разминка: в «i» (на экране ничего лишнего), для 100 кг вставляется одним тапом
@@ -889,12 +907,18 @@ const closeSheet = async (pg) => {
       await page.waitForTimeout(200);
     }
     // Цель подхода — в подписи строки для VoiceOver (на экране — только значения, они и есть цель)
-    assert.match(await page.getByTestId(/^set-edit-\d+$/).last().getAttribute('aria-label'), /цель/);
+    assert.match(await page.getByTestId(/^set-r-\d+$/).last().getAttribute('aria-label'), /цель/);
     // Рабочий подход: большая ✓ внизу → справа от подхода появляется галочка; таймер отдыха по умолчанию выключен
     const firstWork = await page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets.findIndex((x) => !x.warmup && !x.done); });
     await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(500);
     assert.ok(await page.getByTestId(`set-done-${firstWork}`).isVisible(), 'галочка справа от выполненного подхода');
+    // Подсветка текущего подхода съехала вниз — на следующий подход, номер которого теперь акцентный
+    await page.waitForTimeout(900);
+    const hb = await page.getByTestId('set-highlight').boundingBox();
+    const rb = await page.getByTestId(`set-row-${firstWork + 1}`).boundingBox();
+    assert.ok(hb && rb && Math.abs(hb.y - rb.y) < 2 && Math.abs(hb.height - rb.height) < 2, `подсветка на следующем подходе (${hb && hb.y} / ${rb && rb.y})`);
+    assert.equal(await page.getByTestId(`set-row-${firstWork + 1}`).getByTestId('set-current').count(), 1, 'следующий подход — текущий');
     assert.equal(await page.getByTestId('rest-strip').count(), 0, 'по умолчанию отдыха нет');
     assert.ok(!/Сколько повторений осталось в запасе|\bRIR\b/.test(await page.evaluate(() => document.body.innerText)), 'RIR больше не спрашиваем');
     // Свайп влево по невыполненному подходу → удалён; «Отменить» возвращает его на место

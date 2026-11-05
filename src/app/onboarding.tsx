@@ -138,8 +138,9 @@ export default function Onboarding() {
   };
 
   if (stage === Q_STAGES) {
+    // key: свой экран с прокруткой с самого верха — иначе «План готов» открывается там, где прокрутили последний вопрос
     return (
-      <Screen>
+      <Screen key="plan">
         <PlanReady profile={profile} onStart={finish} onBack={() => setStage(Q_STAGES - 1, 0)} />
       </Screen>
     );
