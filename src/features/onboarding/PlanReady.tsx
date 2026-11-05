@@ -84,7 +84,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
             {phase === 0 ? <MaterialCommunityIcons name="arm-flex" size={46} color={colors.accent} /> : <MaterialCommunityIcons name="dumbbell" size={46} color={colors.accent} />}
           </View>
         </View>
-        <T v="title2" style={{ textAlign: 'center' }}>
+        <T v="title2" accessibilityRole="header" style={{ textAlign: 'center' }}>
           {ph.title}
         </T>
         <View style={{ gap: 10, alignSelf: 'center' }}>
