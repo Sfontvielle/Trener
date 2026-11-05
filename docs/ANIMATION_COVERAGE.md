@@ -4,11 +4,11 @@
 
 Источник всех файлов — собственный 3D-пайплайн RYNJI (`tools/anim`): процедурная анатомическая фигура (three.js), движения по биомеханике упражнения, рендер в headless Chromium (WebGL2) → зацикленный WebP. Сторонние модели, фото и лицензированные анимации не используются. Воспроизведение офлайн (файлы в сборке).
 
-Подсветка: основные мышцы — ярко-зелёные, вспомогательные — бледно-жёлто-зелёные, остальные — серые.
+Подсветка: основные мышцы — зелёные, вспомогательные — светло-жёлтые, остальные — серые (те же цвета, что у анатомической карты приложения, в любой теме). У каждого ролика есть версия с женской фигурой (`<id>_f.webp`) — для профиля женщины.
 
 | exercise_id | название | тип | мышцы (основные / вспомогательные) | animation_asset | источник / лицензия | offline_ok | checked |
 |---|---|---|---|---|---|---|---|
-| bench_press | Жим штанги лёжа | h_push | Грудь / Трицепс, deltoids | assets/anim/bench_press.webp (279 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| bench_press | Жим штанги лёжа | h_push | Грудь / Трицепс, deltoids | assets/anim/bench_press.webp (275 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | incline_bench_press | Жим штанги на наклонной | h_push | Грудь / deltoids, Трицепс | **нет — открытый пункт** | — | — | — |
 | db_bench_press | Жим гантелей лёжа | h_push | Грудь / Трицепс, deltoids | **нет — открытый пункт** | — | — | — |
 | incline_db_press | Жим гантелей на наклонной | h_push | Грудь / deltoids, Трицепс | **нет — открытый пункт** | — | — | — |
@@ -28,10 +28,10 @@
 | pull_up | Подтягивания | v_pull | upper-back / Бицепс, forearm, trapezius | **нет — открытый пункт** | — | — | — |
 | chin_up | Подтягивания обратным хватом | v_pull | upper-back, Бицепс / forearm | **нет — открытый пункт** | — | — | — |
 | assisted_pull_up | Подтягивания с резиной | v_pull | upper-back / Бицепс | **нет — открытый пункт** | — | — | — |
-| lat_pulldown | Тяга верхнего блока | v_pull | upper-back / Бицепс, forearm | assets/anim/lat_pulldown.webp (266 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| lat_pulldown | Тяга верхнего блока | v_pull | upper-back / Бицепс, forearm | assets/anim/lat_pulldown.webp (259 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | close_grip_pulldown | Тяга верхнего блока узким хватом | v_pull | upper-back / Бицепс | **нет — открытый пункт** | — | — | — |
 | barbell_row | Тяга штанги в наклоне | h_pull | upper-back / Бицепс, lower-back, deltoids, trapezius | **нет — открытый пункт** | — | — | — |
-| db_row | Тяга гантели одной рукой | h_pull | upper-back / Бицепс, deltoids | assets/anim/db_row.webp (115 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| db_row | Тяга гантели одной рукой | h_pull | upper-back / Бицепс, deltoids | assets/anim/db_row.webp (113 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | seated_cable_row | Тяга горизонтального блока | h_pull | upper-back / Бицепс, trapezius, lower-back | **нет — открытый пункт** | — | — | — |
 | tbar_row | Тяга Т-грифа | h_pull | upper-back / Бицепс, trapezius, lower-back | **нет — открытый пункт** | — | — | — |
 | chest_supported_row | Тяга гантелей лёжа на наклонной | h_pull | upper-back / deltoids, Бицепс | **нет — открытый пункт** | — | — | — |
@@ -58,7 +58,7 @@
 | band_pull_apart | Разведение резины | rear_delt | deltoids / upper-back, trapezius | **нет — открытый пункт** | — | — | — |
 | barbell_curl | Подъём штанги на бицепс | curl | Бицепс / forearm | **нет — открытый пункт** | — | — | — |
 | ez_curl | Подъём EZ-грифа на бицепс | curl | Бицепс / forearm | **нет — открытый пункт** | — | — | — |
-| db_curl | Сгибания рук с гантелями | curl | Бицепс / forearm | assets/anim/db_curl.webp (202 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| db_curl | Сгибания рук с гантелями | curl | Бицепс / forearm | assets/anim/db_curl.webp (199 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | hammer_curl | Молотки | curl | Бицепс, forearm / — | **нет — открытый пункт** | — | — | — |
 | incline_db_curl | Сгибания на наклонной скамье | curl | Бицепс / — | **нет — открытый пункт** | — | — | — |
 | preacher_curl | Сгибания на скамье Скотта | curl | Бицепс / — | **нет — открытый пункт** | — | — | — |
@@ -75,7 +75,7 @@
 | bench_dip | Обратные отжимания от скамьи | tri_ext | Трицепс / Грудь, deltoids | **нет — открытый пункт** | — | — | — |
 | db_kickback | Разгибание руки в наклоне | tri_ext | Трицепс / — | **нет — открытый пункт** | — | — | — |
 | diamond_push_up | Отжимания узким упором | h_push | Трицепс / Грудь | **нет — открытый пункт** | — | — | — |
-| back_squat | Приседания со штангой | squat | quadriceps, gluteal / adductors, hamstring, lower-back | assets/anim/back_squat.webp (239 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| back_squat | Приседания со штангой | squat | quadriceps, gluteal / adductors, hamstring, lower-back | assets/anim/back_squat.webp (237 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | front_squat | Фронтальные приседания | squat | quadriceps / gluteal, Пресс | **нет — открытый пункт** | — | — | — |
 | goblet_squat | Гоблет-присед | squat | quadriceps, gluteal / adductors, Пресс | **нет — открытый пункт** | — | — | — |
 | leg_press | Жим ногами | squat | quadriceps, gluteal / adductors, hamstring | **нет — открытый пункт** | — | — | — |
@@ -87,7 +87,7 @@
 | bodyweight_squat | Приседания без веса | squat | quadriceps, gluteal / adductors | **нет — открытый пункт** | — | — | — |
 | step_up | Зашагивания на тумбу | lunge | quadriceps, gluteal / hamstring | **нет — открытый пункт** | — | — | — |
 | leg_extension | Разгибание ног в тренажёре | leg_ext | quadriceps / — | **нет — открытый пункт** | — | — | — |
-| romanian_deadlift | Румынская тяга | hinge | hamstring, gluteal / lower-back, forearm | assets/anim/romanian_deadlift.webp (244 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
+| romanian_deadlift | Румынская тяга | hinge | hamstring, gluteal / lower-back, forearm | assets/anim/romanian_deadlift.webp (241 КБ) | собственный 3D-рендер RYNJI (tools/anim), права наши | да | да |
 | db_rdl | Румынская тяга с гантелями | hinge | hamstring, gluteal / lower-back | **нет — открытый пункт** | — | — | — |
 | lying_leg_curl | Сгибание ног лёжа | leg_curl | hamstring / Икры | **нет — открытый пункт** | — | — | — |
 | seated_leg_curl | Сгибание ног сидя | leg_curl | hamstring / — | **нет — открытый пункт** | — | — | — |

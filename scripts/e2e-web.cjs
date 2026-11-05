@@ -1305,7 +1305,7 @@ const closeSheet = async (pg) => {
     await shot('exercise-bars');
   });
 
-  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, легенда подсвеченных мышц, пауза, во весь экран', async () => {
+  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, под ним карта мышц с легендой, пауза, во весь экран', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
@@ -1313,19 +1313,20 @@ const closeSheet = async (pg) => {
     await box.scrollIntoViewIfNeeded();
     assert.ok(await box.isVisible(), '3D-блок на месте');
     const src = async () => (await page.getByTestId('technique-3d-media').locator('img').first().getAttribute('src')) || '';
-    const legend = await box.innerText();
-    assert.match(legend, /Основные мышцы[\s\S]*Большая грудная/);
-    assert.match(legend, /Дополнительные[\s\S]*Трицепс, Дельтовидные/);
-    assert.match(legend, /3D/);
+    assert.match(await box.innerText(), /3D/);
+    // легенда — у анатомической карты под роликом (те же цвета, что на рендере)
+    const legend = await page.getByTestId('technique-muscles').innerText();
+    assert.match(legend, /Работают:\s*Большая грудная/);
+    assert.match(legend, /Задействованы слегка:[\s\S]*Передний пучок дельты[\s\S]*Трицепс/);
     // В автотесте (как при «Уменьшении движения») петля стоит на стоп-кадре, пуск — касанием
-    assert.match(await src(), /posters.*bench_press\.jpg/, 'стоп-кадр до пуска');
+    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'стоп-кадр до пуска');
     await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Воспроизвести$/).click();
     await page.waitForTimeout(500);
-    assert.match(await src(), /anim.*bench_press\.webp/, 'играет WebP-петля жима');
+    assert.match(await src(), /anim.*bench_press(_f)?\.webp/, 'играет WebP-петля жима');
     assert.ok(await page.getByText('Повторение по кругу').isVisible());
     await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Пауза$/).click();
     await page.waitForTimeout(400);
-    assert.match(await src(), /posters.*bench_press\.jpg/, 'на паузе — стоп-кадр');
+    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'на паузе — стоп-кадр');
     await page.getByTestId('technique-3d-full').click();
     await page.waitForTimeout(700);
     assert.ok(await page.getByTestId('technique-3d-close').isVisible(), 'полноэкранный просмотр');
