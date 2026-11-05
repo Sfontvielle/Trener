@@ -96,6 +96,8 @@ export interface AppSettings {
   coachApiUrl: string; // пусто → берётся из EXPO_PUBLIC_COACH_API_URL
   /** Уведомление об окончании отдыха, когда приложение свёрнуто */
   restNotify: boolean;
+  /** Таймер отдыха после рабочего подхода — включается вручную кнопкой ⏱ (по умолчанию выключен); длительность — defaultRestSec */
+  restTimer?: boolean;
   /** Утреннее напоминание: чек-ин + взвешивание */
   morningReminder: boolean;
   morningTime: { hour: number; minute: number };
@@ -107,6 +109,8 @@ export interface AppSettings {
   lastAutoBackupAt?: number;
   /** Еженедельный отчёт по понедельникам */
   weeklyReview?: boolean;
+  /** Взвешивание раз в неделю (понедельник, утро). Нет поля — включено: по весу недели подстраиваются калории и КБЖУ */
+  weighInReminder?: boolean;
   /** Оформление: системная / тёмная / светлая и цвет акцента */
   theme: 'system' | 'dark' | 'light';
   accent: 'lime' | 'blue' | 'orange';
@@ -153,6 +157,8 @@ export interface NutritionTarget {
   /** Персональный расход (дневник + тренд веса), если он участвовал в расчёте; в старых целях отсутствует */
   observedTdee?: number;
   observedConfidence?: 'medium' | 'high';
+  /** Вес (тренд), под который посчитаны белок и жиры; изменился на ≥1 кг — КБЖУ пересчитываются */
+  basisWeightKg?: number;
   steps: CalcStep[];
   computedAt: number;
 }
@@ -508,6 +514,8 @@ export interface ExerciseSet {
   warmup?: boolean;
   completedAt?: number;
   restSec?: number; // фактический отдых перед подходом
+  /** Цель на этот подход (число над строкой подхода): вес и повторы/секунды. Нет — у старых тренировок */
+  target?: { weight: number; reps: number };
 }
 
 export interface Recommendation {

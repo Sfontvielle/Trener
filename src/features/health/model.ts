@@ -5,6 +5,10 @@ export interface HealthDay {
   date: ISODate;
   /** Сон за ночь, закончившуюся этим утром, ч */
   sleepHours?: number;
+  /** Время подъёма этим утром (мс) */
+  wakeAt?: number;
+  /** Сон посчитан по «в постели» (iPhone без часов), а не по «спал» */
+  sleepInBed?: boolean;
   steps?: number;
   restingHr?: number;
   hrvMs?: number;

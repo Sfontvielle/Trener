@@ -10,7 +10,7 @@ import { addDays, startOfWeek, today } from '../src/utils/date';
 import { getExercise } from '../src/data/exercises';
 import { fmtSec } from '../src/utils/format';
 import { historyFor, isPersonalRecord, recommend, TIME_STEP_SEC } from '../src/features/training/progression';
-import { makeWorkoutExercise, buildSession } from '../src/features/training/session';
+import { makeWorkoutExercise, buildSession, setTargets } from '../src/features/training/session';
 import { afterSetTarget, linkWithNext, normalizeSupersets, supersetLabels, supersetMembers, toggleLinkAfter, unlinkSuperset } from '../src/features/training/workoutNav';
 import { exerciseSeries, feelIndex, journalDay, journalSections, periodStats, prCounts, repeatPlanned, sessionEmoji, sessionKind, sessionPrCount, setsLine, setText, targetMuscles, weekStreak, weekTitle, workoutKind } from '../src/features/training/journal';
 
@@ -56,11 +56,12 @@ test('прогрессия на время: верх диапазона → +5 �
   assert.ok(fw.weight > 24);
 });
 
-test('новое упражнение на время: подходы предзаполнены +5 секунд, а не +1', () => {
+test('упражнение на время: цель подхода — прошлое время +5 секунд, а не +1', () => {
   const prev = session(3, [we('plank', [set(0, 40), set(0, 40)], { repMin: 30, repMax: 60 })]);
   const w = makeWorkoutExercise({ exerciseId: 'plank', sets: 2, repMin: 30, repMax: 60, targetRir: 2, restSec: 60 }, { sessions: [prev], customs: [], volumeFactor: 1, rirDelta: 0 })!;
   assert.equal(w.recommendation?.action, 'hold');
-  assert.equal(w.sets[0].reps, 40);
+  assert.equal(w.sets[0].reps, 45);
+  assert.deepEqual(w.sets[0].target, { weight: 0, reps: 45 });
   const prevTop = session(3, [we('plank', [set(0, 60), set(0, 60)], { repMin: 30, repMax: 60 })]);
   const w2 = makeWorkoutExercise({ exerciseId: 'plank', sets: 2, repMin: 30, repMax: 60, targetRir: 2, restSec: 60 }, { sessions: [prevTop], customs: [], volumeFactor: 1, rirDelta: 0 })!;
   assert.equal(w2.sets[0].reps, 65);
@@ -317,4 +318,33 @@ test('Меню «+»: повтор — все выполненные без ск
   assert.match(planningDayLabel('2026-10-29', '2026-10-27'), /^Чт, 29 /);
   const o = scheduleOverride('2026-10-29', 't1', 5);
   assert.deepEqual(o, { date: '2026-10-29', templateId: 't1', mode: 'normal', reason: 'Запланировано вручную', source: 'user', createdAt: 5 });
+});
+
+test('цель на каждый подход: прошлый результат +1 повтор, не выше верха диапазона', () => {
+  const prev = session(3, [we('bench_press', [set(65, 9), set(65, 6), set(65, 6)], { repMin: 6, repMax: 10 })]);
+  const w = makeWorkoutExercise({ exerciseId: 'bench_press', sets: 3, repMin: 6, repMax: 10, targetRir: 2, restSec: 120 }, { sessions: [prev], customs: [], volumeFactor: 1, rirDelta: 0 })!;
+  assert.equal(w.recommendation?.weight, 65);
+  assert.deepEqual(w.sets.map((x) => x.target), [{ weight: 65, reps: 10 }, { weight: 65, reps: 7 }, { weight: 65, reps: 7 }]);
+  // Подходы предзаполнены целью: ✓ — «сделал как задумано»
+  assert.deepEqual(w.sets.map((x) => [x.weight, x.reps]), [[65, 10], [65, 7], [65, 7]]);
+});
+
+test('цель на подход: новый вес — низ диапазона; низкая готовность — без прибавки; подходов больше, чем в прошлый раз', () => {
+  const last = { date: D, sets: [set(60, 10), set(60, 10)], repMin: 6, repMax: 10, plannedSets: 2 };
+  const rec = (action: 'increase' | 'hold' | 'reps' | 'new', weight = 60, sets = 2) => ({ weight, repMin: 6, repMax: 10, sets, targetRir: 2, action, rationale: '' });
+  // Прибавка веса → все подходы с низа диапазона
+  assert.deepEqual(setTargets({ rec: rec('increase', 62.5), last, step: 1 }), [{ weight: 62.5, reps: 6 }, { weight: 62.5, reps: 6 }]);
+  // Первый раз — тоже низ диапазона
+  assert.deepEqual(setTargets({ rec: rec('new', 0), step: 1 }), [{ weight: 0, reps: 6 }, { weight: 0, reps: 6 }]);
+  // Тот же вес, уже верх диапазона — не выше 10
+  assert.deepEqual(setTargets({ rec: rec('hold'), last, step: 1 }).map((t) => t.reps), [10, 10]);
+  // Сниженная готовность — повторить прошлый результат
+  const mid = { ...last, sets: [set(60, 8), set(60, 7)] };
+  assert.deepEqual(setTargets({ rec: rec('reps'), last: mid, step: 1, easy: true }).map((t) => t.reps), [8, 7]);
+  assert.deepEqual(setTargets({ rec: rec('reps'), last: mid, step: 1 }).map((t) => t.reps), [9, 8]);
+  // Третий подход, которого в прошлый раз не было, — от последнего сделанного
+  assert.deepEqual(setTargets({ rec: rec('reps', 60, 3), last: mid, step: 1 }).map((t) => t.reps), [9, 8, 8]);
+  // Прошлый подход с другим весом (сбросил на последнем) — низ диапазона
+  const drop = { ...last, sets: [set(60, 8), set(50, 12)] };
+  assert.deepEqual(setTargets({ rec: rec('hold'), last: drop, step: 1 }).map((t) => t.reps), [9, 6]);
 });

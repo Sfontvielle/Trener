@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, Pressable, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import { colors } from '@/theme';
 
 /**
@@ -11,16 +11,25 @@ import { colors } from '@/theme';
  */
 let reduceMotion = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as { webdriver?: boolean }).webdriver;
 const automation = reduceMotion;
+/** Только настройка системы, без поправки на автотесты */
+let userReduce = false;
 AccessibilityInfo.isReduceMotionEnabled?.()
   .then((v) => {
+    userReduce = v;
     reduceMotion = automation || v;
   })
   .catch(() => {});
 AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v: boolean) => {
+  userReduce = v;
   reduceMotion = automation || v;
 });
 
 export const prefersReducedMotion = () => reduceMotion;
+/**
+ * Поведение, а не украшение (например, «печать» ответа тренера): зависит только от настройки «Уменьшение движения»,
+ * автотесты видят его как есть и сами ждут окончания
+ */
+export const userPrefersReducedMotion = () => userReduce;
 const native = Platform.OS !== 'web';
 
 /** Смена содержимого по действию (раздел, шаг анкеты): прозрачность + небольшой подъём за 180 мс */
@@ -60,6 +69,12 @@ const AnimatedPressableBase = Animated.createAnimatedComponent(Pressable);
  * Pressable с пружиной нажатия. style — обычный (не функция); pressedStyle — что добавить при нажатии
  * (например, лёгкая подсветка строки).
  */
+/** Прозрачность из стиля (0–1); анимированное значение или его отсутствие — 1 */
+function baseOpacity(style: StyleProp<ViewStyle>): number {
+  const o = StyleSheet.flatten(style)?.opacity;
+  return typeof o === 'number' ? o : 1;
+}
+
 export function Tap({ style, scaleTo = 0.97, children, onPressIn, onPressOut, ...rest }: Omit<PressableProps, 'style' | 'children'> & { style?: StyleProp<ViewStyle>; scaleTo?: number; children?: React.ReactNode }) {
   const p = usePressScale(scaleTo);
   return (
@@ -73,7 +88,8 @@ export function Tap({ style, scaleTo = 0.97, children, onPressIn, onPressOut, ..
         p.onPressOut();
         onPressOut?.(e);
       }}
-      style={[style, { opacity: p.opacity, transform: [{ scale: p.scale }] }]}
+      // Своя прозрачность (например, 0,4 у выключенной кнопки) умножается на анимацию нажатия, а не теряется
+      style={[style, { opacity: Animated.multiply(p.opacity, baseOpacity(style)), transform: [{ scale: p.scale }] }]}
     >
       {children}
     </AnimatedPressableBase>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from 'react-native';
+import { Platform, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from 'react-native';
 import { colors, radius, themed } from '@/theme';
 import { T } from './ui';
 import { haptic } from '@/services/haptics';
@@ -54,9 +54,18 @@ export function Wheel({ values, value, onChange, format = String, width = 84, la
       setShown(i);
       haptic.tap();
     }
-    // В вебе нет onMomentumScrollEnd — фиксируем значение после паузы прокрутки
+    // В вебе нет onMomentumScrollEnd — фиксируем значение после паузы прокрутки. На iPhone колесо уже доводит
+    // snapToInterval, а повторная доводка давала рывок «туда-сюда» — там значение фиксируется по окончании инерции
+    if (Platform.OS !== 'web') return;
     clearTimeout(live.current.timer);
     live.current.timer = setTimeout(() => settle(live.current.idx), 140);
+  };
+  const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!alive.current) return;
+    const i = Math.max(0, Math.min(values.length - 1, Math.round(e.nativeEvent.contentOffset.y / ITEM)));
+    live.current.idx = i;
+    setShown(i);
+    if (values[i] !== value) onChange(values[i]);
   };
 
   const step = (d: number) => {
@@ -85,6 +94,11 @@ export function Wheel({ values, value, onChange, format = String, width = 84, la
         decelerationRate="fast"
         scrollEventThrottle={16}
         onScroll={onScroll}
+        onMomentumScrollEnd={onEnd}
+        onScrollEndDrag={(e) => {
+          // Отпустили без инерции — значение там, где остановили
+          if (!e.nativeEvent.velocity || Math.abs(e.nativeEvent.velocity.y) < 0.05) onEnd(e);
+        }}
         onLayout={() => ref.current?.scrollTo({ y: Math.max(0, values.indexOf(value)) * ITEM, animated: false })}
         contentContainerStyle={{ paddingVertical: ((VISIBLE - 1) / 2) * ITEM }}
         nestedScrollEnabled
@@ -93,7 +107,7 @@ export function Wheel({ values, value, onChange, format = String, width = 84, la
           const dist = Math.abs(i - shown);
           return (
             <View key={v} style={styles.item}>
-              <T v="h3" style={{ fontVariant: ['tabular-nums'], opacity: dist === 0 ? 1 : dist === 1 ? 0.5 : 0.25, fontSize: dist === 0 ? 22 : 18 }} color={dist === 0 ? colors.text : colors.textDim}>
+              <T v="title2" style={{ fontVariant: ['tabular-nums'], opacity: dist === 0 ? 1 : dist === 1 ? 0.5 : 0.25 }} color={dist === 0 ? colors.text : colors.textDim}>
                 {format(v)}
               </T>
             </View>

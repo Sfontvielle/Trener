@@ -76,7 +76,7 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
   const plan = await page.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
   const routes = [
     '/', '/nutrition', '/training', '/training?seg=plan', '/training?seg=history', '/training?seg=templates', '/library', '/progress',
-    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/labs', '/labs/hct', '/labs/review', '/labs/report', '/labs/table', '/body', '/stats', '/health-monitor',
+    '/checkin', '/weight', '/measurements', '/health', '/profile', '/data', '/appearance', '/plan', '/weekly-review', '/coach', '/body', '/stats',
     '/training-prefs', '/food/add', '/food/add?productId=local:oats_dry', '/food/add?manual=1', '/food/scan', '/food/recipe',
     '/exercise/bench_press', `/workout/${session.id}`, `/workout/preview?templateId=${plan.templates[0].id}`, '/workout/builder', '/onboarding',
   ];
@@ -143,10 +143,8 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
     profile: () => monkey('/profile'),
     checkin: () => monkey('/checkin'),
     food: () => monkey('/food/add'),
-    labs: () => monkey('/labs'),
     body: () => monkey('/body'),
     stats: () => monkey('/stats'),
-    health: () => monkey('/health-monitor'),
     weekly: () => monkey('/weekly-review'),
     onboarding: async () => {
       // Короткий онбординг (5 шагов), затем раздел «Здоровье» из ленты — каждый «+» открывает выбор, выбор и сохранение без ошибок
@@ -159,11 +157,11 @@ const SKIP = /Удал|Сброс|Очист|Отключ|Выйти|Запол�
       await p2.waitForTimeout(1200);
       // Приветствие → без входа → 5 этапов анкеты
       await p2.getByText('Начать', { exact: true }).click(); await p2.waitForTimeout(600);
-      await p2.getByText('Без входа (только разработка)', { exact: true }).click(); await p2.waitForTimeout(800);
+      await p2.getByTestId('auth-skip').click(); await p2.waitForTimeout(800);
       const next = async (t = 'Продолжить') => { await p2.getByRole('button', { name: t, exact: true }).press('Enter'); await p2.waitForTimeout(350); };
       await p2.getByLabel('Как тебя зовут?').fill('Тест'); await next();
       await p2.getByLabel('Мужчина').click(); await next();
-      await p2.getByLabel('Возраст, лет').fill('29'); await next();
+      for (let i = 0; i < 4; i++) await p2.getByTestId('q-age-plus').click(); await next();
       await p2.getByLabel('Рост, см').fill('180'); await next();
       await p2.getByLabel('Текущий вес, кг').fill('80'); await next();
       await p2.getByLabel('Набор массы').click(); await next();

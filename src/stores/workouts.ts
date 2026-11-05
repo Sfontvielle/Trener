@@ -20,6 +20,8 @@ interface WorkoutState {
   /** Вставить разминочные подходы перед рабочими (не считаются рабочим объёмом) */
   addWarmups: (weId: string, sets: { weight: number; reps: number }[]) => void;
   removeSet: (weId: string, setId: string) => void;
+  /** Вернуть удалённый подход на его место («Отменить» после свайпа) */
+  insertSet: (weId: string, set: ExerciseSet, index: number) => void;
   addExercise: (we: WorkoutExercise) => void;
   removeExercise: (weId: string) => void;
   replaceExercise: (weId: string, we: WorkoutExercise) => void;
@@ -58,7 +60,8 @@ export const useWorkouts = create<WorkoutState>()(
         get().patchActive((s) =>
           mapEx(s, weId, (we) => {
             const last = we.sets[we.sets.length - 1];
-            const ns: ExerciseSet = { id: uid('s_'), weight: last?.weight ?? we.recommendation?.weight ?? 0, reps: last?.reps ?? we.repMax, done: false };
+            // Лишний подход сверх плана — с той же целью, что и последний
+            const ns: ExerciseSet = { id: uid('s_'), weight: last?.weight ?? we.recommendation?.weight ?? 0, reps: last?.reps ?? we.repMax, done: false, ...(last?.target ? { target: { ...last.target } } : {}) };
             return { ...we, sets: [...we.sets, ns] };
           }),
         ),
@@ -70,6 +73,15 @@ export const useWorkouts = create<WorkoutState>()(
           })),
         ),
       removeSet: (weId, setId) => get().patchActive((s) => mapEx(s, weId, (we) => ({ ...we, sets: we.sets.filter((x) => x.id !== setId) }))),
+      insertSet: (weId, set, index) =>
+        get().patchActive((s) =>
+          mapEx(s, weId, (we) => {
+            if (we.sets.some((x) => x.id === set.id)) return we;
+            const sets = [...we.sets];
+            sets.splice(Math.max(0, Math.min(index, sets.length)), 0, set);
+            return { ...we, sets };
+          }),
+        ),
       addExercise: (we) => get().patchActive((s) => ({ ...s, exercises: [...s.exercises, we] })),
       removeExercise: (weId) =>
         get().patchActive((s) => {

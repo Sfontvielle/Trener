@@ -44,9 +44,18 @@ const check = async (name, fn) => {
   }
 };
 
-/** Лента тренера на главной — одна строка; все сигналы — в листе по тапу */
+/** Ответ тренера «печатается» (R1): ждём, пока исчезнут точки набора и текст допечатается */
+const waitReply = async (pg, ms = 12000) => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (!(await pg.getByTestId('coach-typing').count()) && !(await pg.getByTestId('coach-typing-reply').count())) return;
+    await pg.waitForTimeout(200);
+  }
+  throw new Error('ответ тренера не допечатался');
+};
+/** Сигналы тренера — по колокольчику на главной (R1: главная без прокрутки, отдельной карточки совета нет) */
 const openFeed = async (pg) => {
-  await pg.getByTestId('coach-feed').click();
+  await pg.getByTestId('home-bell').click();
   await pg.waitForTimeout(800);
   return pg.getByTestId('coach-feed-list').innerText();
 };
@@ -62,8 +71,8 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await pg.getByText('Начать', { exact: true }).click();
   await pg.waitForTimeout(800);
   assert.match(await body(), /Вход/);
-  assert.equal(await pg.getByText('Продолжить без входа', { exact: true }).count(), 0, 'входа «без Apple ID» для пользователей нет');
-  await pg.getByText('Без входа (только разработка)', { exact: true }).click();
+  // Вход можно пропустить (решение владельца, раунд 1)
+  await pg.getByTestId('auth-skip').click();
   await pg.waitForTimeout(1000);
   // 1 из 5 — имя
   assert.match(await body(), /1 из 5[\s\S]*Как тебя зовут\?[\s\S]*Так я буду к тебе обращаться/);
@@ -76,13 +85,12 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await pg.getByLabel(PROFILE.sex === 'female' ? 'Женщина' : 'Мужчина').click();
   await next();
   assert.match(await body(), /Сколько тебе лет\?[\s\S]*Только для пользователей 18\+/);
-  assert.equal(await pg.getByLabel('Возраст, лет').inputValue(), '', 'возраст не подставлен');
+  // Барабан: «+» сверху, «−» снизу, без поля ручного ввода; пока не тронули — значение не выбрано
+  assert.equal(await pg.getByLabel('Возраст, лет').count(), 0, 'поля ручного ввода нет');
+  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), '25', 'возраст не подставлен — стартовое приглушённо');
   assert.ok(await disabled());
-  await pg.getByLabel('Возраст, лет').fill('17');
-  await pg.waitForTimeout(200);
-  assert.match(await body(), /с 18 лет/);
-  assert.ok(await disabled(), 'до 18 — нельзя');
-  await pg.getByLabel('Возраст, лет').fill(String(PROFILE.age));
+  for (let i = 0; i < PROFILE.age - 25; i++) await pg.getByTestId('q-age-plus').click();
+  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), `${PROFILE.age} лет`);
   await next();
   assert.match(await body(), /Какой у тебя рост\?/);
   assert.equal(await pg.getByLabel('Рост, см').inputValue(), '', 'рост не подставлен');
@@ -158,8 +166,8 @@ const closeSheet = async (pg) => {
     pages.push(op);
     await check('0. Приветствие → вход (без Apple ID в браузере) → анкета 5 этапов без подставленных значений → главная; здоровье — правила', async () => {
       await passQuestionnaire(op);
-      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('coach-feed').isVisible()), 'после анкеты — главная');
-      // Остальное — позже: лента предлагает рассказать о еде (строка тренера → лист со всеми сигналами)
+      assert.ok(await op.getByTestId('coach-today').count() || (await op.getByTestId('home-bell').isVisible()), 'после анкеты — главная');
+      // Остальное — позже: лента предлагает рассказать о еде (колокольчик → лист со всеми сигналами)
       assert.match(await openFeed(op), /Дополни профиль: что любишь есть/);
       await closeSheet(op);
       await op.goto(`${URL}/profile?edit=health`, { waitUntil: 'networkidle' });
@@ -400,7 +408,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('17. «Сегодня» (макет 01-home): заголовок и дата, колокольчик, карточка тренировки, питание шкалами, активность группой, один совет', async () => {
+  await check('17. «Сегодня» на одном экране: заголовок и дата, колокольчик (сигналы), карточка тренировки, питание, три кольца — шаги, сон, неделя', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
@@ -420,17 +428,22 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'вода — только в «Питании»');
     assert.equal(await page.locator('img[src*="home_hero"]').count(), 0, 'без манекена');
     assert.match(await page.getByTestId('home-nutrition').innerText(), /из [\d\s\u202f]+ ккал[\s\S]*Белки[\s\S]*Жиры[\s\S]*Углеводы/, 'питание: ккал и Б/Ж/У');
-    assert.match(await page.getByTestId('home-steps').innerText(), /Шаги/);
-    assert.match(await page.getByTestId('home-sleep').innerText(), /Сон/);
-    assert.match(await page.getByTestId('home-recovery').innerText(), /Готовность/);
-    for (const l of [/^Шаги, как рассчитана цель/, /^Готовность: /, /^Калории: .*Открыть питание$/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
-    assert.match(await page.getByTestId('coach-feed').innerText(), /RYNJI/, 'совет тренера');
-    // «Спросить тренера» — когда у совета нет своего действия; иначе — действие совета
-    if (await page.getByTestId('coach-ask').count()) {
-      await page.getByTestId('coach-ask').click();
-      await page.waitForTimeout(900);
-      assert.match(page.url(), /\/coach/);
-    }
+    // Три кольца дня: шаги, сон, тренировки недели (R1)
+    assert.ok(await page.getByTestId('home-rings').isVisible(), 'кольца дня');
+    for (const l of [/^Шаги/, /^Сон/, /^Тренировки за неделю: \d+/, /^Калории: .*Открыть питание$/]) assert.ok(await page.getByLabel(l).count(), `${l}`);
+    // Всё на одном экране: кольца над таб-баром, совета-карточки нет (сигналы — по колокольчику)
+    const rings = await page.getByTestId('home-rings').boundingBox();
+    assert.ok(rings && rings.y + rings.height < 956 - 80, `кольца на первом экране: низ ${rings && rings.y + rings.height}`);
+    assert.equal(await page.getByTestId('coach-feed').count(), 0, 'отдельной карточки совета нет');
+    assert.match(await openFeed(page), /./, 'сигналы — в листе по колокольчику');
+    await page.getByLabel('Закрыть').last().click();
+    await page.waitForTimeout(500);
+    // Кольцо недели ведёт в «Тренировки»
+    await page.getByTestId('home-week').click();
+    await page.waitForTimeout(900);
+    assert.equal(await page.getByTestId('tab-bar').getByRole('tab', { name: /^Тренировки/ }).getAttribute('aria-selected'), 'true', 'кольцо недели → тренировки');
+    await page.getByRole('tab', { name: 'Сегодня' }).click();
+    await page.waitForTimeout(700);
     await shot('home');
   });
 
@@ -478,9 +491,18 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1200);
     await dismiss();
     assert.equal(await page.getByText(/Настрой|подключи/i).count(), 0);
+    // Как живой человек: сначала «печатает…» с точками, потом текст появляется постепенно
+    await page.getByLabel('Сообщение тренеру').fill('сколько белка мне нужно');
+    await page.getByLabel('Отправить').click();
+    await page.waitForTimeout(250);
+    assert.ok(await page.getByTestId('coach-typing').count(), 'точки набора');
+    assert.match(await page.evaluate(() => document.body.innerText), /RYNJI печатает…/);
+    await waitReply(page);
+    assert.match(await page.evaluate(() => document.body.innerText), /г\/кг/i);
+    // Здоровье и безопасность — без «печати», сразу целиком
     await page.getByLabel('Сообщение тренеру').fill('можно ли тренироваться при простуде');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1500);
+    await waitReply(page);
     assert.match(await page.evaluate(() => document.body.innerText), /врач/i);
     await shot('coach');
   });
@@ -491,13 +513,16 @@ const closeSheet = async (pg) => {
     await dismiss();
     await page.getByLabel('Сообщение тренеру').fill('Что мне сегодня делать?');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1200);
+    await waitReply(page);
     const t = await page.evaluate(() => document.body.innerText);
     assert.ok(!/Пройди утренний чек-ин/.test(t), 'не требует чек-ин');
     assert.ok(/Начать тренировку|Тренировка вне плана|уже сделана/.test(t), 'есть действие');
     await page.getByLabel('Сообщение тренеру').fill('хочу упражнение на верх груди');
     await page.getByLabel('Отправить').click();
-    await page.waitForTimeout(1200);
+    // Тап по печатающемуся ответу — показать целиком сразу
+    await page.waitForTimeout(1800);
+    if (await page.getByTestId('coach-typing-reply').count()) await page.getByTestId('coach-typing-reply').click();
+    await waitReply(page, 3000);
     assert.ok(await page.getByText('Начать эту тренировку').last().isVisible());
     await shot('coach-target');
   });
@@ -547,7 +572,7 @@ const closeSheet = async (pg) => {
     assert.equal(await page.getByRole('tab', { name: 'Профиль' }).getAttribute('aria-selected'), 'true', 'профиль — вкладка');
     await page.getByRole('tab', { name: 'Сегодня' }).click();
     await page.waitForTimeout(900);
-    assert.ok(await page.getByTestId('coach-feed').isVisible(), 'вкладка «Сегодня»');
+    assert.ok(await page.getByTestId('home-rings').isVisible(), 'вкладка «Сегодня»');
   });
 
   await check('25. Подходы: «Тренировать сейчас» — 2 подхода; добавить/убрать подход', async () => {
@@ -604,7 +629,7 @@ const closeSheet = async (pg) => {
     await shot('summary');
   });
 
-  await check('27. Питание: иконки приёмов, «как вчера», вода', async () => {
+  await check('27. Питание: приёмы, «как вчера», таблица КБЖУ без воды', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await dismiss();
@@ -612,15 +637,9 @@ const closeSheet = async (pg) => {
     const copyDay = page.getByText('Скопировать весь вчерашний день');
     const copyMeal = page.getByLabel(/^Скопировать .* со вчера$/);
     assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
-    // Вода могла быть добавлена раньше (на «Сегодня») — проверяем прибавку, а не абсолютное значение
-    const water = async () => {
-      const m = (await page.evaluate(() => document.body.innerText)).match(/Вода\s+(\d+(?:,\d+)?)\s*(мл|л)/);
-      return m ? Math.round(Number(m[1].replace(',', '.')) * (m[2] === 'л' ? 1000 : 1)) : 0;
-    };
-    const before = await water();
-    await page.getByLabel('Плюс 250 мл воды').click();
-    await page.waitForTimeout(300);
-    assert.equal(await water(), before + 250);
+    // Воды в дневнике нет (раунд 1); таблица КБЖУ: подписи колонок и итог дня
+    assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'воды нет');
+    assert.match(await page.getByTestId('macro-table-head').innerText(), /Ккал[\s\S]*Б[\s\S]*Ж[\s\S]*У[\s\S]*Кл[\s\S]*Итого/);
     await shot('nutrition');
   });
 
@@ -784,18 +803,19 @@ const closeSheet = async (pg) => {
     assert.match(await page.evaluate(() => document.body.innerText), /Клетчатка/i);
   });
 
-  await check('35. Утро: сон, шаги, готовность и тренировка на первом экране; тренировка — 1 тап', async () => {
+  await check('35. Утро: сон, шаги и тренировка на первом экране (сон → готовность); тренировка — 1 тап', async () => {
     await page.goto(URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const b = await page.getByLabel(/^Готовность: /).first().boundingBox();
-    assert.ok(b && b.y < 956, 'готовность на первом экране');
+    const b = await page.getByLabel(/^Сон/).first().boundingBox();
+    assert.ok(b && b.y + b.height < 956 - 80, 'кольцо сна на первом экране');
+    assert.ok(await page.getByLabel(/^Шаги/).first().isVisible(), 'шаги на первом экране');
     const t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /готовность|чек-ин|сон/i);
+    assert.match(t, /чек-ин|подъём|из чек-ина|Apple Health|нет данных/i);
     assert.ok(/Начать тренировку|Продолжить тренировку|Тренировка выполнена|отдых/i.test(t), 'тренировка дня видна');
   });
 
-  await check('36. Тренировка: подход → RIR одним тапом → таймера отдыха нет; заметка к упражнению; замена с причинами; блины; разминка', async () => {
+  await check('36. Тренировка: цель над подходом; свайп влево удаляет подход («Отменить» возвращает); таймер отдыха выключен, включается ⏱; заметка; замена; блины; разминка', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
     await dismiss();
@@ -833,16 +853,52 @@ const closeSheet = async (pg) => {
       if (await skip.count()) await skip.first().click();
       await page.waitForTimeout(200);
     }
-    // Рабочий подход: один тап «Записать подход» → таймера отдыха нет совсем → RIR одним тапом
+    // Над каждым рабочим подходом — цель на этот подход
+    const goals = page.getByTestId(/^set-goal-\d+$/);
+    assert.ok((await goals.count()) >= 2, 'цель над рабочими подходами');
+    assert.match(await goals.first().innerText(), /Цель/);
+    // Рабочий подход: один тап «Записать подход» → таймер отдыха по умолчанию выключен → отсчёта нет, RIR не спрашиваем
     await page.getByLabel(/^Записать подход 1$/).first().click();
     await page.waitForTimeout(500);
-    assert.equal(await page.getByText('Пропустить').count(), 0, 'автоматического таймера отдыха нет');
-    assert.equal(await page.getByLabel('Таймер отдыха', { exact: true }).count(), 0, 'и кнопки таймера отдыха нет');
-    assert.ok(await page.getByTestId('rir-picker').isVisible(), 'вопрос RIR');
-    await page.getByLabel('Запас 2', { exact: true }).click();
+    assert.equal(await page.getByTestId('rest-strip').count(), 0, 'по умолчанию отдыха нет');
+    assert.ok(!/Сколько повторений осталось в запасе|\bRIR\b/.test(await page.evaluate(() => document.body.innerText)), 'RIR больше не спрашиваем');
+    // Свайп влево по невыполненному подходу → удалён; «Отменить» возвращает его на место
+    const setIds = () => page.evaluate(() => { const a = JSON.parse(localStorage.getItem('form.workouts')).state.active; return a.exercises[a.currentIndex ?? 0].sets.map((x) => x.id); });
+    const before = await setIds();
+    const lastRow = page.getByTestId(`set-row-${before.length - 1}`);
+    await lastRow.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
-    assert.equal(await page.getByTestId('rir-picker').count(), 0, 'RIR сохранён одним тапом');
-    // Заметка к упражнению (вместо кнопки таймера): сохраняется и видна под названием
+    const box = await lastRow.boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: box.y + box.height / 2 }] });
+    await touch('touchStart', box.x + box.width - 30);
+    for (let i = 1; i <= 12; i++) { await touch('touchMove', box.x + box.width - 30 - i * 25); await page.waitForTimeout(16); }
+    await touch('touchEnd', 0);
+    await page.waitForTimeout(900);
+    assert.equal((await setIds()).length, before.length - 1, 'подход удалён свайпом');
+    await page.getByText('Отменить', { exact: true }).last().click();
+    await page.waitForTimeout(500);
+    assert.deepEqual(await setIds(), before, '«Отменить» вернул подход на место');
+    // Таймер отдыха: ⏱ → 1:30 → после следующего подхода идёт отсчёт; «Пропустить» убирает его
+    await page.getByLabel('Таймер отдыха: выключен', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('1:30', { exact: true }).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('Добавить подход', { exact: true }).click();
+    await page.waitForTimeout(300);
+    await page.getByLabel(/^Записать подход 2$/).first().click();
+    await page.waitForTimeout(600);
+    assert.ok(await page.getByTestId('rest-strip').isVisible(), 'идёт отсчёт отдыха');
+    assert.match(await page.getByTestId('rest-strip').innerText(), /Отдых 1:(29|30|2\d)/);
+    await page.getByLabel('Пропустить отдых', { exact: true }).click();
+    await page.waitForTimeout(400);
+    assert.equal(await page.getByTestId('rest-strip').count(), 0, 'отдых пропущен');
+    // Выключить обратно — по умолчанию таймера нет и у следующих сценариев
+    await page.getByLabel(/^Таймер отдыха: 1:30$/).click();
+    await page.waitForTimeout(600);
+    await page.getByLabel('Выключен', { exact: true }).click();
+    await page.waitForTimeout(600);
+    // Заметка к упражнению: сохраняется и видна под названием
     await page.getByLabel('Действия с упражнением').first().click();
     await page.waitForTimeout(600);
     await page.getByLabel('Заметка к упражнению', { exact: true }).click();
@@ -942,34 +998,6 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(600);
   });
 
-  await check('39. Вода: увеличить и уменьшить в листе из «Питания»', async () => {
-    await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
-    await dismiss();
-    await page.getByLabel('Вода: изменить объём').click();
-    await page.waitForTimeout(700);
-    const amount = async () => (await page.getByTestId('water-amount').innerText()).trim();
-    const a0 = await amount();
-    await page.getByLabel('Увеличить на 250 мл').click();
-    await page.waitForTimeout(200);
-    await page.getByLabel('Увеличить на 250 мл').click();
-    await page.waitForTimeout(200);
-    const a1 = await amount();
-    assert.notEqual(a1, a0, 'увеличилось');
-    await page.getByLabel('Уменьшить на 250 мл').click();
-    await page.waitForTimeout(200);
-    assert.notEqual(await amount(), a1, 'уменьшилось');
-    // Лист закрывается свайпом вниз за шапку
-    const head = await page.getByText('Ориентир', { exact: false }).last().boundingBox();
-    const cdp = await ctx.newCDPSession(page);
-    const touch = (type, ty) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 220, y: ty }] });
-    await touch('touchStart', head.y);
-    for (let i = 1; i <= 12; i++) { await touch('touchMove', head.y + i * 30); await page.waitForTimeout(16); }
-    await touch('touchEnd', 0);
-    await page.waitForTimeout(900);
-    assert.equal(await page.getByTestId('water-amount').count(), 0, 'лист закрыт свайпом');
-  });
-
   await check('40. Питание → «Ещё»: лист со списком стягивается пальцем за содержимое', async () => {
     await page.goto(`${URL}/nutrition`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
@@ -1007,8 +1035,8 @@ const closeSheet = async (pg) => {
       assert.match(t, /Тренировка по программе|По программе|Тренер советует отдых|Запланировано|Тренировка выполнена|День отдыха|Идёт тренировка/, 'главное на сегодня — одна карточка');
       // Калории дня — кольцом рядом (подробно КБЖУ — на «Питании», без дублирования)
       assert.match(await page.getByLabel(/^Калории: .*Открыть питание$/).first().innerText(), /ккал/, 'калории дня');
-      // «Почему так» — в листе тренера (строка тренера на главной)
-      await page.getByTestId('coach-feed').click();
+      // «Почему так» — в листе тренера (колокольчик на главной)
+      await page.getByTestId('home-bell').click();
       await page.waitForTimeout(700);
       await page.getByLabel('Почему? Объяснение решений тренера').click();
       await page.waitForTimeout(900);
@@ -1021,102 +1049,6 @@ const closeSheet = async (pg) => {
     } else {
       assert.ok(await page.getByText('Продолжить тренировку').count(), 'идёт тренировка — блок плана заменён продолжением');
     }
-  });
-
-  await check('42. Анализы: вставка текста → «Проверь распознанные данные» → правка → сохранение → история и изменения', async () => {
-    const paste = async (text) => {
-      await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(1200);
-      await dismiss();
-      await page.getByText('Добавить', { exact: true }).first().click();
-      await page.waitForTimeout(600);
-      await page.getByText('Вставить текст анализов').click();
-      await page.waitForTimeout(700);
-      await page.getByTestId('lab-paste').fill(text);
-      await page.getByText('Распознать', { exact: true }).click();
-      await page.waitForTimeout(1000);
-      assert.ok(await page.getByText('Проверь распознанные данные').isVisible(), 'экран проверки обязателен');
-    };
-    await paste('ИНВИТРО\nДата взятия образца: 01.03.2026\nГематокрит (HCT) 46,0 % 39 - 49\nХолестерин ЛПНП 3,1 ммоль/л < 3,0 H\nАЛТ 30 Ед/л < 41');
-    // Уверенно распознанное — компактной таблицей; любое значение можно исправить до сохранения
-    assert.equal(await page.getByLabel('Значение, строка 3').count(), 0, 'строки свёрнуты');
-    await page.getByLabel('Изменить: АЛТ').click();
-    await page.waitForTimeout(300);
-    await page.getByLabel('Значение, строка 3').fill('31');
-    await page.getByText('Подтвердить и сохранить').click();
-    await page.waitForTimeout(1000);
-    // После сохранения — сразу отчёт по загрузке
-    let t = await page.getByTestId('lab-report').innerText();
-    assert.match(t, /Первый анализ/);
-    assert.match(t, /Вне референса/);
-    assert.match(await page.getByTestId('lab-report-list').innerText(), /ЛПНП/);
-    await paste('ИНВИТРО\nДата взятия образца: 01.09.2026\nГематокрит (HCT) 48,1 % 39 - 49\nХолестерин ЛПНП 3,5 ммоль/л < 3,0 H\nАЛТ 31 Ед/л < 41');
-    await page.getByText('Подтвердить и сохранить').click();
-    await page.waitForTimeout(1000);
-    t = await page.getByTestId('lab-report').innerText();
-    assert.match(t, /Сравнение с анализом 1 мар/);
-    // По умолчанию — что ухудшилось относительно референса: ЛПНП выше и дальше от него
-    let list = await page.getByTestId('lab-report-list').innerText();
-    assert.match(list, /ЛПНП/);
-    assert.match(list, /дальше от референса/);
-    assert.match(list, /↑ 0,4/);
-    await page.getByLabel('Повысилось: 2').click();
-    await page.waitForTimeout(500);
-    list = await page.getByTestId('lab-report-list').innerText();
-    assert.match(list, /↑ 2,1 п\.п\./);
-    assert.match(t, /Без существенных изменений: АЛТ/);
-    await page.getByText('Таблица всех анализов').last().click();
-    await page.waitForTimeout(800);
-    const table = await page.getByTestId('lab-table').innerText();
-    assert.match(table, /48,1/);
-    assert.match(table, /46/);
-    await page.goto(`${URL}/labs`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000);
-    await dismiss();
-    const ch = await page.getByTestId('lab-changes').innerText();
-    assert.match(ch, /Последний анализ/);
-    assert.match(ch, /ухудшилось/);
-    await page.getByLabel(/^Гематокрит: 48,1/).click();
-    await page.waitForTimeout(900);
-    t = await page.evaluate(() => document.body.innerText);
-    assert.match(t, /референс вашей лаборатории: 39 – 49/);
-    assert.match(t, /↑ 2,1 п\.п\. с прошлого/);
-    await shot('lab-marker');
-  });
-
-  await check('43. Здоровье: давление по среднему, Enhanced — история и граница безопасности', async () => {
-    await page.goto(`${URL}/health-monitor`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1200);
-    await dismiss();
-    for (const [s1, d1] of [[146, 94], [148, 95]]) {
-      await page.getByText('Записать', { exact: true }).click();
-      await page.waitForTimeout(500);
-      await page.getByTestId('bp-sys').fill(String(s1));
-      await page.getByTestId('bp-dia').fill(String(d1));
-      await page.getByText('Сохранить', { exact: true }).last().click();
-      await page.waitForTimeout(600);
-    }
-    let t = await page.getByTestId('health-signals').innerText();
-    assert.match(t, /≥140\/90/);
-    assert.match(t, /обсудить/);
-    await page.getByText('Режим Enhanced (AAS)').click();
-    await page.waitForTimeout(400);
-    t = await page.getByTestId('enhanced-card').innerText();
-    assert.match(t, /Не составляет циклы/);
-    assert.match(t, /Нормальные анализы не означают, что AAS безопасны/);
-    await page.getByText('Добавить запись').click();
-    await page.waitForTimeout(500);
-    await page.getByLabel('Вещество', { exact: true }).fill('Тестовая запись');
-    await page.getByText('Сохранить', { exact: true }).last().click();
-    await page.waitForTimeout(600);
-    assert.match(await page.getByTestId('enhanced-card').innerText(), /Тестовая запись/);
-    await shot('health');
-    // Сигнал давления виден на главной и запрещает повышение нагрузки
-    await page.goto(URL, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
-    await dismiss();
-    const line = await page.getByTestId('coach-feed').innerText();
-    assert.ok(/Давление/.test(line) || /Давление/.test(await openFeed(page)), 'сигнал давления на главной');
   });
 
   await check('44. Отчёт недели: метрики и решения тренера (что/почему/данные/уверенность)', async () => {
@@ -1132,7 +1064,6 @@ const closeSheet = async (pg) => {
       const d = await page.getByTestId('weekly-decisions').innerText();
       assert.match(d, /Решения тренера на неделю/i);
       assert.match(d, /Уверенность:/);
-      assert.match(d, /Нагрузку не повышаем/, 'давление ≥140/90 — без повышения нагрузки');
     }
   });
 

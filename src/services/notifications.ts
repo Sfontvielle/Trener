@@ -18,7 +18,11 @@ export function configureNotifications() {
   if (!native || configured) return;
   configured = true;
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
+    // Конец отдыха при открытом приложении показывает сам экран тренировки — баннер не дублируем
+    handleNotification: async (n) => {
+      const rest = n.request.identifier === REST_ID;
+      return { shouldPlaySound: !rest, shouldSetBadge: false, shouldShowBanner: !rest, shouldShowList: !rest };
+    },
   });
 }
 
@@ -53,11 +57,31 @@ async function cancel(id: string) {
   }
 }
 
-/** Снять уведомления об отдыхе, запланированные прошлыми версиями (таймера отдыха больше нет) */
+/** Снять уведомление о конце отдыха (пропуск отдыха, следующий подход, конец тренировки) */
 export async function cancelRestEnd() {
   if (native) {
     await cancel(REST_ID);
     await cancel(REST_WARN_ID);
+  }
+}
+
+/**
+ * Таймер отдыха (включается вручную): уведомление о конце отдыха, если приложение свёрнуто.
+ * Без разрешения на уведомления — тихо ничего не делает: в приложении отсчёт виден и так.
+ */
+export async function scheduleRestEnd(seconds: number, nextLabel?: string) {
+  if (!native) return;
+  await cancelRestEnd();
+  try {
+    const perm = await Notifications.getPermissionsAsync();
+    if (!perm.granted) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: REST_ID,
+      content: { title: 'Отдых окончен', body: nextLabel ? `Дальше: ${nextLabel}` : 'Время следующего подхода', sound: true },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.max(1, Math.round(seconds)) },
+    });
+  } catch {
+    /* не критично */
   }
 }
 
@@ -68,13 +92,16 @@ export function toExpoWeekday(i: number): number {
 
 /** Пересоздаёт расписание напоминаний под текущие настройки и план */
 const REVIEW_ID = 'weekly-review';
+const WEIGH_ID = 'weekly-weigh-in';
 
 export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | null): Promise<void> {
   if (!native) return;
   await cancel(MORNING_ID);
   await cancel(REVIEW_ID);
+  await cancel(WEIGH_ID);
   for (let i = 0; i < 7; i++) await cancel(`${TRAIN_PREFIX}${i}`);
-  if (!settings.morningReminder && !settings.trainingReminder && !settings.weeklyReview) return;
+  const weighIn = settings.weighInReminder !== false;
+  if (!settings.morningReminder && !settings.trainingReminder && !settings.weeklyReview && !weighIn) return;
   const perm = await Notifications.getPermissionsAsync().catch(() => null);
   if (!perm?.granted) return;
   try {
@@ -83,6 +110,14 @@ export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | n
         identifier: MORNING_ID,
         content: { title: 'Доброе утро 👋', body: `Чек-ин за 30 секунд и взвешивание — ${BRAND} подстроит тренировку под твоё состояние.` },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: settings.morningTime.hour, minute: settings.morningTime.minute },
+      });
+    }
+    // Взвешивание раз в неделю — в понедельник утром (если утренний чек-ин включён, его время; иначе 8:10)
+    if (weighIn) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: WEIGH_ID,
+        content: { title: 'Взвешивание недели', body: `Утром натощак, после туалета. По весу недели ${BRAND} подстроит калории и КБЖУ.`, data: { url: '/weight' } },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: toExpoWeekday(0), hour: settings.morningReminder ? settings.morningTime.hour : 8, minute: settings.morningReminder ? settings.morningTime.minute : 10 },
       });
     }
     if (settings.weeklyReview) {

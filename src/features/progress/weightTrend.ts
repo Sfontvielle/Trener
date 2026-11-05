@@ -46,15 +46,8 @@ function avg(a: number[]): number {
 }
 
 /** Линейная регрессия тренда за окно, кг/неделю */
-export function weeklyRate(points: TrendPoint[], windowDays = 21): { kgPerWeek: number; days: number; weighIns: number } | null {
-  if (points.length < 2) return null;
-  const end = points[points.length - 1].date;
-  const win = points.filter((p) => daysBetween(p.date, end) < windowDays);
-  const weighIns = win.filter((p) => p.raw !== undefined).length;
-  const span = daysBetween(win[0].date, end);
-  if (span < 10 || weighIns < 5) return null;
-  const xs = win.map((p) => daysBetween(win[0].date, p.date));
-  const ys = win.map((p) => p.trend);
+/** Наклон прямой по точкам (x — дни, y — кг), кг/день */
+function slope(xs: number[], ys: number[]): number | null {
   const n = xs.length;
   const mx = xs.reduce((a, b) => a + b, 0) / n;
   const my = ys.reduce((a, b) => a + b, 0) / n;
@@ -64,8 +57,32 @@ export function weeklyRate(points: TrendPoint[], windowDays = 21): { kgPerWeek: 
     num += (xs[i] - mx) * (ys[i] - my);
     den += (xs[i] - mx) ** 2;
   }
-  if (den === 0) return null;
-  return { kgPerWeek: (num / den) * 7, days: span, weighIns };
+  return den === 0 ? null : num / den;
+}
+
+/**
+ * Темп изменения веса, кг/нед.
+ *  • Обычно — наклон сглаженного тренда за windowDays (нужно ≥5 взвешиваний за 10+ дней).
+ *  • Взвешивания раз в неделю (R1): сглаженный тренд по редким точкам сильно запаздывает, поэтому берём прямую по
+ *    самим взвешиваниям за 5 недель — нужно ≥3 взвешивания за 14+ дней. Помечается sparse: точность ниже.
+ */
+export function weeklyRate(points: TrendPoint[], windowDays = 21): { kgPerWeek: number; days: number; weighIns: number; sparse?: boolean } | null {
+  if (points.length < 2) return null;
+  const end = points[points.length - 1].date;
+  const win = points.filter((p) => daysBetween(p.date, end) < windowDays);
+  const weighIns = win.filter((p) => p.raw !== undefined).length;
+  const span = daysBetween(win[0].date, end);
+  if (span >= 10 && weighIns >= 5) {
+    const k = slope(win.map((p) => daysBetween(win[0].date, p.date)), win.map((p) => p.trend));
+    return k === null ? null : { kgPerWeek: k * 7, days: span, weighIns };
+  }
+  // Редкие взвешивания: прямая по сырым значениям за 35 дней
+  const raw = points.filter((p) => p.raw !== undefined && daysBetween(p.date, end) < 35);
+  if (raw.length < 3) return null;
+  const rawSpan = daysBetween(raw[0].date, raw[raw.length - 1].date);
+  if (rawSpan < 14) return null;
+  const k = slope(raw.map((p) => daysBetween(raw[0].date, p.date)), raw.map((p) => p.raw as number));
+  return k === null ? null : { kgPerWeek: k * 7, days: rawSpan, weighIns: raw.length, sparse: true };
 }
 
 export function latestTrendWeight(entries: WeightEntry[]): number | undefined {

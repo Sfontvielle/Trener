@@ -3,7 +3,8 @@ import type { HealthDay } from '@/features/health/model';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { addDays, toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
-import { dedupeWorkouts, mergedMinutes, pickDailyWeight } from '@/features/health/dedupe';
+import { dedupeWorkouts, pickDailyWeight } from '@/features/health/dedupe';
+import { sleepNights } from '@/features/health/sleep';
 
 /**
  * Apple Health (HealthKit) через @kingstinct/react-native-healthkit.
@@ -182,21 +183,17 @@ export async function fetchHealthDays(days = 21, ref = new Date()): Promise<Heal
     if (d && kg !== undefined) d.weightKg = Math.round(kg * 10) / 10;
   }
 
-  // Сон: интервалы «спал» (core/deep/REM/unspecified) за ночь — относим к дате пробуждения. Пересечения источников сливаем
+  // Сон: «спал» (часы и трекеры), а если его нет — «в постели» от самого iPhone; ночь — по дате пробуждения
   const sleepFrom = new Date(from.getTime() - 12 * 3600_000);
   const sleep = await safe(() => hk.queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', { filter: { date: { startDate: sleepFrom, endDate: to } }, limit: 0 }));
   if (sleep?.length) {
-    const asleep = sleep.filter((s) => [1, 3, 4, 5].includes(Number(s.value))).map((s) => [new Date(s.startDate).getTime(), new Date(s.endDate).getTime()] as [number, number]);
-    const byDay = new Map<string, [number, number][]>();
-    for (const iv of asleep) {
-      // Сон, закончившийся до 18:00, относится к этому дню; позже — к следующему утру
-      const end = new Date(iv[1]);
-      const key = end.getHours() < 18 ? toISODate(end) : addDays(toISODate(end), 1);
-      byDay.set(key, [...(byDay.get(key) ?? []), iv]);
-    }
-    for (const [k, ivs] of byDay) {
+    const nights = sleepNights(sleep.map((s) => ({ value: Number(s.value), start: new Date(s.startDate).getTime(), end: new Date(s.endDate).getTime() })));
+    for (const [k, n] of nights) {
       const d = out.get(k);
-      if (d) d.sleepHours = Math.round((mergedMinutes(ivs) / 60) * 100) / 100;
+      if (!d) continue;
+      d.sleepHours = Math.round((n.minutes / 60) * 100) / 100;
+      d.wakeAt = n.wakeAt;
+      if (n.source === 'inBed') d.sleepInBed = true;
     }
   }
 

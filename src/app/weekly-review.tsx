@@ -68,13 +68,6 @@ export default function WeeklyReviewScreen() {
   const w = review.week;
   const empty = !w && !review.loggedDays;
 
-  const remember = () => {
-    const parts = [...review.good.slice(0, 2), ...review.attention.slice(0, 2)];
-    useCoach.getState().addMemory(`Неделя ${formatDayShort(review.from)}–${formatDayShort(review.to)}: ${parts.join('; ')}`, 'training', 'user');
-    haptic.success();
-    toast('Выводы недели сохранены в памяти тренера');
-  };
-
   return (
     <Screen>
       <Header title="Отчёт недели" />
@@ -210,8 +203,7 @@ export default function WeeklyReviewScreen() {
               Изменения применяются только по твоей кнопке. Выводы — сопоставление данных, а не медицинская оценка.
             </T>
           </Card>
-          <Button title="Запомнить выводы недели" icon="bookmark-outline" variant="secondary" style={{ marginTop: space.md }} onPress={remember} />
-          <Button title="Обсудить с тренером" icon="chatbubbles-outline" variant="ghost" onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою неделю' } })} />
+          <Button title="Обсудить с тренером" icon="chatbubbles-outline" variant="secondary" style={{ marginTop: space.md }} onPress={() => router.push({ pathname: '/coach', params: { q: 'Разбери мою неделю' } })} />
         </>
       )}
     </Screen>

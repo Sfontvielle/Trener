@@ -21,8 +21,6 @@ import { periodStats, prCounts } from '@/features/training/journal';
 import { toast } from '@/components/Dialog';
 import { getExercise } from '@/data/exercises';
 import { comparePeriods, progressNarrative } from '@/features/progress/series';
-import { useLabs } from '@/stores/labs';
-import { healthFlags } from '@/features/labs/analysis';
 import { analyzeBody, combineBodyFat, mergeZones, withoutStrengths, ZONE_LABEL } from '@/features/progress/body';
 import { NutritionAnalytics } from '@/features/nutrition/AnalyticsSection';
 
@@ -43,7 +41,6 @@ export default function Progress() {
   const weights = useBody((s) => s.weights);
   const metrics = useBody((s) => s.metrics);
   const analyses = useBody((s) => s.analyses);
-  const labReports = useLabs((s) => s.reports);
   const sessions = useWorkouts((s) => s.sessions);
   const customs = useWorkouts((s) => s.customExercises);
   const plan = usePlan((s) => s.plan);
@@ -68,8 +65,6 @@ export default function Progress() {
   }, [sessions, customs, from, d, days]);
   const volPct = train.prev.tonnage > 0 && train.cur.tonnage > 0 ? Math.round(((train.cur.tonnage - train.prev.tonnage) / train.prev.tonnage) * 100) : undefined;
 
-  const lastLab = useMemo(() => [...labReports].sort((a, b) => (a.date < b.date ? 1 : -1))[0], [labReports]);
-  const labFlags = useMemo(() => healthFlags(labReports, profile?.sex).length, [labReports, profile?.sex]);
   // Тело одной строкой: процент жира диапазоном (замеры + фото) и что подтянуть
   const bodyA = useMemo(() => (profile ? analyzeBody({ sex: profile.sex, age: profile.age, heightCm: profile.heightCm, weightKg: last ?? profile.weightKg, metrics, weights, today: d }) : null), [profile, last, metrics, weights, d]);
   const photoA = analyses.length && daysBetween(analyses[analyses.length - 1].date, d) <= 60 ? analyses[analyses.length - 1] : null;
@@ -196,14 +191,6 @@ export default function Progress() {
           />
           <ListRow title="Статистика" icon="stats-chart-outline" accessibilityLabel="Статистика: сила, рекорды, нагрузка" subtitle="Сила, рабочие веса, нагрузка" onPress={() => router.push('/stats')} />
           <ListRow title="Отчёт недели" icon="calendar-outline" onPress={() => router.push('/weekly-review')} />
-          <ListRow
-            title="Анализы и здоровье"
-            icon="flask-outline"
-            iconColor={labFlags ? colors.warning : undefined}
-            accessibilityLabel="Анализы и здоровье"
-            subtitle={labFlags && lastLab ? `${formatDayShort(lastLab.date)} · обсудить с врачом: ${labFlags}` : undefined}
-            onPress={() => router.push('/labs')}
-          />
         </Group>
       </View>
     </Screen>

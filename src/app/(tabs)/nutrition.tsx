@@ -25,10 +25,10 @@ import { ConfidenceLine } from '@/features/coach/DecisionView';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { useDayKey } from '@/hooks/useDayKey';
 import { usualMeal, type UsualMeal } from '@/features/nutrition/quick';
-import { dayProgress, remaining } from '@/features/nutrition/status';
+import { dayProgress, remaining, sumFiber } from '@/features/nutrition/status';
 import { suggestMeals } from '@/features/nutrition/suggest';
 import { remainderHint, type RemainderOption } from '@/features/nutrition/remainder';
-import { DaySummary, MacroSummary, MealSection, SaveMealSheet, WaterRow } from '@/features/nutrition/diary';
+import { DaySummary, MacroSummary, MacroTableHead, MealSection, SaveMealSheet } from '@/features/nutrition/diary';
 import { PortionSheet, type PortionTarget } from '@/features/nutrition/PortionSheet';
 import { BRAND } from '@/config/brand';
 import { afterModalClose } from '@/components/modalGate';
@@ -144,6 +144,7 @@ export default function Nutrition() {
       ) : null}
 
       <View style={[styles.group, elevation()]}>
+        <MacroTableHead eaten={nut.eaten} fiber={sumFiber(nut.entries).g} />
         {MEALS.map((m, i) => (
           <View key={m} style={i > 0 && styles.mealLine}>
             <MealSection
@@ -173,7 +174,6 @@ export default function Nutrition() {
         />
       ) : null}
 
-      <WaterRow date={date} />
 
       {review && isToday && review.status === 'adjust' && !reviewKept ? (
         // Итог алгоритма одной фразой и решение — только если правило предлагает изменение

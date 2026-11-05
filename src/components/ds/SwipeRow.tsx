@@ -12,7 +12,7 @@ const REVEAL = 88;
  * половины ширины — удаляется сразу. Работает на PanResponder (без gesture-handler — см. gestures.tsx).
  * Для VoiceOver — действие «Удалить» в ротаторе.
  */
-export function SwipeRow({ children, onDelete, deleteLabel = 'Удалить', testID }: { children: React.ReactNode; onDelete: () => void; deleteLabel?: string; testID?: string }) {
+export function SwipeRow({ children, onDelete, deleteLabel = 'Удалить', a11yLabel, testID, bg }: { children: React.ReactNode; onDelete: () => void; deleteLabel?: string; /** Полное название действия для VoiceOver («Удалить подход 2»); на кнопке — короткое deleteLabel */ a11yLabel?: string; testID?: string; /** Фон строки (по умолчанию — карточка) */ bg?: string }) {
   const [x] = useState(() => new Animated.Value(0));
   const st = useRef({ open: false, width: 360, onDelete });
   useEffect(() => {
@@ -50,6 +50,9 @@ export function SwipeRow({ children, onDelete, deleteLabel = 'Удалить', t
         else if (pos < -REVEAL / 2 || g.vx < -0.6) settle(-REVEAL);
         else settle(0);
       },
+      // Начатый свайп строки не отдаём: иначе его перехватывает внешний горизонтальный жест экрана
+      // (на тренировке — листание упражнений), и строка возвращается на место
+      onPanResponderTerminationRequest: () => false,
       onPanResponderTerminate: () => settle(st.current.open ? -REVEAL : 0),
     }),
   );
@@ -60,16 +63,16 @@ export function SwipeRow({ children, onDelete, deleteLabel = 'Удалить', t
       testID={testID}
       style={styles.wrap}
       onLayout={(e) => (st.current.width = e.nativeEvent.layout.width)}
-      accessibilityActions={[{ name: 'delete', label: deleteLabel }]}
+      accessibilityActions={[{ name: 'delete', label: a11yLabel ?? deleteLabel }]}
       onAccessibilityAction={(e) => e.nativeEvent.actionName === 'delete' && onDelete()}
     >
-      <Pressable accessibilityRole="button" accessibilityLabel={deleteLabel} onPress={remove} style={styles.action}>
+      <Pressable accessibilityRole="button" accessibilityLabel={a11yLabel ?? deleteLabel} onPress={remove} style={styles.action}>
         <Icon name="trash-outline" size={20} color={fg} />
         <T v="footnote" color={fg} style={{ fontWeight: '600' }}>
           {deleteLabel}
         </T>
       </Pressable>
-      <Animated.View style={[styles.front, { transform: [{ translateX: x }] }]} {...pan.panHandlers}>
+      <Animated.View style={[styles.front, bg ? { backgroundColor: bg } : null, { transform: [{ translateX: x }] }]} {...pan.panHandlers}>
         {children}
       </Animated.View>
     </View>

@@ -24,6 +24,7 @@ import { useAccount } from '@/stores/account';
 import { PRE_PROFILE_ROUTES, entryRoute, type EntryRoute } from '@/features/account/route';
 import { appleCredentialState } from '@/services/appleAuth';
 import { startWorkoutActivitySync } from '@/services/liveActivity';
+import { startWeightTargetSync } from '@/features/profile/applyProfile';
 
 export { ErrorBoundaryView as ErrorBoundary };
 
@@ -40,7 +41,7 @@ function Gate() {
   const plan = usePlan((s) => s.plan);
 
   // Напоминания всегда соответствуют текущему плану (смена расписания → перепланирование)
-  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, settings.weeklyReview, plan?.schedule, plan?.templates.map((t) => t.name)]);
+  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, settings.weeklyReview, settings.weighInReminder, plan?.schedule, plan?.templates.map((t) => t.name)]);
   const hasProfile = !!profile;
   useEffect(() => {
     if (hydrated && hasProfile) void syncReminders(useProfile.getState().settings, usePlan.getState().plan);
@@ -98,6 +99,11 @@ function Gate() {
   // согласуется с хранилищем сразу после загрузки данных (в том числе после перезапуска приложения)
   useEffect(() => {
     if (hydrated) startWorkoutActivitySync();
+  }, [hydrated]);
+
+  // КБЖУ следуют за весом: новое взвешивание (или правило 2/1 г/кг для старой цели) → белок и жиры под вес
+  useEffect(() => {
+    if (hydrated) startWeightTargetSync();
   }, [hydrated]);
 
   // Apple Health: синхронизация при запуске и возвращении в приложение (не чаще раза в 30 мин)

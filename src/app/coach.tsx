@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Easing, FlatList, Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { INPUT_MAX_SCALE } from '@/components/inputs';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,16 +12,17 @@ import { useCoach } from '@/stores/coach';
 import { applyCoachAction, declineCoachAction, sendCoachMessage } from '@/features/coach/service';
 import { useKeyboardAwareScroll } from '@/components/keyboard';
 import { haptic } from '@/services/haptics';
-import { plural, toISODate } from '@/utils/date';
+import { toISODate } from '@/utils/date';
 import { BRAND } from '@/config/brand';
+import { prefersReducedMotion, userPrefersReducedMotion } from '@/components/motion';
+import { revealedAt, revealMs, thinkMs, wordStops } from '@/features/coach/reveal';
 
-const QUICK = ['Что мне сегодня делать?', 'Упражнения на верх груди', 'Что мне поесть сейчас?', 'Какие анализы сдать?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит плечо при жиме', 'Что ты обо мне помнишь?'];
+const QUICK = ['Что мне сегодня делать?', 'Упражнения на верх груди', 'Что мне поесть сейчас?', 'Почему вес стоит?', 'Разбери мою неделю', 'Болит плечо при жиме', 'Сколько белка мне нужно?', 'Как улучшить сон?'];
 
 export default function Coach() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ q?: string }>();
   const messages = useCoach((s) => s.messages);
-  const memoryCount = useCoach((s) => s.memory.length);
   const [text, setText] = useState(params.q ? String(params.q) : '');
   const [busy, setBusy] = useState(false);
   const list = useRef<FlatList<CoachMessage>>(null);
@@ -52,12 +53,12 @@ export default function Coach() {
         <AppHeader
           back
           title={`${BRAND} Coach`}
-          subtitle={`Знает твои данные · помнит ${memoryCount} ${plural(memoryCount, 'факт', 'факта', 'фактов')}`}
+          subtitle="Знает твои тренировки, питание и восстановление"
           actions={[
             {
               icon: 'ellipsis-horizontal',
               label: 'Меню чата',
-              onPress: () => confirm('Очистить переписку?', 'Долговременная память тренера сохранится — её можно посмотреть в профиле.', 'Очистить', () => useCoach.getState().clearChat(), true),
+              onPress: () => confirm('Очистить переписку?', 'Сообщения удалятся с этого iPhone.', 'Очистить', () => useCoach.getState().clearChat(), true),
             },
           ]}
         />
@@ -146,21 +147,61 @@ function Bubble({ m }: { m: CoachMessage }) {
       </View>
     );
   }
+  return <AssistantBubble m={m} />;
+}
+
+/** Уже показанные «печатью» ответы — при прокрутке и возврате на экран не печатаются заново */
+const typed = new Set<string>();
+
+/**
+ * Ответ тренера (R1): свежий ответ «печатается» — пауза с точками набора, затем текст словами.
+ * Тап по ответу — показать целиком. «Уменьшение движения» и старые сообщения — сразу целиком.
+ * Карточки действий и источники появляются, когда текст допечатан.
+ */
+function AssistantBubble({ m }: { m: CoachMessage }) {
+  const [fresh] = useState(() => !typed.has(m.id) && Date.now() - m.createdAt < 8000 && !m.safety && !userPrefersReducedMotion());
+  const [t, setT] = useState(fresh ? -thinkMs(m.text.length) : Number.POSITIVE_INFINITY);
+  const [stops] = useState(() => wordStops(m.text));
+  const total = revealMs(m.text.length);
+  const done = t >= total;
+  useEffect(() => {
+    if (done) {
+      typed.add(m.id);
+      return;
+    }
+    // t < 0 — ещё «думает» (|t| мс до первого слова), t ≥ 0 — сколько мс уже печатается
+    const think = Math.max(0, -t);
+    const start = Date.now() - Math.max(0, t);
+    const id = setInterval(() => setT(Date.now() - start - think), 40);
+    return () => clearInterval(id);
+    // Таймер запускается один раз на ответ; t — только стартовое значение
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, m.id]);
+  const finish = () => {
+    if (done) return;
+    typed.add(m.id);
+    setT(Number.POSITIVE_INFINITY);
+  };
+  const shown = done ? m.text : revealedAt(m.text, stops, t, total);
   return (
     <View style={{ gap: space.xs }}>
-      <View style={m.safety ? [styles.card, styles.safety] : undefined}>
+      <Pressable disabled={done} onPress={finish} accessibilityLabel={done ? undefined : m.text.replace(/\*\*/g, '')} accessibilityHint={done ? undefined : 'Показать ответ целиком'} style={m.safety ? [styles.card, styles.safety] : undefined} testID={done ? undefined : 'coach-typing-reply'}>
         <View style={styles.src}>
           <Icon name={m.safety ? 'alert-circle-outline' : 'sparkles-outline'} size={16} color={m.safety ? colors.danger : colors.textDim} />
           <T v="footnote" color={m.safety ? colors.danger : m.offline ? colors.warning : colors.textDim}>
-            {m.safety ? 'Безопасность' : m.offline ? `${BRAND} · сервер недоступен, ответ на устройстве` : BRAND}
+            {m.safety ? 'Безопасность' : m.offline ? `${BRAND} · сервер недоступен, ответ на устройстве` : t < 0 ? `${BRAND} печатает…` : BRAND}
           </T>
         </View>
-        <T v="body" selectable style={{ marginTop: space.xxs }}>
-          {renderBold(m.text)}
-        </T>
-      </View>
-      {m.sources?.length ? <Sources list={m.sources} /> : null}
-      {m.actions?.length ? (
+        {t < 0 ? (
+          <TypingDots />
+        ) : (
+          <T v="body" selectable={done} style={{ marginTop: space.xxs }}>
+            {renderBold(shown)}
+          </T>
+        )}
+      </Pressable>
+      {!done ? null : m.sources?.length ? <Sources list={m.sources} /> : null}
+      {done && m.actions?.length ? (
         <View style={{ gap: space.xs }}>
           {m.actions.map((a) => (
             <View key={a.id} style={[styles.card, elevation()]}>
@@ -261,9 +302,35 @@ function renderBold(text: string) {
 
 function Typing() {
   return (
-    <View style={[styles.src, { marginTop: space.xs }]} accessibilityLiveRegion="polite">
-      <Icon name="sparkles-outline" size={16} color={colors.textDim} />
-      <T v="footnote">Тренер анализирует твои данные…</T>
+    <View style={{ marginTop: space.xs, gap: space.xxs }} accessibilityLiveRegion="polite" accessibilityLabel={`${BRAND} печатает`}>
+      <View style={styles.src}>
+        <Icon name="sparkles-outline" size={16} color={colors.textDim} />
+        <T v="footnote">{BRAND} печатает…</T>
+      </View>
+      <TypingDots />
+    </View>
+  );
+}
+
+/** Три точки набора, как в мессенджере: по очереди «подпрыгивают» */
+function TypingDots() {
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return (
+    <View style={styles.dots} testID="coach-typing">
+      {[0, 1, 2].map((i) => {
+        // Точка «подпрыгивает» в своём окне [a; a + 0,3]; последняя заканчивается на 0,74 — диапазон всегда возрастает
+        const a = 0.001 + i * 0.22;
+        const range = [0, a, a + 0.15, a + 0.3, 1];
+        const op = v.interpolate({ inputRange: range, outputRange: [0.35, 0.35, 1, 0.35, 0.35], extrapolate: 'clamp' });
+        const y = v.interpolate({ inputRange: range, outputRange: [0, 0, -3, 0, 0], extrapolate: 'clamp' });
+        return <Animated.View key={i} style={[styles.dot, { opacity: op, transform: [{ translateY: y }] }]} />;
+      })}
     </View>
   );
 }
@@ -280,4 +347,6 @@ const styles = themed({
   sources: { paddingHorizontal: space.sm, paddingVertical: space.xxs, borderRadius: radius.md, backgroundColor: colors.surface, gap: 2 },
   btns: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   btn: { flexGrow: 1, flexBasis: 130 },
+  dots: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 22, marginTop: space.xxs, paddingHorizontal: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textDim },
 });

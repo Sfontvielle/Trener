@@ -50,9 +50,12 @@ export default function Preview() {
   }
   const totalSets = rows.reduce((a, r) => a + r.rec.sets, 0);
   return (
-    <Screen>
+    <Screen
+      // «Начать» — внизу и всегда на виду: состав можно листать, кнопка не уезжает (R1)
+      footer={<Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" full onPress={() => startTodayPlanned(isToday ? undefined : tpl)} testID="preview-start" />}
+    >
       <Header title="" right={<IconButton name="create-outline" label="Изменить тренировку" onPress={() => router.push({ pathname: '/workout/builder', params: { templateId: tpl.id } })} />} />
-      {/* Главное — название по центру и одна строка; ниже — одна кнопка и упражнения с мышечной группой */}
+      {/* Главное — название по центру и одна строка; ниже — упражнения с мышечной группой, кнопка — внизу экрана */}
       <Appear i={0} style={{ alignItems: 'center', gap: 6 }}>
         <T v="display" accessibilityRole="header" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center' }}>
           {tpl.name}
@@ -61,10 +64,7 @@ export default function Preview() {
           ~{isToday && tw.estMinutes ? tw.estMinutes : tpl.estMinutes} мин · {rows.length} упражнений · {totalSets} подходов
         </T>
       </Appear>
-      <Appear i={1} style={{ marginTop: space.xl }}>
-        <Button title={isToday ? 'Начать' : `Сделать ${tpl.name} сейчас`} icon="play" size="lg" full onPress={() => startTodayPlanned(isToday ? undefined : tpl)} />
-      </Appear>
-      <Appear i={2} style={styles.list}>
+      <Appear i={1} style={styles.list}>
         {rows.map(({ ex, rec }, i) => (
           <Pressable key={i} accessibilityRole="button" onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: ex.id } })} style={({ pressed }) => [styles.row, i < rows.length - 1 && styles.line, pressed && { opacity: 0.6 }]}>
             <ExerciseLoop ex={ex} size={56} delay={i * 180} />

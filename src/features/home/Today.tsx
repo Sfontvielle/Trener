@@ -5,6 +5,7 @@ import type { Macros, NutritionTarget, ReadinessResult, WorkoutSession, WorkoutT
 import { colors, radius, space, themed } from '@/theme';
 import { Button, Icon, T, elevation } from '@/components/ui';
 import { Group, ListRow, Scale } from '@/components/ds';
+import { Ring } from '@/components/charts';
 import { MacroSummary } from '@/features/nutrition/diary';
 import { GROUP_LABEL } from '@/data/exercises';
 import { readinessLabel } from '@/features/science/insights';
@@ -226,6 +227,101 @@ export function ActivityGroup({
   );
 }
 
+/** Цель сна для кольца: 8 ч — середина рекомендации 7–9 ч для взрослых (AASM/SRS 2015) */
+export const SLEEP_GOAL_MIN = 480;
+
+export interface SleepRingData {
+  minutes: number;
+  /** Время подъёма из Apple Health */
+  wakeAt?: number;
+  /** Посчитано по «в постели» (iPhone без часов) */
+  inBed?: boolean;
+  source: 'checkin' | 'health';
+}
+
+const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+const short = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m ? `${h} ч ${m} м` : `${h} ч`;
+};
+
+function RingCell({ progress, color, icon, value, caption, label, onPress, testID }: { progress: number; color: string; icon: React.ComponentProps<typeof Icon>['name']; value: string; caption: string; label: string; onPress: () => void; testID: string }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { haptic.tap(); onPress(); }} style={({ pressed }) => [styles.ringCell, pressed && { opacity: 0.7 }]} testID={testID}>
+      <Ring size={100} stroke={10} progress={progress} color={color}>
+        <Icon name={icon} size={24} color={color} />
+      </Ring>
+      <T v="headline" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: space.xs, fontVariant: ['tabular-nums'] }}>
+        {value}
+      </T>
+      <T v="footnote" numberOfLines={2} style={{ textAlign: 'center' }}>
+        {caption}
+      </T>
+    </Pressable>
+  );
+}
+
+/**
+ * Три анимированных кольца дня (R1): шаги из Apple Health, сон (Apple Health — со временем подъёма; без часов —
+ * «в постели» от iPhone; иначе — из чек-ина) и тренировки этой недели. Тап — подробности.
+ */
+export function DayRings({
+  steps,
+  stepsTarget,
+  healthOn,
+  sleep,
+  week,
+  onSteps,
+  onSleep,
+  onWeek,
+}: {
+  steps?: number;
+  stepsTarget: number;
+  healthOn: boolean;
+  sleep: SleepRingData | null;
+  week: { done: number; planned: number };
+  onSteps: () => void;
+  onSleep: () => void;
+  onWeek: () => void;
+}) {
+  const sleepCaption = !sleep ? (healthOn ? 'нет данных' : 'чек-ин') : sleep.wakeAt ? `${sleep.inBed ? 'в постели · ' : ''}подъём ${hhmm(sleep.wakeAt)}` : sleep.source === 'checkin' ? 'из чек-ина' : sleep.inBed ? 'в постели' : 'Apple Health';
+  return (
+    <View style={styles.rings} testID="home-rings">
+      <RingCell
+        progress={steps !== undefined && stepsTarget > 0 ? steps / stepsTarget : 0}
+        color={colors.accent}
+        icon="footsteps"
+        value={steps !== undefined ? fmtValue(steps) : '—'}
+        caption={steps !== undefined ? `из ${fmtValue(stepsTarget)}` : healthOn ? 'нет данных' : 'Apple Health'}
+        label={steps !== undefined ? `Шаги: ${fmtValue(steps)} из ${fmtValue(stepsTarget)}. Как рассчитана цель` : healthOn ? 'Шаги: нет данных' : 'Шаги: подключить Apple Health'}
+        onPress={onSteps}
+        testID="home-steps"
+      />
+      <RingCell
+        progress={sleep ? sleep.minutes / SLEEP_GOAL_MIN : 0}
+        color={colors.ringSleep}
+        icon="moon"
+        value={sleep ? short(sleep.minutes) : '—'}
+        caption={sleepCaption}
+        label={sleep ? `Сон: ${formatSleep(sleep.minutes)}${sleep.inBed ? ' в постели' : ''}${sleep.wakeAt ? `, подъём в ${hhmm(sleep.wakeAt)}` : ''}. Готовность` : 'Сон: нет данных. Пройти чек-ин'}
+        onPress={onSleep}
+        testID="home-sleep"
+      />
+      <RingCell
+        progress={week.planned > 0 ? week.done / week.planned : 0}
+        color={colors.ringWeek}
+        icon="barbell"
+        value={week.planned > 0 ? `${week.done} из ${week.planned}` : String(week.done)}
+        caption="тренировок за неделю"
+        label={`Тренировки за неделю: ${week.done}${week.planned ? ` из ${week.planned}` : ''}. Открыть тренировки`}
+        onPress={onWeek}
+        testID="home-week"
+      />
+    </View>
+  );
+}
+
 /** «Понедельник, 2 ноября» */
 export function dayTitle(d: string, weekday: string): string {
   return `${weekday}, ${formatDayLong(d)}`;
@@ -238,4 +334,6 @@ const styles = themed({
   next: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: space.md, minHeight: 32 },
   kcalLine: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.sm, marginBottom: space.sm, flexWrap: 'wrap' },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  rings: { flexDirection: 'row', justifyContent: 'space-between', gap: space.xs },
+  ringCell: { flex: 1, alignItems: 'center', minWidth: 0, paddingVertical: space.xs },
 });

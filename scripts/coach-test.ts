@@ -10,6 +10,8 @@ import { getExercise } from '../src/data/exercises';
 import { matchMarker } from '../src/features/labs/catalog';
 import { normalizeUnit, toCanonical } from '../src/features/labs/normalize';
 import { detectDate, detectLab, parseLabText, parseLine } from '../src/features/labs/parse';
+import { revealedAt, revealMs, thinkMs, wordStops } from '../src/features/coach/reveal';
+import { relevantTitle, shortExtract, wikiQuery } from '../src/services/wiki';
 import { compareWithPrevious, consecutiveRise, healthFlags, interpretResult, labComparison, labTable, markerSeries, outside, statusOf, verdictOf } from '../src/features/labs/analysis';
 import { draftFromExtracted, draftFromParsed, draftIssues, parseRefText, reportFromDraft } from '../src/features/labs/report';
 import { bpCategory, bpSignals, healthGate, healthMonitor, labSignals, newLabChanges, rhrTrend } from '../src/features/health/monitor';
@@ -614,4 +616,34 @@ test('Окна: новое окно открывается только посл
   // Свободно — выполняется сразу
   whenModalIdle(() => order.push('сразу'));
   assert.equal(order[order.length - 1], 'сразу');
+});
+
+
+test('Тренер печатает как человек: пауза, слова по одному, жирный не рвётся, длинный ответ — не дольше 6 с', () => {
+  assert.equal(thinkMs(10), 600);
+  assert.equal(thinkMs(5000), 1600);
+  assert.equal(revealMs(30), 1200);
+  assert.equal(revealMs(100000), 6000);
+  const text = 'Белок **2 г на кг** веса — каждый день.';
+  const stops = wordStops(text);
+  assert.equal(stops[stops.length - 1], text.length);
+  // Ни одна промежуточная граница не оставляет незакрытые «**»
+  for (const s of stops) assert.equal(((text.slice(0, s).match(/\*\*/g) ?? []).length) % 2, 0, `граница ${s}`);
+  const total = revealMs(text.length);
+  assert.equal(revealedAt(text, stops, 0, total), '');
+  const mid = revealedAt(text, stops, total / 2, total);
+  assert.ok(mid.length > 0 && mid.length < text.length && text.startsWith(mid));
+  assert.equal(revealedAt(text, stops, total, total), text);
+});
+
+test('Справка из Википедии: ключевые слова вопроса, препараты не ищем, статья — только по теме, кратко', () => {
+  assert.equal(wikiQuery('Что такое гликоген?'), 'гликоген');
+  assert.equal(wikiQuery('расскажи про лептин и голод'), 'лептин голод');
+  assert.equal(wikiQuery('курс тестостерона для новичка'), null, 'препараты — нет');
+  assert.equal(wikiQuery('сколько мг кофеина'), null, 'дозировки — нет');
+  assert.equal(relevantTitle('что такое гликоген', ['Гликоген', 'Гликогеноз']), 'Гликоген');
+  assert.equal(relevantTitle('что такое гликоген', ['Крахмал', 'Целлюлоза']), null, 'не по теме — не отвечаем');
+  const long = 'Гликоген — полисахарид. Основная форма хранения глюкозы в клетках животных[1]. Откладывается в печени и мышцах. Четвёртое предложение здесь. '.repeat(3);
+  const s = shortExtract(long);
+  assert.ok(s.length <= 600 && s.startsWith('Гликоген — полисахарид.') && !/\[1\]/.test(s));
 });
