@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, PanResponder, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Modal, PanResponder, Pressable, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { GH, GestureRoot, SafeDetector } from './gestures';
 import { useModalPresence } from './useModalPresence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,17 +43,23 @@ export function Sheet({
   const { height } = useWindowDimensions();
   const [anim] = useState(() => new Animated.Value(0));
   const [drag] = useState(() => new Animated.Value(0));
+  // Запасной режим (без gesture-handler): оттягивание прокрутки за верхний край, нативно, без JS на каждом кадре
+  const [overY] = useState(() => new Animated.Value(0));
   const [boxH, setBoxH] = useState(0);
   const [contentH, setContentH] = useState(0);
   const canScroll = contentH > boxH + 1;
   const { scrollRef, rootRef, pad, ensure, onScroll: onKbScroll } = useKeyboardAwareScroll();
+
   const [sheetH, setSheetH] = useState(height * 0.5);
 
   // Актуальные значения для обработчиков жеста, которые создаются один раз
-  const live = useRef({ onClose, sheetH: height * 0.5, atTop: true, closing: false, y: 0, t: 0, vy: 0 });
+  const live = useRef<{ onClose: () => void; sheetH: number; atTop: boolean; closing: boolean; y: number; t: number; vy: number; kb?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void }>({ onClose, sheetH: height * 0.5, atTop: true, closing: false, y: 0, t: 0, vy: 0 });
   useEffect(() => {
     live.current.onClose = onClose;
   }, [onClose]);
+  useEffect(() => {
+    live.current.kb = onKbScroll as (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  }, [onKbScroll]);
 
   // На телефоне — PanResponder с перехватом (capture) движения вниз: шапка тянет всегда, содержимое — когда его
   // прокрутка у верха, поэтому UIScrollView не забирает касание. В вебе — gesture-handler. В обоих случаях:
@@ -124,6 +130,25 @@ export function Sheet({
     return { native, pan, head: undefined, body: undefined, finish };
   });
 
+  // Прокрутка: смещение — нативно в overY (движение листа в запасном режиме), остальное — в JS: «у верха», скорость,
+  // подъём поля над клавиатурой. Создаётся один раз; актуальный обработчик клавиатуры — в live
+  // eslint-disable-next-line react-hooks/refs
+  const [onScroll] = useState(() =>
+    Animated.event([{ nativeEvent: { contentOffset: { y: overY } } }], {
+      useNativeDriver: true,
+      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const l = live.current;
+        const y = e.nativeEvent.contentOffset.y;
+        const now = Date.now();
+        if (now > l.t) l.vy = (y - l.y) / (now - l.t);
+        l.y = y;
+        l.t = now;
+        l.atTop = y <= 2;
+        l.kb?.(e);
+      },
+    }),
+  );
+
   const { mounted, shown, onDismiss } = useModalPresence(
     visible,
     () => {
@@ -148,14 +173,17 @@ export function Sheet({
   const dim = Animated.multiply(anim, drag.interpolate({ inputRange: [0, Math.max(200, sheetH)], outputRange: [1, 0.15], extrapolate: 'clamp' }));
   const maxH = Math.max(240, (height - pad) * maxHeightPct - (pad ? insets.top : 0));
 
-  // На iPhone (без gesture-handler) длинную шторку закрывает сама прокрутка, как в системных листах iOS:
-  // тянешь содержимое вниз от верха и отпускаешь дальше порога или броском — лист уезжает. Нативная прокрутка
-  // забирает касание раньше PanResponder, поэтому тянуть «за содержимое» через PanResponder в длинных листах нельзя
+  // Запасной режим (нет gesture-handler нужной версии): длинную шторку закрывает сама прокрутка, как в системных
+  // листах iOS. Нативная прокрутка забирает касание раньше PanResponder, поэтому оттягивание содержимого за верхний
+  // край (bounce) превращаем в движение листа: лист едет вниз вместе с пальцем, содержимое остаётся на месте;
+  // отпустил дальше порога или броском — лист уезжает. Всё на нативном драйвере — плавно, без JS на каждом кадре
   const pullToClose = !GH && scroll && canScroll;
+  const pullSheet = pullToClose ? overY.interpolate({ inputRange: [-800, 0], outputRange: [800, 0], extrapolate: 'clamp' }) : 0;
+  const pullContent = pullToClose ? overY.interpolate({ inputRange: [-800, 0], outputRange: [-800, 0], extrapolate: 'clamp' }) : 0;
   const body = scroll ? (
     <SafeDetector gesture={gestures.native}>
-    <ScrollView
-      ref={scrollRef}
+    <Animated.ScrollView
+      ref={scrollRef as never}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={16}
       bounces={pullToClose}
@@ -170,28 +198,18 @@ export function Sheet({
         const y = e.nativeEvent.contentOffset.y;
         const fresh = Date.now() - l.t < 80;
         const down = fresh ? -l.vy : 0;
-        if (y < -70 || (y < -16 && down > 0.6)) {
-          drag.setValue(-y);
-          gestures.finish(-y, down, true);
-        }
+        if (y < -60 || (y < -12 && down > 0.5)) gestures.finish(-y, Math.max(down, 0.8), true);
       }}
       onLayout={(e) => setBoxH(e.nativeEvent.layout.height)}
       onContentSizeChange={(_w, h) => setContentH(h)}
-      onScroll={(e) => {
-        const l = live.current;
-        const y = e.nativeEvent.contentOffset.y;
-        const now = Date.now();
-        if (now > l.t) l.vy = (y - l.y) / (now - l.t);
-        l.y = y;
-        l.t = now;
-        l.atTop = y <= 2;
-        onKbScroll(e);
-      }}
+      onScroll={onScroll}
       contentContainerStyle={{ paddingBottom: footer || pad ? space.md : insets.bottom + space.lg }}
       showsVerticalScrollIndicator={false}
     >
-      <KeyboardScrollProvider ensure={ensure}>{children}</KeyboardScrollProvider>
-    </ScrollView>
+      <Animated.View style={pullToClose ? { transform: [{ translateY: pullContent }] } : undefined}>
+        <KeyboardScrollProvider ensure={ensure}>{children}</KeyboardScrollProvider>
+      </Animated.View>
+    </Animated.ScrollView>
     </SafeDetector>
   ) : (
     <View style={{ paddingBottom: footer || pad ? space.sm : insets.bottom + space.lg, flexShrink: 1 }}>{children}</View>
@@ -212,7 +230,7 @@ export function Sheet({
             live.current.sheetH = h;
             setSheetH(h);
           }}
-          style={[styles.sheet, { maxHeight: maxH, opacity: calm ? anim : 1, transform: [{ translateY }, { translateY: drag }] }]}
+          style={[styles.sheet, { maxHeight: maxH, opacity: calm ? anim : 1, transform: [{ translateY }, { translateY: drag }, { translateY: pullSheet }] }]}
           {...(pullToClose ? undefined : gestures.body)}
         >
           <View {...gestures.head}>

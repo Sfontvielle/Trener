@@ -3,8 +3,9 @@ import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 /**
  * Обёртка над react-native-gesture-handler.
- *  • iPhone/Android: gesture-handler не используется (несовпадение версий JS и нативной части в Expo Go роняло
- *    шторки), Sheet и SideDrawer работают на PanResponder;
+ *  • iPhone/Android: gesture-handler — если нативная часть той же версии, что и JS (проверка методов модуля при
+ *    запуске). Тогда шторки тянутся за любое место, плавно, и правильно делят жест с прокруткой (как системные).
+ *    Нативная часть другой версии (старая сборка) — запасной режим на PanResponder, приложение не падает;
  *  • веб: gesture-handler (JS-реализация), GestureDetector обёрнут в границу ошибок.
  * Все жесты создаются с runOnJS(true): обработчики в JS, Reanimated не нужен.
  */
@@ -19,15 +20,30 @@ function forcedOff(): boolean {
   }
 }
 
+/** Методы нативного модуля, которые вызывает JS gesture-handler 3.x: нет хотя бы одного — версии не совпадают */
+const NATIVE_METHODS = ['createGestureHandler', 'attachGestureHandler', 'setGestureHandlerConfig', 'updateGestureHandlerConfig', 'configureRelations', 'dropGestureHandler', 'flushOperations'] as const;
+
 /**
- * На iPhone gesture-handler НЕ используется: в Expo Go и старых dev-сборках нативная часть бывает другой версии,
- * чем JS (модуль есть, а метода нет → «undefined is not a function» в микрозадаче, которую не ловит граница ошибок,
- * и ошибка сыплется на каждый рендер). Шторки на телефоне работают на PanResponder — чистый JS, любая сборка.
- * gesture-handler остаётся только в веб-версии (там его реализация целиком на JS).
+ * Раньше в Expo Go и старых dev-сборках нативная часть бывала другой версии, чем JS (модуль есть, а метода нет →
+ * «undefined is not a function» в микрозадаче, которую не ловит граница ошибок). Поэтому до загрузки JS-части
+ * проверяем нативный модуль: все методы на месте — включаем gesture-handler, иначе — PanResponder.
  */
+export function nativeGestureModuleOk(mod: unknown): boolean {
+  if (!mod || (typeof mod !== 'object' && typeof mod !== 'function')) return false;
+  return NATIVE_METHODS.every((k) => typeof (mod as Record<string, unknown>)[k] === 'function');
+}
+
 function loadGestureHandler(): RNGH | null {
-  if (Platform.OS !== 'web' || forcedOff()) return null;
+  if (forcedOff()) return null;
   try {
+    if (Platform.OS !== 'web') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { TurboModuleRegistry } = require('react-native') as typeof import('react-native');
+      if (!nativeGestureModuleOk(TurboModuleRegistry.get('RNGestureHandlerModule'))) {
+        console.warn('[RYNJI] нативный gesture-handler другой версии — шторки на PanResponder');
+        return null;
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('react-native-gesture-handler') as RNGH;
   } catch (e) {
