@@ -270,21 +270,24 @@ export default function ActiveWorkout() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Шапка (R2, как на образце): «1/8» слева — все упражнения, крупное время тренировки по центру — меню тренировки */}
-      <View style={[styles.top, { paddingTop: insets.top + 4 }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Список упражнений" accessibilityValue={{ text: count ? `Упражнение ${idx + 1} из ${count}` : 'Нет упражнений' }} onPress={() => setNavOpen(true)} hitSlop={8} style={({ pressed }) => [styles.pos, pressed && { opacity: 0.6 }]}>
-          <T v="headline" color={colors.textDim} numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }} testID="exercise-position">
-            {count ? `${idx + 1}/${count}` : '0/0'}
-          </T>
-        </Pressable>
-        <View style={[styles.clockWrap, { top: insets.top + 4 }]} pointerEvents="box-none">
-          <Pressable accessibilityRole="button" accessibilityLabel="Тренировка: время, калории, завершение" onPress={() => setWorkoutMenu(true)} hitSlop={6} style={({ pressed }) => [styles.clock, pressed && { opacity: 0.6 }]}>
-            <T v="display" maxFontSizeMultiplier={1.2} style={{ fontSize: 40, lineHeight: 48 }} testID="workout-elapsed">
-              <Elapsed startedAt={active.startedAt} />
+      {/* Шапка (R2, как на образце): «1/8» слева — все упражнения, крупное время тренировки по центру — меню тренировки.
+          Время — в общем потоке (не поверх строки фиксированной высоты): шапка по высоте цифр с запасом,
+          карточка ниже не перекрывает их низ (R3: на iPhone низ цифр был обрезан) */}
+      <View style={[styles.top, { paddingTop: insets.top + 2 }]}>
+        <View style={styles.topSide}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Список упражнений" accessibilityValue={{ text: count ? `Упражнение ${idx + 1} из ${count}` : 'Нет упражнений' }} onPress={() => setNavOpen(true)} hitSlop={8} style={({ pressed }) => [styles.pos, pressed && { opacity: 0.6 }]}>
+            <T v="headline" color={colors.textDim} numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }} testID="exercise-position">
+              {count ? `${idx + 1}/${count}` : '0/0'}
             </T>
-            <Icon name="caret-down" size={14} color={colors.textDim} />
           </Pressable>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Тренировка: время, калории, завершение" onPress={() => setWorkoutMenu(true)} hitSlop={6} style={({ pressed }) => [styles.clock, pressed && { opacity: 0.6 }]}>
+          <T v="display" maxFontSizeMultiplier={1.2} style={styles.clockText} testID="workout-elapsed">
+            <Elapsed startedAt={active.startedAt} />
+          </T>
+          <Icon name="caret-down" size={14} color={colors.textDim} />
+        </Pressable>
+        <View style={styles.topSide} />
       </View>
 
       <View style={{ flex: 1 }} {...pan.panHandlers}>
@@ -1441,7 +1444,9 @@ const styles = themed({
   infoBtn: { position: 'absolute', right: -6, top: -6 },
   underSets: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface2 },
-  clockWrap: { position: 'absolute', left: 0, right: 0, height: 44, alignItems: 'center', justifyContent: 'center' },
+  topSide: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  // Строка цифр выше их собственной высоты (Exo 2: 1,2 размера) — запас сверху и снизу, ничего не срезается
+  clockText: { fontSize: 40, lineHeight: 52 },
   setUnit: { marginLeft: 2 },
   setTimes: { marginHorizontal: 8 },
   badge: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
