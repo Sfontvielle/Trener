@@ -643,7 +643,20 @@ const closeSheet = async (pg) => {
     assert.ok((await copyDay.count()) + (await copyMeal.count()) > 0, 'копирование со вчера доступно');
     // Воды в дневнике нет (раунд 1); таблица КБЖУ: подписи колонок и итог дня
     assert.equal(await page.getByLabel(/^Вода/).count(), 0, 'воды нет');
-    assert.match(await page.getByTestId('macro-table-head').innerText(), /Ккал[\s\S]*Б[\s\S]*Ж[\s\S]*У[\s\S]*Кл[\s\S]*Итого/);
+    assert.match(await page.getByTestId('macro-table-head').innerText(), /Белки[\s\S]*Жиры[\s\S]*Углев[\s\S]*Клетч/);
+    // Приёмы пищи — карточками (R2): у заполненного — строка Б·Ж·У·Кл, по тапу список сворачивается и разворачивается
+    const totals = page.locator('[data-testid^="meal-totals-"]').first();
+    if (await totals.count()) {
+      const card = (await totals.getAttribute('data-testid')).replace('meal-totals-', '');
+      const items = () => page.locator(`[data-testid="meal-${card}"]`).locator('xpath=..').locator('[data-testid^="entry-"]').count();
+      const n0 = await items();
+      await totals.click();
+      await page.waitForTimeout(400);
+      assert.equal(await items(), 0, 'приём свёрнут');
+      await totals.click();
+      await page.waitForTimeout(400);
+      assert.equal(await items(), n0, 'и снова развёрнут');
+    }
     await shot('nutrition');
   });
 
