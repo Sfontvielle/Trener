@@ -20,7 +20,7 @@ import { sessionEnergy } from '@/features/training/energy';
 import { historyFor, workingSets } from '@/features/training/progression';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { EnergySheet } from '@/features/training/EnergySheet';
-import { formatDayLong } from '@/utils/date';
+import { formatDayLong, formatDuration } from '@/utils/date';
 import { fmtNum, fmtSec, fmtWeight } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
@@ -177,7 +177,8 @@ export default function SessionDetail() {
       ) : null}
 
       <Appear i={2} style={styles.stats}>
-        <BigStat label="Время" value={`${v.durationMin}`} unit="мин" />
+        {/* Длительность (R2): весь отрезок от старта до завершения, как на таймере тренировки */}
+        <BigStat label={s.finishedAt ? `Время · ${clockOf(s.startedAt)}–${clockOf(s.finishedAt)}` : 'Время'} value={s.finishedAt ? formatDuration((s.finishedAt - s.startedAt) / 1000) : '—'} unit="" testID="session-duration" />
         <BigStat label={`Поднято, ${unit === 'lb' ? 'lb' : 'кг'}`} value={fmtNum(lifted)} unit="" />
         <Pressable accessibilityRole="button" accessibilityLabel="Активные калории: как рассчитано" onPress={() => setEnergyOpen(true)} style={styles.stat}>
           <T v="small" numberOfLines={1}>
@@ -286,10 +287,14 @@ export default function SessionDetail() {
   );
 }
 
-function BigStat({ label, value, unit }: { label: string; value: string; unit: string }) {
+const clockOf = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+
+function BigStat({ label, value, unit, testID }: { label: string; value: string; unit: string; testID?: string }) {
   return (
-    <View style={styles.stat}>
-      <T v="small">{label}</T>
+    <View style={styles.stat} testID={testID}>
+      <T v="small" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+        {label}
+      </T>
       <T v="num" style={{ fontSize: 28 }}>
         {value}
         {unit ? <T v="small"> {unit}</T> : null}

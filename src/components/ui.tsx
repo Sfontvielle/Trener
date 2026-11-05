@@ -17,7 +17,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, currentTheme, radius, space, type, TOUCH, themed } from '@/theme';
+import { colors, currentTheme, DISPLAY, radius, space, type, TOUCH, themed } from '@/theme';
 import { haptic } from '@/services/haptics';
 import { Tap, prefersReducedMotion } from './motion';
 
@@ -51,8 +51,18 @@ const MIN_FONT = 12;
  * Правила шкалы поверх ручных стилей экранов: не мельче 12 pt и без сверхжирного 800 (максимум — 700).
  * Пока экраны не переведены на новые стили, это убирает подписи 10–11 pt и «кричащие» начертания везде сразу.
  */
+const DISPLAY_FAMILIES: string[] = [DISPLAY.semibold, DISPLAY.bold];
+
 function normalize(st: TextStyle): TextStyle {
   let out = st;
+  // Шрифт цифр и заголовков: начертание — файлом (жирное 700+ → Bold, иначе SemiBold), fontWeight убираем,
+  // иначе iOS ищет «жирный вариант» встроенного шрифта и подставляет системный
+  if (typeof st.fontFamily === 'string' && DISPLAY_FAMILIES.includes(st.fontFamily)) {
+    const w = st.fontWeight === undefined ? null : String(st.fontWeight);
+    const fam = w === null ? st.fontFamily : w === 'bold' || Number(w) >= 700 ? DISPLAY.bold : DISPLAY.semibold;
+    const { fontWeight: _w, ...rest } = out;
+    out = { ...rest, fontFamily: fam };
+  }
   if (typeof st.fontSize === 'number' && st.fontSize < MIN_FONT) {
     out = { ...out, fontSize: MIN_FONT, ...(typeof st.lineHeight === 'number' && st.lineHeight < MIN_FONT + 4 ? { lineHeight: MIN_FONT + 4 } : null) };
   }

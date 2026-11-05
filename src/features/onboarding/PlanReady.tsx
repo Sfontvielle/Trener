@@ -131,7 +131,8 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
           ].map((r) => (
             <View key={r.label} style={styles.readyRow}>
               <Icon name={r.icon} size={20} color={colors.accent} />
-              <T v="body" style={{ flex: 1, fontWeight: '600' }}>
+              {/* minWidth: 0 — при крупном шрифте длинное слово переносится, а не выталкивает галочку за край */}
+              <T v="body" style={{ flex: 1, minWidth: 0, fontWeight: '600' }}>
                 {r.label}
               </T>
               <Icon name="checkmark" size={20} color={colors.accent} />
@@ -142,7 +143,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
 
       <Appear i={1} style={styles.card}>
         <T v="caption">Питание на день</T>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8 }}>
           <T v="display" testID="plan-kcal">
             {fmtNum(target.kcal)}
           </T>

@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import type { FoodEntry, FoodProduct, MealSlot } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Screen } from '@/components/Screen';
-import { Button, EmptyState, T, elevation } from '@/components/ui';
+import { Button, EmptyState, T } from '@/components/ui';
 import { AppHeader, CoachInsight, Group, ListRow, ProposalCard, WeeklyDateStrip } from '@/components/ds';
 import { Sheet } from '@/components/Sheet';
 import { toast } from '@/components/Dialog';
@@ -25,7 +25,7 @@ import { ConfidenceLine } from '@/features/coach/DecisionView';
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { useDayKey } from '@/hooks/useDayKey';
 import { usualMeal, type UsualMeal } from '@/features/nutrition/quick';
-import { dayProgress, remaining, sumFiber } from '@/features/nutrition/status';
+import { dayProgress, remaining } from '@/features/nutrition/status';
 import { suggestMeals } from '@/features/nutrition/suggest';
 import { remainderHint, type RemainderOption } from '@/features/nutrition/remainder';
 import { DaySummary, MacroSummary, MacroTableHead, MealSection, SaveMealSheet } from '@/features/nutrition/diary';
@@ -143,22 +143,22 @@ export default function Nutrition() {
         </Pressable>
       ) : null}
 
-      <View style={[styles.group, elevation()]}>
-        <MacroTableHead eaten={nut.eaten} fiber={sumFiber(nut.entries).g} />
-        {MEALS.map((m, i) => (
-          <View key={m} style={i > 0 && styles.mealLine}>
-            <MealSection
-              meal={m}
-              entries={nut.entries.filter((e) => e.meal === m)}
-              usual={usual[m]}
-              yesterday={prevDay.filter((e) => e.meal === m)}
-              onAdd={() => openAdd(m)}
-              onEdit={editEntry}
-              onDelete={remove}
-              onUsual={addUsual}
-              onRepeat={() => copyFrom(addDays(date, -1), m)}
-            />
-          </View>
+      {/* Приёмы пищи — карточками (R2); над ними подпись колонок Б · Ж · У · Кл */}
+      <View style={{ gap: space.md, marginTop: space.lg }}>
+        <MacroTableHead />
+        {MEALS.map((m) => (
+          <MealSection
+            key={m}
+            meal={m}
+            entries={nut.entries.filter((e) => e.meal === m)}
+            usual={usual[m]}
+            yesterday={prevDay.filter((e) => e.meal === m)}
+            onAdd={() => openAdd(m)}
+            onEdit={editEntry}
+            onDelete={remove}
+            onUsual={addUsual}
+            onRepeat={() => copyFrom(addDays(date, -1), m)}
+          />
         ))}
       </View>
 
@@ -255,5 +255,4 @@ function snapshotProduct(e: FoodEntry): FoodProduct {
 const styles = themed({
   copyDay: { alignSelf: 'flex-start', paddingVertical: space.sm, marginTop: space.sm },
   group: { marginTop: space.xl, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' },
-  mealLine: { borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
 });

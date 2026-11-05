@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import type { FoodEntry, Macros, MealSlot, NutritionTarget } from '@/types';
-import { colors, space, themed } from '@/theme';
-import { Button, Icon, T, fontScale } from '@/components/ui';
+import { colors, radius, space, themed } from '@/theme';
+import { Button, Icon, T, elevation } from '@/components/ui';
 import { Scale } from '@/components/ds';
 import { SwipeRow } from '@/components/ds/SwipeRow';
 import { Sheet } from '@/components/Sheet';
@@ -93,58 +93,62 @@ export function MacroSummary({ entries, eaten, target, fiber: withFiber = true, 
   );
 }
 
-/** Приём пищи: заголовок с суммой и «+», продукты; пустой — «обычный» или «как вчера» одним тапом */
-/** Ширины колонок таблицы КБЖУ: ккал · Б · Ж · У · Кл (одинаковые в шапке, итогах и строках продуктов) */
-const COL = [48, 32, 32, 34, 30] as const;
+/**
+ * Дневник питания карточками приёмов пищи (R2, по скриншотам владельца): значок и название, справа калории крупно и
+ * акцентный «+»; под шапкой — строка Б · Ж · У · Кл приёма (тап — свернуть/развернуть список); продукты: название,
+ * количество акцентом, строка Б · Ж · У · Кл, справа калории и «›». Свайп влево по продукту — «Удалить».
+ */
 /** Числа в колонках растут с крупным шрифтом не больше чем на 20% — иначе колонки разъезжаются */
 const COL_SCALE = 1.2;
-/** При крупном системном шрифте название идёт отдельной строкой во всю ширину, колонки — под ним */
-const stacked = () => fontScale() >= 1.35;
 
-/** Пять чисел КБЖУ в колонках; клетчатка неизвестна — «—» */
-export function MacroCols({ m, strong, dim }: { m: { kcal?: number; protein?: number; fat?: number; carbs?: number; fiber?: number | null }; strong?: boolean; dim?: boolean }) {
-  const vals = [m.kcal, m.protein, m.fat, m.carbs, m.fiber];
+const MEAL_ICON: Record<MealSlot, { icon: React.ComponentProps<typeof Icon>['name']; color: () => string }> = {
+  breakfast: { icon: 'partly-sunny', color: () => colors.carbs },
+  lunch: { icon: 'sunny', color: () => colors.ringWeek },
+  dinner: { icon: 'cloudy-night', color: () => colors.fat },
+  snack: { icon: 'moon', color: () => colors.ringSleep },
+};
+
+/** Граммы КБЖУ: до одного знака после запятой, без «,0» */
+const g1 = (v: number | null | undefined) => (v === undefined || v === null || !Number.isFinite(v) ? '—' : String(Math.round(v * 10) / 10).replace('.', ','));
+
+/** Четыре колонки Б · Ж · У · Кл одинаковой ширины — одинаково в подписи, итоге приёма и строках продуктов */
+export function MacroCols({ m, strong, dim }: { m: { protein?: number; fat?: number; carbs?: number; fiber?: number | null }; strong?: boolean; dim?: boolean }) {
+  const vals = [m.protein, m.fat, m.carbs, m.fiber];
   return (
     <View style={styles.cols} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       {vals.map((v, i) => (
-        <T key={i} v="footnote" maxFontSizeMultiplier={COL_SCALE} color={dim ? colors.muted : colors.text} style={[styles.col, { width: COL[i] }, strong && { fontWeight: '600' }]} numberOfLines={1}>
-          {v === undefined || v === null || !Number.isFinite(v) ? '—' : fmtValue(Math.round(v))}
+        <T key={i} v={strong ? 'callout' : 'footnote'} maxFontSizeMultiplier={COL_SCALE} color={dim ? colors.textDim : colors.text} style={[styles.col, strong && { fontWeight: '600' }]} numberOfLines={1}>
+          {g1(v)}
         </T>
       ))}
     </View>
   );
 }
 
-/** Шапка таблицы: подписи колонок (цвет — у данных) и итог дня теми же колонками */
-export function MacroTableHead({ eaten, fiber }: { eaten: Macros; fiber: number | null }) {
+/** Подпись колонок над карточками: Б · Ж · У · Кл цветами данных (колонки — как в карточках) */
+export function MacroTableHead() {
   const heads: [string, string][] = [
-    ['Ккал', colors.textDim],
-    ['Б', colors.protein],
-    ['Ж', colors.fat],
-    ['У', colors.carbs],
-    ['Кл', colors.fiber],
+    ['Белки', colors.protein],
+    ['Жиры', colors.fat],
+    ['Углев.', colors.carbs],
+    ['Клетч.', colors.fiber],
   ];
   return (
-    <View testID="macro-table-head">
-      <View style={styles.tableHead}>
-        <View style={{ flex: 1 }} />
-        <View style={styles.cols}>
-          {heads.map(([h, c], i) => (
-            <T key={h} v="caption" maxFontSizeMultiplier={COL_SCALE} color={c} style={[styles.col, { width: COL[i] }]}>
-              {h}
-            </T>
-          ))}
-        </View>
+    <View style={styles.legend} testID="macro-table-head" accessible accessibilityLabel="Колонки: белки, жиры, углеводы, клетчатка, граммы">
+      <View style={styles.cols}>
+        {heads.map(([h, c]) => (
+          <T key={h} v="caption" maxFontSizeMultiplier={COL_SCALE} color={c} style={styles.col} numberOfLines={1}>
+            {h}
+          </T>
+        ))}
       </View>
-      <View style={styles.tableTotal} accessible accessibilityLabel={`Итого за день: ${Math.round(eaten.kcal)} ккал, белки ${Math.round(eaten.protein)} г, жиры ${Math.round(eaten.fat)} г, углеводы ${Math.round(eaten.carbs)} г${fiber !== null ? `, клетчатка ${Math.round(fiber)} г` : ''}`}>
-        <T v="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
-          Итого
-        </T>
-        <MacroCols m={{ ...eaten, fiber }} strong />
-      </View>
+      <View style={styles.mside} />
     </View>
   );
 }
+
+/** Свёрнутые приёмы пищи — на время работы приложения (между вкладками и днями) */
+const collapsed = new Set<MealSlot>();
 
 export function MealSection({
   meal,
@@ -167,30 +171,56 @@ export function MealSection({
   onUsual: (u: UsualMeal) => void;
   onRepeat: () => void;
 }) {
+  const [open, setOpen] = useState(() => !collapsed.has(meal));
   const sum = sumMacros(entries);
+  const fiber = sumFiber(entries).g;
   const yKcal = Math.round(yesterday.reduce((a, e) => a + e.macros.kcal, 0));
+  const ic = MEAL_ICON[meal];
+  const toggle = () => {
+    haptic.tap();
+    if (open) collapsed.add(meal);
+    else collapsed.delete(meal);
+    setOpen(!open);
+  };
   return (
-    <View>
+    <View style={[styles.card, elevation()]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Добавить в ${MEAL_LABEL[meal]}${entries.length ? `. Сейчас ${Math.round(sum.kcal)} ккал, белки ${Math.round(sum.protein)}, жиры ${Math.round(sum.fat)}, углеводы ${Math.round(sum.carbs)}` : ''}`}
+        accessibilityLabel={`Добавить в ${MEAL_LABEL[meal]}${entries.length ? `. Сейчас ${Math.round(sum.kcal)} ккал` : ''}`}
         onPress={onAdd}
-        style={({ pressed }) => [styles.mealHead, stacked() && styles.stack, pressed && { backgroundColor: colors.surface2 }]}
+        style={({ pressed }) => [styles.mealHead, pressed && { opacity: 0.7 }]}
         testID={`meal-${meal}`}
       >
-        <View style={[styles.mealName, stacked() && { flex: 0 }]}>
-          <T v="headline" numberOfLines={1} style={{ flexShrink: 1 }}>
-            {MEAL_LABEL[meal]}
-          </T>
-          <View style={styles.roundAdd}>
-            <Icon name="add" size={18} color={colors.text} />
+        <Icon name={ic.icon} size={26} color={ic.color()} />
+        <T v="title2" numberOfLines={1} style={{ flex: 1, minWidth: 0 }}>
+          {MEAL_LABEL[meal]}
+        </T>
+        {entries.length ? (
+          <View style={styles.kcalBox}>
+            <T v="metric" style={styles.kcalBig}>
+              {fmtValue(Math.round(sum.kcal))}
+            </T>
+            <T v="caption">ккал</T>
           </View>
-        </View>
-        {entries.length ? <MacroCols m={{ ...sum, fiber: sumFiber(entries).g }} strong /> : null}
+        ) : null}
+        <Icon name="add" size={30} color={colors.accent} />
       </Pressable>
-      {entries.map((e) => (
-        <FoodRow key={e.id} entry={e} onPress={() => onEdit(e)} onDelete={() => onDelete(e)} />
-      ))}
+      {entries.length ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={`${MEAL_LABEL[meal]}: белки ${g1(sum.protein)}, жиры ${g1(sum.fat)}, углеводы ${g1(sum.carbs)}${fiber !== null ? `, клетчатка ${g1(fiber)}` : ''} г. ${open ? 'Свернуть' : 'Развернуть'} список`}
+          onPress={toggle}
+          style={({ pressed }) => [styles.totals, pressed && { backgroundColor: colors.surface2 }]}
+          testID={`meal-totals-${meal}`}
+        >
+          <MacroCols m={{ ...sum, fiber }} strong />
+          <View style={styles.mside}>
+            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textDim} />
+          </View>
+        </Pressable>
+      ) : null}
+      {open ? entries.map((e) => <FoodRow key={e.id} entry={e} onPress={() => onEdit(e)} onDelete={() => onDelete(e)} />) : null}
       {!entries.length && usual ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`Добавить обычный ${MEAL_LABEL[meal].toLowerCase()}: ${usual.items.map((i) => i.product.name).join(', ')}`} onPress={() => onUsual(usual)} style={({ pressed }) => [styles.repeat, pressed && { opacity: 0.6 }]} testID={`usual-${meal}`}>
           <Icon name="repeat" size={18} color={colors.textDim} />
@@ -216,22 +246,30 @@ export function MealSection({
   );
 }
 
-/** Продукт в дневнике: название, как записано («пачка, 180 г»), ккал справа; свайп влево — «Удалить» */
+/** Продукт: название, количество акцентом («пачка, 180 г»), Б · Ж · У · Кл; справа калории и «›»; свайп влево — удалить */
 export function FoodRow({ entry: e, onPress, onDelete }: { entry: FoodEntry; onPress: () => void; onDelete: () => void }) {
   const amount = e.unit ? `${unitText(e.unit.qty, e.unit)}, ${fmtValue(e.grams)} г` : `${fmtValue(e.grams)} г`;
   return (
     <SwipeRow onDelete={onDelete} testID={`entry-${e.id}`}>
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${e.name}, ${amount}, ${Math.round(e.macros.kcal)} ккал, белки ${Math.round(e.macros.protein)}, жиры ${Math.round(e.macros.fat)}, углеводы ${Math.round(e.macros.carbs)}${e.estimate ? ', оценка' : ''}. Изменить`} style={({ pressed }) => [styles.food, stacked() && styles.stack, pressed && { backgroundColor: colors.surface2 }]}>
-        <View style={stacked() ? null : { flex: 1, minWidth: 0 }}>
-          <T v="callout" color={colors.text} numberOfLines={stacked() ? 3 : 2}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${e.name}, ${amount}, ${Math.round(e.macros.kcal)} ккал, белки ${g1(e.macros.protein)}, жиры ${g1(e.macros.fat)}, углеводы ${g1(e.macros.carbs)}${e.estimate ? ', оценка' : ''}. Изменить`} style={({ pressed }) => [styles.food, pressed && { backgroundColor: colors.surface2 }]}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <T v="body" color={colors.text} numberOfLines={2}>
             {e.name}
           </T>
-          <T v="footnote" numberOfLines={1}>
+          <T v="footnote" color={colors.accent} numberOfLines={1}>
             {amount}
             {e.estimate ? ' · оценка' : ''}
           </T>
+          <View style={{ marginTop: 4 }}>
+            <MacroCols m={{ ...e.macros, fiber: e.macros.fiber ?? null }} dim />
+          </View>
         </View>
-        <MacroCols m={e.macros} />
+        <View style={[styles.mside, styles.foodKcal]}>
+          <T v="metric" color={colors.textDim} style={{ fontSize: 20, lineHeight: 25 }}>
+            {fmtValue(Math.round(e.macros.kcal))}
+          </T>
+          <Icon name="chevron-forward" size={16} color={colors.muted} />
+        </View>
       </Pressable>
     </SwipeRow>
   );
@@ -285,15 +323,16 @@ const styles = themed({
   macro: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28, flexWrap: 'wrap' },
   macroLabel: { width: 92 },
   macroValue: { minWidth: 92, textAlign: 'right', fontVariant: ['tabular-nums'] },
-  mealHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 52, paddingVertical: space.xs, paddingHorizontal: space.md },
-  mealName: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  // Крупный шрифт: название сверху во всю ширину, колонки — справа под ним
-  stack: { flexDirection: 'column', alignItems: 'stretch', gap: 4 },
-  cols: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
-  col: { textAlign: 'right', fontVariant: ['tabular-nums'] },
-  tableHead: { flexDirection: 'row', alignItems: 'flex-end', gap: space.xs, paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: 2 },
-  tableTotal: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.md, paddingVertical: space.xs, minHeight: 40, borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
-  roundAdd: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  food: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 52, paddingVertical: space.xs, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
+  card: { backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden' },
+  mealHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 64, paddingVertical: space.sm, paddingLeft: space.md, paddingRight: space.sm },
+  kcalBox: { alignItems: 'flex-end' },
+  kcalBig: { fontSize: 22, lineHeight: 26, fontWeight: '700' },
+  totals: { flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingLeft: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
+  legend: { flexDirection: 'row', alignItems: 'center', paddingLeft: space.md, paddingBottom: space.xxs },
+  cols: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  col: { flex: 1, textAlign: 'left', fontVariant: ['tabular-nums'] },
+  mside: { width: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingRight: space.sm },
+  foodKcal: { alignSelf: 'center' },
+  food: { flexDirection: 'row', alignItems: 'flex-start', minHeight: 64, paddingVertical: space.sm, paddingLeft: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
   repeat: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.md, minHeight: 36 },
 });

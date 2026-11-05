@@ -252,7 +252,7 @@ function RingCell({ progress, color, icon, value, caption, label, onPress, testI
       <Ring size={100} stroke={10} progress={progress} color={color}>
         <Icon name={icon} size={24} color={color} />
       </Ring>
-      <T v="headline" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: space.xs, fontVariant: ['tabular-nums'] }}>
+      <T v="metric" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ marginTop: space.xs, fontSize: 22, lineHeight: 27 }}>
         {value}
       </T>
       <T v="footnote" numberOfLines={2} style={{ textAlign: 'center' }}>

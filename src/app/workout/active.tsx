@@ -1,26 +1,26 @@
-import React, { memo, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, WorkoutExercise, WorkoutSession } from '@/types';
-import { colors, radius, space, themed } from '@/theme';
-import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
+import { colors, DISPLAY, radius, space, themed } from '@/theme';
+import { Button, EmptyState, Icon, IconButton, T, elevation } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { SwipeRow } from '@/components/ds/SwipeRow';
-import { DrawerScroll, SideDrawer } from '@/components/SideDrawer';
 import { confirm, toast, useDialog } from '@/components/Dialog';
 import { useWorkouts, hasProgress } from '@/stores/workouts';
 import { useProfile } from '@/stores/profile';
 import { useCheckins } from '@/stores/checkins';
 import { useHealth } from '@/stores/health';
 import { getExercise, GROUP_LABEL } from '@/data/exercises';
-import { effectiveIncrement, historyFor, isPersonalRecord, PR_HISTORY } from '@/features/training/progression';
+import { effectiveIncrement, historyFor, isPersonalRecord, PR_HISTORY, TIME_STEP_SEC } from '@/features/training/progression';
 import { alternativesFor } from '@/features/training/planGenerator';
 import { DEFAULT_SETS, makeWorkoutExercise } from '@/features/training/session';
 import { readinessFor } from '@/features/recovery/derive';
 import { ExercisePickerSheet } from '@/features/exercises/ExercisePickerSheet';
 import { Field } from '@/components/inputs';
 import { TechniquePanel } from '@/features/exercises/TechniquePanel';
+import { ExerciseThumb } from '@/features/exercises/ExerciseThumb';
 import { sessionEnergy } from '@/features/training/energy';
 import { EnergySheet } from '@/features/training/EnergySheet';
 import { useBody } from '@/stores/body';
@@ -33,12 +33,12 @@ import { exerciseFlag, guardExercise, prefDiscomfort, prefDislike, prefExclude, 
 import { warmupPlan } from '@/features/training/warmup';
 import { DEFAULT_GYM, equipmentStep, loadKind, plateLayout } from '@/features/training/equipment';
 import { autoregulate } from '@/features/training/autoreg';
-import { formatDuration, plural, today } from '@/utils/date';
+import { formatDuration, today } from '@/utils/date';
 import { fmtSec, fmtWeight, fromDisplayWeight, parseDecimal, toDisplayWeight, unitLabel } from '@/utils/format';
 import { haptic } from '@/services/haptics';
 import { BRAND } from '@/config/brand';
 import { noIncreaseReason } from '@/features/health/current';
-import { prefersReducedMotion } from '@/components/motion';
+import { Tap, prefersReducedMotion } from '@/components/motion';
 import { afterModalClose } from '@/components/modalGate';
 import { cancelRestEnd, ensurePermission, scheduleRestEnd } from '@/services/notifications';
 
@@ -265,26 +265,26 @@ export default function ActiveWorkout() {
         ? { icon: 'play' as const, title: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, label: `Старт · ${fmtSec(ctaSet.reps || we.repMax)}`, onPress: () => startHold(we.id, ctaSet.id) }
         : ctaSet
           ? { icon: 'checkmark' as const, title: nextWarm ? 'Разминка' : `Подход ${ctaNo}`, label: nextWarm ? 'Разминка — готово' : `Записать подход ${ctaNo}`, onPress: () => complete(we, ctaSet, idx) }
-          : { icon: 'arrow-forward' as const, title: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, label: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, onPress: () => goTo(nextI, 1) };
+          : { icon: 'chevron-forward' as const, title: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, label: `Далее: ${getExercise(active.exercises[nextI].exerciseId, customs)?.name ?? 'следующее'}`, onPress: () => goTo(nextI, 1) };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Компактная шапка (★3): свернуть · «Упражнение 3 из 7» (список) · время (меню тренировки) · ⋯ */}
+      {/* Шапка (R2, как на образце): «1/8» слева — все упражнения, крупное время тренировки по центру — меню тренировки */}
       <View style={[styles.top, { paddingTop: insets.top + 4 }]}>
-        <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" bg="transparent" onPress={collapse} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Список упражнений" onPress={() => setNavOpen(true)} hitSlop={8} style={styles.pos}>
-          <T v="footnote" numberOfLines={1} style={{ textAlign: 'center' }} testID="exercise-position">
-            {count ? `Упражнение ${idx + 1} из ${count}` : 'Нет упражнений'}
+        <Pressable accessibilityRole="button" accessibilityLabel="Список упражнений" accessibilityValue={{ text: count ? `Упражнение ${idx + 1} из ${count}` : 'Нет упражнений' }} onPress={() => setNavOpen(true)} hitSlop={8} style={({ pressed }) => [styles.pos, pressed && { opacity: 0.6 }]}>
+          <T v="headline" color={colors.textDim} numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }} testID="exercise-position">
+            {count ? `${idx + 1}/${count}` : '0/0'}
           </T>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Тренировка: время, калории, завершение" onPress={() => setWorkoutMenu(true)} hitSlop={6} style={styles.clock}>
-          <T v="footnote" style={{ fontVariant: ['tabular-nums'] }} testID="workout-elapsed">
-            <Elapsed startedAt={active.startedAt} />
-          </T>
-        </Pressable>
-        <IconButton name="ellipsis-horizontal" label="Действия с упражнением" bg="transparent" disabled={!we} onPress={() => we && setMenuFor(we.id)} />
+        <View style={[styles.clockWrap, { top: insets.top + 4 }]} pointerEvents="box-none">
+          <Pressable accessibilityRole="button" accessibilityLabel="Тренировка: время, калории, завершение" onPress={() => setWorkoutMenu(true)} hitSlop={6} style={({ pressed }) => [styles.clock, pressed && { opacity: 0.6 }]}>
+            <T v="display" maxFontSizeMultiplier={1.2} style={{ fontSize: 40, lineHeight: 48 }} testID="workout-elapsed">
+              <Elapsed startedAt={active.startedAt} />
+            </T>
+            <Icon name="caret-down" size={14} color={colors.textDim} />
+          </Pressable>
+        </View>
       </View>
-      <AnimatedBar progress={progress} />
 
       <View style={{ flex: 1 }} {...pan.panHandlers}>
         <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateX: slide }] }}>
@@ -299,6 +299,9 @@ export default function ActiveWorkout() {
               allDone={allDone}
               reduced={active.volumeFactor < 1 ? Math.round(active.volumeFactor * 100) : undefined}
               onComplete={(set) => complete(we, set, idx)}
+              onNote={() => setNoteFor(we.id)}
+              onCollapse={collapse}
+              onMenu={() => setMenuFor(we.id)}
               ssLabel={ssLabels[idx]}
               ssNext={(() => {
                 const m = supersetMembers(active.exercises, idx);
@@ -326,8 +329,15 @@ export default function ActiveWorkout() {
             {rest ? <RestStrip key={rest.endsAt} endsAt={rest.endsAt} total={rest.total} onChange={(endsAt) => { setRest({ endsAt, total: rest.total + Math.round((endsAt - rest.endsAt) / 1000) }); const st = useProfile.getState().settings; if (st.restNotify) void scheduleRestEnd((endsAt - Date.now()) / 1000); }} onSkip={stopRest} onEnd={() => setRest(null)} /> : null}
             <View style={[styles.bar, { paddingBottom: insets.bottom + space.xs }]}>
               <BarBtn icon="chevron-back" label="Предыдущее упражнение" disabled={prevI < 0} onPress={() => goTo(prevI, -1)} />
-              {center ? <Button title={center.title} accessibilityLabel={center.label} icon={center.icon} size="lg" onPress={center.onPress} style={{ flex: 1 }} testID="workout-cta" /> : <View style={{ flex: 1 }} />}
-              <BarBtn icon="timer-outline" label={restOn ? `Таймер отдыха: ${fmtSec(useProfile.getState().settings.defaultRestSec || 120)}` : 'Таймер отдыха: выключен'} active={restOn} onPress={() => setRestOpen(true)} small />
+              <BarBtn icon="add" label="Добавить подход" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} />
+              {center ? (
+                <Tap accessibilityRole="button" accessibilityLabel={center.label} onPress={() => { haptic.tap(); center.onPress(); }} scaleTo={0.92} style={styles.mainBtn} testID="workout-cta">
+                  <Icon name={center.icon} size={34} color={colors.onAccent} />
+                </Tap>
+              ) : (
+                <View style={styles.mainBtnSpace} />
+              )}
+              <BarBtn icon="timer-outline" label={restOn ? `Таймер отдыха: ${fmtSec(useProfile.getState().settings.defaultRestSec || 120)}` : 'Таймер отдыха: выключен'} active={restOn} onPress={() => setRestOpen(true)} />
               <BarBtn icon="chevron-forward" label="Следующее упражнение" disabled={nextI < 0} onPress={() => goTo(nextI, 1)} />
             </View>
           </View>
@@ -528,19 +538,6 @@ function holdStart(weId: string, setId: string) {
   return { weId, setId, startedAt: Date.now() };
 }
 
-/** Плавный прогресс тренировки */
-function AnimatedBar({ progress }: { progress: number }) {
-  const [v] = useState(() => new Animated.Value(progress));
-  useEffect(() => {
-    Animated.timing(v, { toValue: progress, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-  }, [progress, v]);
-  return (
-    <View style={styles.barTrack}>
-      <Animated.View style={[styles.barFill, { width: v.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
-    </View>
-  );
-}
-
 /** Новый рекорд: «празднование» — плашка с пружиной, пульс кубка и разлёт искр; вибрация — haptic.record() */
 const SPARKS = Array.from({ length: 10 }, (_, i) => (i / 10) * Math.PI * 2);
 function PrBanner({ text, top }: { text: string; top: number }) {
@@ -599,19 +596,19 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
   const rem = remainingInfo(active, customs);
   const doneN = items.filter((it) => it.state === 'completed' || (it.state === 'current' && it.done === it.total && it.total > 0)).length;
   return (
-    <SideDrawer
+    <Sheet
       visible={visible}
       onClose={onClose}
       title="Упражнения"
       subtitle={rem.exercises ? `Выполнено ${doneN} из ${items.length} · осталось ~${rem.minutes} мин` : 'Все упражнения выполнены'}
       footer={
-        <View style={{ gap: 8 }}>
-          <Button title="Добавить упражнение" icon="add" variant="secondary" size="sm" onPress={onAdd} />
-          <Button title="Завершить тренировку" icon="flag" size="md" onPress={onFinish} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button title="Добавить" icon="add" variant="secondary" onPress={onAdd} style={{ flex: 1 }} accessibilityLabel="Добавить упражнение" />
+          <Button title="Завершить" icon="flag" onPress={onFinish} style={{ flex: 1 }} accessibilityLabel="Завершить тренировку" />
         </View>
       }
     >
-      <DrawerScroll contentContainerStyle={{ gap: 6, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+      <View style={{ gap: 6, paddingBottom: 8 }} testID="workout-list">
         {items.map((it) => {
           const ex = getExercise(it.we.exerciseId, customs);
           const full = it.total > 0 && it.done === it.total;
@@ -634,8 +631,8 @@ function WorkoutNavigator({ visible, onClose, current, onGo, onAdd, onFinish, pe
             </Pressable>
           );
         })}
-      </DrawerScroll>
-    </SideDrawer>
+      </View>
+    </Sheet>
   );
 }
 
@@ -683,6 +680,9 @@ function ExerciseFocus({
   allDone,
   reduced,
   onComplete,
+  onNote,
+  onCollapse,
+  onMenu,
   ssLabel,
   ssNext,
 }: {
@@ -695,6 +695,11 @@ function ExerciseFocus({
   /** Объём снижен по готовности, % */
   reduced?: number;
   onComplete: (set: ExerciseSet) => void;
+  /** Заметка к упражнению (лист в родителе) */
+  onNote: () => void;
+  /** Свернуть тренировку и меню упражнения — в углах карточки */
+  onCollapse: () => void;
+  onMenu: () => void;
   /** Суперсет: «A1» и следующий участник круга */
   ssLabel?: string;
   ssNext?: string;
@@ -712,12 +717,11 @@ function ExerciseFocus({
   const [infoOpen, setInfoOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [platesOpen, setPlatesOpen] = useState(false);
-  const winH = useWindowDimensions().height;
+  // Редактор подхода (R2): тап по строке — лист с крупными «−/+» и вводом с клавиатуры
+  const [editId, setEditId] = useState<string | null>(null);
   if (!ex) return null;
   const last = history[0];
   const rec = we.recommendation;
-  const nextSet = we.sets.find((s) => !s.done);
-  const doneCount = we.sets.filter((s) => s.done).length;
   const timed = isTimed(ex);
 
   const primary = ex.groups.primary.map((g) => GROUP_LABEL[g]);
@@ -734,7 +738,6 @@ function ExerciseFocus({
   const prevWarm = lastWarmupCount(ex.id, sessions);
   const warm = started || hasWarmups ? [] : warmupPlan({ ex, workWeight: work, workSets: we.sets.length, level, gym, warmedSimilar, previousCount: prevWarm });
   const layout = rec && rec.weight > 0 ? plateLayout(rec.weight, ex, gym) : null;
-  const recTxt = rec ? `${rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}` : '';
   // «24 кг × 10, 10, 9» — если вес во всех подходах один; иначе «80×10 · 85×8»
   const lastTxt = (() => {
     if (!last) return '';
@@ -757,91 +760,41 @@ function ExerciseFocus({
     toast(x.done ? 'Подход удалён' : 'Подход убран', 'trash-outline', { label: 'Отменить', onPress: () => useWorkouts.getState().insertSet(we.id, x, i) });
   };
 
+  const tip = autoregulate(we, step);
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space.md, paddingTop: space.md, paddingBottom: space.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
-        {ssLabel ? (
-          <View style={styles.ssChip} testID="superset-chip">
-            <Icon name="link" size={12} color={colors.textDim} />
-            <T v="footnote" color={colors.text} numberOfLines={1}>
-              Суперсет {ssLabel}
-              {ssNext ? ` → ${ssNext}` : ''}
+    <View style={styles.cardWrap}>
+      {/* Карточка упражнения (R2, по образцу владельца): «⌄» и «⋯» в углах, название по центру цветом акцента,
+          мышцы под ним; подходы без подсветки и рамок; внизу — заметка слева, техника (фото) и «i» справа */}
+      <View style={[styles.exCard, elevation()]}>
+        <View style={styles.cardHead}>
+          <IconButton name="chevron-down" label="Свернуть тренировку (всё сохранено)" bg="transparent" color={colors.textDim} onPress={onCollapse} />
+          <View style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: 4, paddingTop: 6 }}>
+            <T v="title1" accessibilityRole="header" color={colors.accent} style={styles.exTitle} numberOfLines={3}>
+              {ex.name}
             </T>
+            <T v="caption" numberOfLines={2} style={styles.muscleCaps} testID="exercise-muscles">
+              {muscles}
+            </T>
+            {ssLabel ? (
+              <View style={styles.ssChip} testID="superset-chip">
+                <Icon name="link" size={12} color={colors.textDim} />
+                <T v="footnote" color={colors.text} numberOfLines={1}>
+                  Суперсет {ssLabel}
+                  {ssNext ? ` → ${ssNext}` : ''}
+                </T>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-        {/* Название слева крупно, мышцы обычным регистром; «ⓘ» — рекомендация, история, блины */}
-        <View style={styles.titleRow}>
-          <T v="title1" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={3}>
-            {ex.name}
-          </T>
-          <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" color={colors.textDim} onPress={openInfo} style={{ marginRight: -10 }} />
+          <IconButton name="ellipsis-horizontal" label="Действия с упражнением" bg="transparent" color={colors.textDim} onPress={onMenu} />
         </View>
-        <T v="callout" numberOfLines={2} testID="exercise-muscles">
-          {muscles}
-        </T>
-        {we.note ? (
-          <View style={styles.noteLine}>
-            <Icon name="document-text-outline" size={14} color={colors.textDim} />
-            <T v="footnote" color={colors.text} numberOfLines={2} style={{ flex: 1 }} testID="exercise-note">
-              {we.note}
-            </T>
-          </View>
-        ) : null}
+        <View style={styles.cardLine} />
 
-        {/* «Прошлый раз» и предложение RYNJI — строками StatRow; подходы уже заполнены предложением */}
-        {lastTxt || (rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight)) ? (
-          <View style={styles.refs}>
-            {lastTxt ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={`Прошлый раз: ${lastTxt}. Рекомендация и история`} onPress={openInfo} style={styles.refRow} testID="last-result">
-                <T v="callout" style={styles.refLabel}>
-                  Прошлый раз
-                </T>
-                <T v="bodyStrong" style={{ flex: 1, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
-                  {lastTxt}
-                </T>
-              </Pressable>
-            ) : null}
-            {rec && rec.action !== 'new' && (rec.weight > 0 || ex.bodyweight) ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={`Предложение ${BRAND}: ${recTxt}${rec.delta ? `, ${rec.delta}` : ''}. Почему`} onPress={openInfo} style={styles.refRow} testID="rynji-suggestion">
-                <T v="callout" style={styles.refLabel}>
-                  {BRAND}
-                </T>
-                <T v="bodyStrong" style={{ flex: 1, fontVariant: ['tabular-nums'] }} numberOfLines={2}>
-                  {recTxt}
-                </T>
-                {rec.delta ? (
-                  <T v="callout" color={deltaColor} style={{ fontWeight: '600', flexShrink: 1, textAlign: 'right' }} numberOfLines={2}>
-                    {rec.delta}
-                  </T>
-                ) : null}
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-        {reduced ? (
-          <T v="footnote" color={colors.warning} style={{ marginTop: space.xs }}>
-            Объём {reduced}% по готовности · веса без повышения
-          </T>
-        ) : null}
-
-        {warm.length ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Добавить разминку" onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); }} hitSlop={6} style={({ pressed }) => [styles.warm, pressed && { opacity: 0.6 }]}>
-            <Icon name="add" size={16} color={colors.textDim} />
-            <T v="callout" numberOfLines={1} style={{ flex: 1 }}>
-              <T v="callout" color={colors.text}>
-                Разминка
-              </T>
-              {`  ${warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}`}
-            </T>
-          </Pressable>
-        ) : null}
-
-        {/* Подходы — крупными строками «65 кг × 10»: номер слева (тап — отметить), цель над строкой, свайп влево — удалить */}
-        <View style={styles.sets}>
+        {/* Подходы: номер слева, «70 кг × 10» по центру, справа — галочка, когда подход выполнен.
+            Тап по числам — редактор подхода, свайп влево — удалить */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: space.md }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {we.sets.map((x, i) => {
             const k = we.sets.slice(0, i).filter((y) => !y.warmup).length;
             const no = x.warmup ? 'Р' : String(k + 1);
-            const prev = x.warmup ? undefined : (last?.sets[k] ?? undefined);
             return (
               <SetRow
                 key={x.id}
@@ -852,56 +805,45 @@ function ExerciseFocus({
                 unit={unit}
                 onComplete={onComplete}
                 onDelete={deleteSet}
-                current={x === nextSet}
+                onEdit={() => setEditId(x.id)}
                 timed={timed}
                 weightCol={weightCol}
                 bodyweight={!!ex.bodyweight}
-                prev={prev}
                 range={rec ? (timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`) : undefined}
                 last={i === we.sets.length - 1}
               />
             );
           })}
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Добавить подход" onPress={() => { haptic.tap(); useWorkouts.getState().addSet(we.id); }} hitSlop={6} style={({ pressed }) => [styles.addSet, pressed && { opacity: 0.6 }]}>
-          <Icon name="add" size={18} color={colors.textDim} />
-          <T v="callout">Подход</T>
-        </Pressable>
-        <AutoregTip we={we} step={step} unit={unit} />
-        {!nextSet ? (
-          <View style={styles.doneLine}>
-            <Icon name={allDone ? 'trophy-outline' : 'checkmark-circle'} size={18} color={colors.accent} />
-            <T v="callout" color={colors.text} numberOfLines={2} style={{ flexShrink: 1 }}>
-              {allDone ? 'Все упражнения выполнены' : `Готово · ${doneCount}/${we.sets.length}`}
-              {!allDone && !isLast && nextName ? ` · далее ${nextName}` : ''}
-            </T>
-          </View>
-        ) : null}
-      </ScrollView>
+        </ScrollView>
 
-      {/* «Техника» — одной строкой внизу; раскрывается вверх до 45% высоты, подходы над ней остаются видны */}
-      {techOpen ? (
-        <View style={[styles.techPanel, { maxHeight: Math.round(winH * 0.45) }]} testID="technique-inline">
-          <ScrollView nestedScrollEnabled contentContainerStyle={{ padding: space.md }} showsVerticalScrollIndicator={false}>
-            <TechniquePanel ex={ex} sex={sex} />
-          </ScrollView>
+        <View style={styles.cardLine} />
+        <View style={styles.cardFoot}>
+          <Pressable accessibilityRole="button" accessibilityLabel={we.note ? `Заметка: ${we.note}. Изменить` : 'Заметка к упражнению'} onPress={() => { haptic.tap(); onNote(); }} hitSlop={6} style={({ pressed }) => [styles.noteBtn, pressed && { opacity: 0.6 }]} testID="note-button">
+            <Icon name={we.note ? 'document-text' : 'create-outline'} size={26} color={we.note ? colors.text : colors.textDim} />
+            {we.note ? (
+              <T v="footnote" color={colors.text} numberOfLines={2} style={{ flex: 1 }} testID="exercise-note">
+                {we.note}
+              </T>
+            ) : null}
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Техника выполнения" onPress={() => { haptic.tap(); setTechOpen(true); }} hitSlop={6} style={({ pressed }) => [styles.thumbBtn, pressed && { opacity: 0.7 }]} testID="technique-toggle">
+            <ExerciseThumb ex={ex} size={44} />
+          </Pressable>
+          <View>
+            <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" color={colors.textDim} size={26} onPress={openInfo} />
+            {tip && tip.kind !== 'keep' ? <View style={styles.tipDot} pointerEvents="none" /> : null}
+          </View>
         </View>
-      ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Техника выполнения"
-        accessibilityState={{ expanded: techOpen }}
-        aria-expanded={techOpen}
-        onPress={() => { haptic.tap(); setTechOpen(!techOpen); }}
-        style={({ pressed }) => [styles.techRow, pressed && { backgroundColor: colors.surface2 }]}
-        testID="technique-toggle"
-      >
-        <Icon name="information-circle-outline" size={20} color={colors.textDim} />
-        <T v="body" style={{ flex: 1 }}>
-          Техника и мышцы
-        </T>
-        <Icon name={techOpen ? 'chevron-down' : 'chevron-up'} size={16} color={colors.muted} />
-      </Pressable>
+      </View>
+
+      {/* Техника — отдельной шторкой: фото/анимация, мышцы, как выполнять */}
+      <Sheet visible={techOpen} onClose={() => setTechOpen(false)} title={ex.name} subtitle="Техника и мышцы">
+        <View testID="technique-inline">
+          <TechniquePanel ex={ex} sex={sex} />
+        </View>
+      </Sheet>
+
+      <SetEditor we={we} setId={editId} onClose={() => setEditId(null)} unit={unit} step={step} timed={timed} weightCol={weightCol} bodyweight={!!ex.bodyweight} onComplete={onComplete} />
 
       <Sheet visible={infoOpen} onClose={() => setInfoOpen(false)} title={ex.name} subtitle={[...primary, ...secondary].join(' · ')}>
         <View style={{ gap: 10 }} testID="rec">
@@ -909,19 +851,32 @@ function ExerciseFocus({
             <T v="num" style={{ fontSize: 24 }} color={colors.text}>
               {rec.weight > 0 ? `${fmtWeight(rec.weight, unit)} ${unitLabel(unit)}` : ex.bodyweight ? 'Свой вес' : 'Подбери вес'} × {timed ? `${fmtSec(rec.repMin)}–${fmtSec(rec.repMax)}` : `${rec.repMin}–${rec.repMax}`}
               {rec.delta && rec.action !== 'new' ? (
-                <T v="body" style={{ fontWeight: '800', fontSize: 15 }} color={rec.action === 'increase' ? colors.accent : rec.action === 'decrease' ? colors.warning : colors.textDim}>
+                <T v="body" style={{ fontWeight: '700', fontSize: 15 }} color={deltaColor}>
                   {`  ${rec.delta}`}
                 </T>
               ) : null}
             </T>
           ) : null}
-          {rec ? <T v="small" style={{ fontSize: 14 }}>{rec.rationale}</T> : null}
-          {lastTxt && !/Прошлый раз/i.test(rec?.rationale ?? '') ? <T v="small">Прошлый раз: {lastTxt}</T> : null}
-          {we.why ? <T v="small">{we.why}</T> : null}
+          {rec ? <T v="callout">{rec.rationale}</T> : null}
+          {lastTxt ? (
+            <T v="callout" testID="last-result">
+              Прошлый раз: <T v="callout" color={colors.text} style={{ fontWeight: '600' }}>{lastTxt}</T>
+            </T>
+          ) : null}
+          {reduced ? (
+            <T v="footnote" color={colors.warning}>
+              Объём {reduced}% по готовности · веса без повышения
+            </T>
+          ) : null}
+          {we.why ? <T v="callout">{we.why}</T> : null}
+          <AutoregTip we={we} step={step} unit={unit} />
+          {warm.length ? (
+            <MenuRow icon="flame-outline" label={`Добавить разминку: ${warm.map((w) => `${fmtWeight(w.weight, unit)}×${w.reps}`).join(' · ')}`} onPress={() => { haptic.tap(); useWorkouts.getState().addWarmups(we.id, warm); setInfoOpen(false); }} />
+          ) : null}
           {layout ? (
             <MenuRow icon="disc-outline" label="Раскладка блинов" onPress={() => { setInfoOpen(false); afterModalClose(() => setPlatesOpen(true)); }} />
           ) : null}
-          <MenuRow icon="play-circle-outline" label="Как выполнять" onPress={() => { setInfoOpen(false); setTechOpen(true); }} />
+          <MenuRow icon="play-circle-outline" label="Как выполнять" onPress={() => { setInfoOpen(false); afterModalClose(() => setTechOpen(true)); }} />
         </View>
       </Sheet>
 
@@ -1107,28 +1062,22 @@ function lastWarmupCount(exerciseId: string, sessions: WorkoutSession[]): number
   return n > 0 ? n : undefined;
 }
 
-/** Ширина поля под число: поле не тянется на всю строку, «65 кг × 10» стоит по центру как одна надпись */
-const SET_FS = 32;
-const fieldW = (text: string, placeholder: string) => Math.ceil(Math.max(1, (text || placeholder).length) * SET_FS * 0.62) + 8;
-
 /**
- * Подход — крупной строкой «65 кг × 10» (R1, по образцу владельца): номер слева, над числами — цель на этот подход
- * и прошлый результат, свайп влево — удалить. Тап по номеру — подход выполнен (повторный — отменить), так же как
- * главная кнопка внизу. Значения уже заполнены целью: ✓ — сделал как задумано, тап по числу — исправить.
+ * Подход (R2, по образцу владельца): номер слева в спокойной плашке, «70 кг × 10» крупно по центру, справа пусто —
+ * после выполнения появляется галочка. Без подсветки текущего подхода и рамок. Тап по номеру — выполнен / отменить,
+ * тап по числам — редактор подхода, свайп влево — удалить. Значения уже заполнены целью на этот подход.
  */
 const SetRow = memo(function SetRow({
-  weId,
   set,
   idx,
   no,
   unit,
   onComplete,
   onDelete,
-  current,
+  onEdit,
   timed,
   weightCol,
   bodyweight,
-  prev,
   range,
   last,
 }: {
@@ -1139,12 +1088,10 @@ const SetRow = memo(function SetRow({
   unit: 'kg' | 'lb';
   onComplete: (s: ExerciseSet) => void;
   onDelete: (s: ExerciseSet, i: number) => void;
-  current?: boolean;
+  onEdit: () => void;
   timed?: boolean;
   weightCol: boolean;
   bodyweight: boolean;
-  /** Этот же подход в прошлый раз */
-  prev?: { weight: number; reps: number };
   /** Диапазон повторов (секунд) — подсказка, если цели нет */
   range?: string;
   last?: boolean;
@@ -1152,90 +1099,41 @@ const SetRow = memo(function SetRow({
   const [pop] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!set.done) return;
-    // ✓ — короткий scale/fade при отметке подхода
-    pop.setValue(0.5);
+    // ✓ справа — короткий scale/fade при отметке подхода
+    pop.setValue(0.4);
     Animated.spring(pop, { toValue: 1, friction: 5, tension: 160, useNativeDriver: NATIVE }).start();
   }, [set.done, pop]);
-  const [w, setW] = useState(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
-  const [r, setR] = useState(set.reps ? String(set.reps) : '');
-  // Синхронизация только при внешнем изменении (перенос веса из прошлого подхода, смена единиц).
-  // Если значение совпадает с тем, что уже введено, текст не трогаем — иначе «82,» превращалось бы в «82».
-  const [prevVal, setPrevVal] = useState({ weight: set.weight, reps: set.reps, unit });
-  if (prevVal.weight !== set.weight || prevVal.reps !== set.reps || prevVal.unit !== unit) {
-    setPrevVal({ weight: set.weight, reps: set.reps, unit });
-    const typedW = parseDecimal(w);
-    if (prevVal.unit !== unit || !(Number.isFinite(typedW) && fromDisplayWeight(typedW, unit) === set.weight) && !(set.weight === 0 && w === '')) {
-      setW(set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '');
-    }
-    if (parseInt(r, 10) !== set.reps && !(set.reps === 0 && r === '')) setR(set.reps ? String(set.reps) : '');
-  }
-  const upd = (patch: Partial<ExerciseSet>) => useWorkouts.getState().updateSet(weId, set.id, patch);
   const done = !!set.done;
-  const live = current && !done;
-  const color = done || live ? colors.text : colors.textDim;
-  const input = [styles.setInput, { color }];
   const u = unitLabel(unit);
   const rTxt = (x: number) => (timed ? fmtSec(x) : String(x));
-
-  // Цель над строкой: «Цель 65 кг × 10 · было 9»; рост к прошлому разу — акцентом со стрелкой
+  const wTxt = set.weight ? fmtWeight(toDisplayWeight(set.weight, unit)) : bodyweight ? '0' : '—';
+  const repsTxt = set.reps ? rTxt(set.reps) : range ?? '—';
   const t = set.warmup ? undefined : set.target;
-  let goal: React.ReactNode = null;
-  if (t) {
-    const pickWeight = t.weight === 0 && !bodyweight && !timed;
-    const main = pickWeight ? `подбери вес · ${range ?? rTxt(t.reps)}` : `${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${u} × ` : ''}${rTxt(t.reps)}${timed || t.weight > 0 ? '' : ` ${plural(t.reps, 'повтор', 'повтора', 'повторов')}`}`;
-    const up = !!prev && !pickWeight && (t.weight > prev.weight || (t.weight === prev.weight && t.reps > prev.reps));
-    const was = prev ? `было ${prev.weight !== t.weight && prev.weight > 0 ? `${fmtWeight(prev.weight, unit)} × ` : ''}${rTxt(prev.reps)}` : '';
-    goal = (
-      <T v="footnote" numberOfLines={1} style={{ textAlign: 'center' }} testID={`set-goal-${idx}`}>
-        <T v="footnote" color={done ? colors.textDim : up ? colors.accent : colors.text} style={{ fontWeight: '600' }}>
-          {`${up && !done ? '↑ ' : ''}Цель ${main}`}
-        </T>
-        {was ? ` · ${was}` : ''}
-      </T>
-    );
-  }
+  const goal = t ? `, цель ${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${u} × ` : ''}${rTxt(t.reps)}` : '';
+  const valueLabel = `${weightCol ? `${wTxt} ${bodyweight ? `доп. ${u}` : u} × ` : ''}${repsTxt}${timed ? ' сек' : ' повторов'}`;
 
   return (
-    <SwipeRow onDelete={() => onDelete(set, idx)} a11yLabel={`Удалить подход ${no}`} bg={colors.bg} testID={`set-row-${idx}`}>
-      <View style={[styles.setRow, live && styles.setRowCurrent, !last && styles.setLine]}>
+    <SwipeRow onDelete={() => onDelete(set, idx)} a11yLabel={`Удалить подход ${no}`} bg={colors.surface} testID={`set-row-${idx}`}>
+      <View style={[styles.setRow, !last && styles.setLine]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={done ? `Отменить выполнение подхода ${no}` : `Подход ${no} выполнен`}
           accessibilityState={{ checked: done }}
           onPress={() => onComplete(set)}
           hitSlop={6}
-          style={[styles.badge, live && styles.badgeLive, done && styles.badgeDone]}
+          style={styles.badge}
         >
-          {done ? (
-            <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }}>
-              <Icon name="checkmark" size={20} color={colors.onAccent} />
-            </Animated.View>
-          ) : (
-            <T v="callout" color={live ? colors.text : colors.textDim} style={{ fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-              {no}
-            </T>
-          )}
+          <T v="callout" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }}>
+            {no}
+          </T>
         </Pressable>
-        <View style={styles.setMid}>
-          {goal}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Подход ${no}: ${valueLabel}${goal}${done ? ', выполнен' : ''}. Изменить`} onPress={() => { haptic.tap(); onEdit(); }} style={({ pressed }) => [styles.setMid, pressed && { opacity: 0.55 }]} testID={`set-edit-${idx}`}>
           <View style={styles.setVals}>
             {weightCol ? (
               <>
-                <TextInput
-                  value={w}
-                  onChangeText={(v) => {
-                    setW(v);
-                    const n = parseDecimal(v);
-                    upd({ weight: Number.isFinite(n) ? fromDisplayWeight(n, unit) : 0 });
-                  }}
-                  placeholder="—"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="decimal-pad"
-                  selectTextOnFocus
-                  maxFontSizeMultiplier={1.2}
-                  accessibilityLabel={`Вес, подход ${idx + 1}`}
-                  style={[input, { width: fieldW(w, '—') }]}
-                />
+                <T v="metric" style={styles.setNum}>
+                  {wTxt}
+                </T>
                 <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
                   {bodyweight ? `+${u}` : u}
                 </T>
@@ -1244,21 +1142,9 @@ const SetRow = memo(function SetRow({
                 </T>
               </>
             ) : null}
-            <TextInput
-              value={r}
-              onChangeText={(v) => {
-                setR(v);
-                const n = parseInt(v, 10);
-                upd({ reps: Number.isFinite(n) ? n : 0 });
-              }}
-              placeholder={!done && range ? range : '0'}
-              placeholderTextColor={colors.muted}
-              keyboardType="number-pad"
-              selectTextOnFocus
-              maxFontSizeMultiplier={1.2}
-              accessibilityLabel={`${timed ? 'Секунды' : 'Повторы'}, подход ${idx + 1}`}
-              style={[input, { width: fieldW(r, !done && range ? range : '0') }]}
-            />
+            <T v="metric" color={set.reps ? colors.text : colors.muted} style={styles.setNum}>
+              {repsTxt}
+            </T>
             {timed ? (
               <T v="callout" color={colors.textDim} maxFontSizeMultiplier={1.4} style={styles.setUnit}>
                 сек
@@ -1269,13 +1155,122 @@ const SetRow = memo(function SetRow({
               </T>
             ) : null}
           </View>
+        </Pressable>
+        <View style={styles.setRight}>
+          {done ? (
+            <Animated.View style={{ transform: [{ scale: pop }], opacity: pop }} testID={`set-done-${idx}`}>
+              <Icon name="checkmark" size={26} color={colors.accent} />
+            </Animated.View>
+          ) : null}
         </View>
-        {/* Противовес номеру слева: числа остаются ровно по центру строки */}
-        <View style={styles.badgeSpace} />
       </View>
     </SwipeRow>
   );
 });
+
+/** Кнопка «−/+» редактора: крупная, с отдачей; удержание повторяет шаг */
+function StepBtn({ icon, label, onPress }: { icon: 'add' | 'remove'; label: string; onPress: () => void }) {
+  const rep = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stop = () => {
+    if (rep.current) clearInterval(rep.current);
+    rep.current = null;
+  };
+  useEffect(() => stop, []);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => { haptic.tap(); onPress(); }}
+      onLongPress={() => { stop(); rep.current = setInterval(onPress, 110); }}
+      onPressOut={stop}
+      delayLongPress={350}
+      hitSlop={6}
+      style={({ pressed }) => [styles.stepBtn, pressed && { backgroundColor: colors.surface3 }]}
+    >
+      <Icon name={icon} size={28} color={colors.text} />
+    </Pressable>
+  );
+}
+
+/** Поле редактора: подпись, «−», крупное число (тап — клавиатура), «+» */
+function StepField({ label, value, onChange, step, decimals, testID }: { label: string; value: string; onChange: (v: string) => void; step: number; decimals: boolean; testID: string }) {
+  const num = parseDecimal(value);
+  const cur = Number.isFinite(num) ? num : 0;
+  const fmt = (x: number) => (decimals ? String(Math.round(x * 100) / 100).replace('.', ',') : String(Math.round(x)));
+  return (
+    <View style={styles.field}>
+      <T v="footnote" style={{ textAlign: 'center' }}>
+        {label}
+      </T>
+      <View style={styles.fieldRow}>
+        <StepBtn icon="remove" label={`${label}: меньше на ${String(step).replace('.', ',')}`} onPress={() => onChange(fmt(Math.max(0, cur - step)))} />
+        <TextInput
+          value={value}
+          onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
+          keyboardType={decimals ? 'decimal-pad' : 'number-pad'}
+          selectTextOnFocus
+          maxFontSizeMultiplier={1.3}
+          accessibilityLabel={label}
+          placeholder="0"
+          placeholderTextColor={colors.muted}
+          style={styles.fieldInput}
+          testID={testID}
+        />
+        <StepBtn icon="add" label={`${label}: больше на ${String(step).replace('.', ',')}`} onPress={() => onChange(fmt(cur + step))} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Редактор подхода (R2): вес и повторы (секунды) крупно, «−/+» с шагом снаряда, число можно набрать.
+ * Изменения сохраняются одним действием — «Сохранить» или «Записать подход».
+ */
+function SetEditor({ we, setId, onClose, unit, step, timed, weightCol, bodyweight, onComplete }: { we: WorkoutExercise; setId: string | null; onClose: () => void; unit: 'kg' | 'lb'; step: number; timed: boolean; weightCol: boolean; bodyweight: boolean; onComplete: (s: ExerciseSet) => void }) {
+  const set = setId ? we.sets.find((x) => x.id === setId) : undefined;
+  const [draft, setDraft] = useState<{ id: string; w: string; r: string } | null>(null);
+  // Новый подход в редакторе — черновик из его значений (паттерн «состояние от пропсов» без эффекта)
+  if (set && draft?.id !== set.id) setDraft({ id: set.id, w: set.weight ? String(toDisplayWeight(set.weight, unit)).replace('.', ',') : '', r: set.reps ? String(set.reps) : '' });
+  const k = set ? we.sets.filter((x) => !x.warmup).indexOf(set) + 1 : 0;
+  const title = set ? (set.warmup ? 'Разминочный подход' : `Подход ${k}`) : '';
+  const commit = (): ExerciseSet | null => {
+    if (!set || !draft) return null;
+    const w = parseDecimal(draft.w);
+    const r = parseInt(draft.r, 10);
+    const patch: Partial<ExerciseSet> = { weight: Number.isFinite(w) ? fromDisplayWeight(w, unit) : 0, reps: Number.isFinite(r) ? r : 0 };
+    useWorkouts.getState().updateSet(we.id, set.id, patch);
+    return { ...set, ...patch };
+  };
+  const t = set?.target;
+  const wStep = unit === 'lb' ? 5 : step;
+  return (
+    <Sheet visible={!!set} onClose={onClose} title={title} subtitle={t && !set?.warmup ? `Цель: ${t.weight > 0 ? `${fmtWeight(t.weight, unit)} ${unitLabel(unit)} × ` : ''}${timed ? fmtSec(t.reps) : t.reps}` : undefined}>
+      {set && draft ? (
+        <View style={{ gap: space.lg }} testID="set-editor">
+          {weightCol ? <StepField label={bodyweight ? `Доп. вес, ${unitLabel(unit)}` : `Вес, ${unitLabel(unit)}`} value={draft.w} onChange={(w) => setDraft({ ...draft, w })} step={wStep} decimals testID="edit-weight" /> : null}
+          <StepField label={timed ? 'Время, сек' : 'Повторы'} value={draft.r} onChange={(r) => setDraft({ ...draft, r })} step={timed ? TIME_STEP_SEC : 1} decimals={false} testID="edit-reps" />
+          <View style={{ gap: space.xs }}>
+            {!set.done ? (
+              <Button
+                title="Записать подход"
+                icon="checkmark"
+                size="lg"
+                full
+                onPress={() => {
+                  const s2 = commit();
+                  onClose();
+                  if (s2) afterModalClose(() => onComplete(s2));
+                }}
+                testID="edit-complete"
+              />
+            ) : null}
+            <Button title="Сохранить" variant={set.done ? 'primary' : 'secondary'} size={set.done ? 'lg' : 'md'} full onPress={() => { commit(); onClose(); }} testID="edit-save" />
+          </View>
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
 
 /** Ни одного выполненного подхода: тренировку нечего сохранять — удалить или продолжить */
 function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -1300,29 +1295,49 @@ function DiscardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
 
 const styles = themed({
   top: { flexDirection: 'row', alignItems: 'center', gap: space.xxs, paddingHorizontal: space.xs, paddingBottom: space.xxs, backgroundColor: colors.bg },
-  pos: { flex: 1, minHeight: 44, justifyContent: 'center' },
-  clock: { minWidth: 52, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  pos: { flexDirection: 'row', alignItems: 'center', gap: 3, minHeight: 44, paddingHorizontal: space.xs },
+  clock: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: space.sm },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
   noteLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.xs },
   refs: { marginTop: space.md, gap: 2 },
   refRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm, minHeight: 32, paddingVertical: 4 },
   refLabel: { width: 108 },
-  sets: { marginTop: space.lg },
-  setLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
+  cardWrap: { flex: 1, paddingHorizontal: space.sm, paddingTop: space.xs, paddingBottom: space.xs },
+  exCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden' },
+  cardHead: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: space.xxs, paddingTop: space.xxs, paddingBottom: space.sm },
+  exTitle: { textAlign: 'center', fontSize: 24, lineHeight: 30 },
+  cardLine: { height: 0.5, backgroundColor: colors.borderStrong },
+  cardFoot: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 64, paddingHorizontal: space.sm, paddingVertical: space.xs },
+  noteBtn: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  tipDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  setRight: { width: 40, alignItems: 'center', justifyContent: 'center' },
+  mainBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: colors.bg },
+  mainBtnSpace: { width: 68, height: 68 },
   setMid: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2 },
   setVals: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
-  setInput: { padding: 0, minHeight: 44, textAlign: 'center', fontSize: SET_FS, fontWeight: '500', fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  setNum: { fontSize: 32, lineHeight: 40, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  editHint: { width: 40, textAlign: 'center' },
+  titleBlock: { alignItems: 'center', gap: 4, paddingHorizontal: 40 },
+  muscleCaps: { textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.4 },
+  infoBtn: { position: 'absolute', right: -6, top: -6 },
+  underSets: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface2 },
+  clockWrap: { position: 'absolute', left: 0, right: 0, height: 44, alignItems: 'center', justifyContent: 'center' },
+  field: { gap: space.xs },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  fieldInput: { flex: 1, minWidth: 0, height: 64, borderRadius: radius.lg, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontFamily: DISPLAY.semibold, fontSize: 36, fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  stepBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   setUnit: { marginLeft: 2 },
   setTimes: { marginHorizontal: 8 },
   badge: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
+  setLine: { borderBottomWidth: 0.5, borderBottomColor: colors.borderStrong },
   badgeLive: { borderWidth: 1.5, borderColor: colors.accent, backgroundColor: colors.surface },
   badgeDone: { backgroundColor: colors.accent },
-  badgeSpace: { width: 40 },
   addSet: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: space.xxs },
   techRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 52, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
   techPanel: { borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.surface },
   doneLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.sm },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.xs, paddingTop: space.xs, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.bg },
+  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.md, paddingTop: space.xxs, backgroundColor: colors.bg },
   barBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   rest: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 52, paddingHorizontal: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong, backgroundColor: colors.surface, overflow: 'hidden' },
   restFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.accentDim },
@@ -1349,7 +1364,7 @@ const styles = themed({
   spark: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: colors.onAccent },
   pr: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.accent, boxShadow: '0px 10px 30px rgba(0,0,0,0.35)' },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2, paddingHorizontal: 4 },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 76, paddingVertical: space.sm, paddingHorizontal: space.xs },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 72, paddingVertical: space.sm, paddingHorizontal: space.sm },
   input: { flex: 1, minWidth: 0, width: 0, height: 44, borderRadius: radius.sm, backgroundColor: 'transparent', color: colors.text, textAlign: 'center', fontSize: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
   inputDone: { backgroundColor: 'transparent', borderColor: 'transparent' },
   check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
