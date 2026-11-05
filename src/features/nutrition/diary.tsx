@@ -197,7 +197,7 @@ export function MealSection({
         </T>
         {entries.length ? (
           <View style={styles.kcalBox}>
-            <T v="headline" style={styles.kcalBig}>
+            <T v="metric" style={styles.kcalBig}>
               {fmtValue(Math.round(sum.kcal))}
             </T>
             <T v="caption">ккал</T>
@@ -265,7 +265,7 @@ export function FoodRow({ entry: e, onPress, onDelete }: { entry: FoodEntry; onP
           </View>
         </View>
         <View style={[styles.mside, styles.foodKcal]}>
-          <T v="headline" color={colors.textDim} style={{ fontVariant: ['tabular-nums'] }}>
+          <T v="metric" color={colors.textDim} style={{ fontSize: 20, lineHeight: 25 }}>
             {fmtValue(Math.round(e.macros.kcal))}
           </T>
           <Icon name="chevron-forward" size={16} color={colors.muted} />
@@ -326,7 +326,7 @@ const styles = themed({
   card: { backgroundColor: colors.surface, borderRadius: radius.xl, overflow: 'hidden' },
   mealHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 64, paddingVertical: space.sm, paddingLeft: space.md, paddingRight: space.sm },
   kcalBox: { alignItems: 'flex-end' },
-  kcalBig: { fontVariant: ['tabular-nums'], fontWeight: '700' },
+  kcalBig: { fontSize: 22, lineHeight: 26, fontWeight: '700' },
   totals: { flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingLeft: space.md, borderTopWidth: 0.5, borderTopColor: colors.borderStrong },
   legend: { flexDirection: 'row', alignItems: 'center', paddingLeft: space.md, paddingBottom: space.xxs },
   cols: { flex: 1, flexDirection: 'row', alignItems: 'center' },

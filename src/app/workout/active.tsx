@@ -3,7 +3,7 @@ import { AccessibilityInfo, Animated, Easing, PanResponder, Platform, Pressable,
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BodyArea, Exercise, ExerciseSet, WorkoutExercise, WorkoutSession } from '@/types';
-import { colors, radius, space, themed } from '@/theme';
+import { colors, DISPLAY, radius, space, themed } from '@/theme';
 import { Button, EmptyState, Icon, IconButton, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { SwipeRow } from '@/components/ds/SwipeRow';
@@ -784,7 +784,7 @@ function ExerciseFocus({
           <T v="title1" accessibilityRole="header" style={{ textAlign: 'center' }} numberOfLines={3}>
             {ex.name}
           </T>
-          <T v="caption" numberOfLines={2} style={styles.muscleCaps} testID="exercise-muscles">
+          <T v="callout" numberOfLines={2} style={styles.muscleCaps} testID="exercise-muscles">
             {muscles}
           </T>
           <IconButton name="information-circle-outline" label="Рекомендация, почему" bg="transparent" color={colors.textDim} onPress={openInfo} style={styles.infoBtn} />
@@ -1404,14 +1404,14 @@ const styles = themed({
   setNum: { fontSize: 32, lineHeight: 40, fontWeight: '600', fontVariant: ['tabular-nums'] },
   editHint: { width: 40, textAlign: 'center' },
   titleBlock: { alignItems: 'center', gap: 4, paddingHorizontal: 40 },
-  muscleCaps: { textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.6 },
+  muscleCaps: { textAlign: 'center' },
   infoBtn: { position: 'absolute', right: -6, top: -6 },
   underSets: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface2 },
   clockWrap: { position: 'absolute', left: 0, right: 0, height: 44, alignItems: 'center', justifyContent: 'center' },
   field: { gap: space.xs },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  fieldInput: { flex: 1, minWidth: 0, height: 64, borderRadius: radius.lg, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontSize: 36, fontWeight: '700', fontVariant: ['tabular-nums'], outlineWidth: 0 },
+  fieldInput: { flex: 1, minWidth: 0, height: 64, borderRadius: radius.lg, backgroundColor: colors.surface2, color: colors.text, textAlign: 'center', fontFamily: DISPLAY.semibold, fontSize: 36, fontVariant: ['tabular-nums'], outlineWidth: 0 },
   stepBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
   setUnit: { marginLeft: 2 },
   setTimes: { marginHorizontal: 8 },

@@ -120,15 +120,23 @@ const family = Platform.select({ ios: 'System', default: undefined });
 const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, Menlo, monospace' });
 
 /**
- * Типографика Precision Performance (docs/design/RYNJI_DESIGN_SYSTEM.md §3): системный SF Pro, начертания 400–700,
- * табличные цифры, минимум 12 pt. Подписи — обычным регистром. Старые имена (hero, h1–h3, small, caption, num)
- * — псевдонимы новой шкалы, пока экраны не переведены на новые имена.
+ * Шрифт цифр и крупных заголовков (R2): Exo 2 — спортивный гротеск с хорошей кириллицей и табличными цифрами
+ * (OFL, файлы в сборке, грузятся в корневом макете). Основной текст — системный SF Pro: на iPhone он читается лучше
+ * всего и растёт с «Размером текста». Начертание задаётся файлом шрифта, а не fontWeight (iOS не подбирает вес у
+ * встроенного шрифта): T сам выбирает файл по fontWeight.
  */
-const display = { fontFamily: family, fontSize: 34, lineHeight: 40, fontWeight: '600', letterSpacing: -0.4, fontVariant: ['tabular-nums'], color: colors.text } as const;
-const title1 = { fontFamily: family, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.3, color: colors.text } as const;
-const title2 = { fontFamily: family, fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: -0.2, color: colors.text } as const;
-const headline = { fontFamily: family, fontSize: 19, lineHeight: 24, fontWeight: '600', letterSpacing: -0.1, color: colors.text } as const;
-const body = { fontFamily: family, fontSize: 16, lineHeight: 22, fontWeight: '400', color: colors.text } as const;
+export const DISPLAY = { semibold: 'Exo2_600SemiBold', bold: 'Exo2_700Bold' } as const;
+
+/**
+ * Типографика (docs/design/RYNJI_DESIGN_SYSTEM.md §3, раунд 2): цифры и заголовки экранов — Exo 2, остальное — SF Pro
+ * 17 pt (стандарт iOS), начертания 400–700, табличные цифры, минимум 12 pt, подписи обычным регистром.
+ * Старые имена (hero, h1–h3, small, caption, num) — псевдонимы новой шкалы, пока экраны не переведены на новые имена.
+ */
+const display = { fontFamily: DISPLAY.bold, fontSize: 34, lineHeight: 40, letterSpacing: -0.2, fontVariant: ['tabular-nums'], color: colors.text } as const;
+const title1 = { fontFamily: DISPLAY.bold, fontSize: 28, lineHeight: 34, letterSpacing: -0.1, color: colors.text } as const;
+const title2 = { fontFamily: family, fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: -0.2, color: colors.text } as const;
+const headline = { fontFamily: family, fontSize: 18, lineHeight: 23, fontWeight: '600', letterSpacing: -0.1, color: colors.text } as const;
+const body = { fontFamily: family, fontSize: 17, lineHeight: 23, fontWeight: '400', color: colors.text } as const;
 const callout = { fontFamily: family, fontSize: 15, lineHeight: 20, fontWeight: '400', color: colors.textDim } as const;
 const footnote = { fontFamily: family, fontSize: 13, lineHeight: 18, fontWeight: '400', color: colors.textDim } as const;
 
@@ -142,7 +150,7 @@ export const type = themed({
   callout,
   footnote,
   caption: { fontFamily: family, fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.1, color: colors.textDim },
-  metric: { fontFamily: family, fontSize: 22, lineHeight: 26, fontWeight: '600', letterSpacing: -0.2, fontVariant: ['tabular-nums'], color: colors.text },
+  metric: { fontFamily: DISPLAY.semibold, fontSize: 24, lineHeight: 29, letterSpacing: -0.1, fontVariant: ['tabular-nums'], color: colors.text },
   // ── Псевдонимы старых имён ──
   hero: display,
   h1: title1,
@@ -150,7 +158,7 @@ export const type = themed({
   h3: headline,
   bodyDim: { ...body, color: colors.textDim },
   small: callout,
-  num: { fontFamily: family, fontWeight: '600', fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.3 },
+  num: { fontFamily: DISPLAY.semibold, fontVariant: ['tabular-nums'], color: colors.text, letterSpacing: -0.1 },
   mono: { fontFamily: mono, fontVariant: ['tabular-nums'] },
 });
 

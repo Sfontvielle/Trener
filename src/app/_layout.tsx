@@ -6,8 +6,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureRoot } from '@/components/gestures';
 import * as SystemUI from 'expo-system-ui';
-import { colors } from '@/theme';
+import { colors, DISPLAY } from '@/theme';
 import { useHydrated } from '@/stores/hydration';
+import { useFonts } from 'expo-font';
+import { Exo2_600SemiBold, Exo2_700Bold } from '@expo-google-fonts/exo-2';
 import { useProfile } from '@/stores/profile';
 import { DialogHost, useDialog } from '@/components/Dialog';
 import { ErrorBoundaryView } from '@/components/ErrorBoundaryView';
@@ -163,9 +165,12 @@ function Gate() {
 
 export default function RootLayout() {
   const theme = useThemeKey();
+  // Шрифт цифр и заголовков (Exo 2) — из сборки, загрузка мгновенная; ошибка загрузки — системный шрифт
+  const [fontsOk, fontsErr] = useFonts({ [DISPLAY.semibold]: Exo2_600SemiBold, [DISPLAY.bold]: Exo2_700Bold });
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => undefined);
   }, [theme.key]);
+  if (!fontsOk && !fontsErr) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   return (
     <GestureRoot style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider key={theme.key} style={{ backgroundColor: colors.bg }}>

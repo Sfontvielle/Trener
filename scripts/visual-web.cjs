@@ -52,6 +52,8 @@ async function capture(browser, theme) {
     });
   const shot = async (name) => {
     await p.waitForTimeout(900);
+    // Шрифт цифр и заголовков (Exo 2) грузится из сборки — снимок только после загрузки шрифтов
+    await p.evaluate(() => document.fonts.ready);
     await pinFont();
     await p.waitForTimeout(300);
     shots[`${name}-${theme}`] = await p.screenshot();

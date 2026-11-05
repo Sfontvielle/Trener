@@ -142,7 +142,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
 
       <Appear i={1} style={styles.card}>
         <T v="caption">Питание на день</T>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8 }}>
           <T v="display" testID="plan-kcal">
             {fmtNum(target.kcal)}
           </T>
