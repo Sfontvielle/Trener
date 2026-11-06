@@ -5,7 +5,7 @@ import bpy, sys, os, json, math
 import numpy as np
 from mathutils import Vector, Matrix
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import posing, stage
+import posing, stage, look
 
 a = sys.argv[sys.argv.index('--') + 1:]
 src, spec_path, map_path, out = a[0], a[1], a[2], a[3]
@@ -236,11 +236,12 @@ for i, f in enumerate(frames):
 
 # --- подсветка, свет, камера, рендер ----------------------------------------------------------------
 names = lambda ids: {n for i in ids for n in amap.get(i, [])}
-stage.highlight(names(spec['highlight']['primary']), names(spec['highlight']['secondary']))
+look.apply(names(spec['highlight']['primary']), names(spec['highlight']['secondary']))
 stage.setup(sc, W, H, S, floor_z=sole - 0.045)
 cam = spec['cameras'][int(os.environ.get('CAM', 0))]
 target = (0, J['pelvis'][1] - 0.05, (J['gh.L'][2] + sole) / 2 + 0.12) if ex == 'pec_deck' else (0, J['pelvis'][1] - 0.05, (J['gh.L'][2] + sole) / 2 + 0.10)
 stage.camera(sc, target, cam['azimuth_deg'], cam['elevation_deg'], float(os.environ.get('DIST', 3.9)), lens=50)
+look.light(sc)                                                   # жёсткий ключевой свет — объём тенями, без «пластилина»
 only = [int(x) for x in os.environ.get('ONLY', '').split(',') if x != '']
 if save:
     bpy.ops.wm.save_as_mainfile(filepath=save, compress=True)

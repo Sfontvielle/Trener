@@ -11,27 +11,9 @@ W = int(os.environ.get('W', 720)); H = int(os.environ.get('H', 1280)); S = int(o
 bpy.ops.wm.open_mainfile(filepath=src, load_ui=False, use_scripts=False)
 sc = bpy.context.scene
 
-mats = {m.name: m for m in bpy.data.materials}
-
-def tint(name, color, emit, strength):
-    """Цвета подсветки задаются при рендере (не нужно пересобирать модель): насыщенный красно-оранжевый и светлый оранжевый."""
-    m = mats.get(name) or bpy.data.materials.new(name)
-    m.use_nodes = True
-    b = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
-    b.inputs['Base Color'].default_value = (*color, 1)
-    b.inputs['Emission Color'].default_value = (*emit, 1)
-    b.inputs['Emission Strength'].default_value = strength
-    b.inputs['Roughness'].default_value = 0.42
-    mats[name] = m
-
-tint('rynji_primary', (0.78, 0.085, 0.018), (1.0, 0.16, 0.02), 0.22)
-tint('rynji_secondary', (0.96, 0.40, 0.11), (1.0, 0.45, 0.12), 0.08)
-for o in bpy.data.objects:
-    if o.get('rynji_kind') != 'muscle':
-        continue
-    b = o.get('rynji_id')
-    o.data.materials.clear()
-    o.data.materials.append(mats['rynji_primary'] if b in prim else mats['rynji_secondary'] if b in sec else mats['rynji_muscle'])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import look
+look.apply(prim, sec)                         # материалы экорше: тень в бороздах, волокна, лёгкий блеск
 
 # рамка фигуры
 mn = Vector((1e9,) * 3); mx = Vector((-1e9,) * 3)
@@ -87,6 +69,7 @@ for v in views:
         area('fill', tgt + dirv * 3 - side * 2.6 + Vector((0, 0, 0.6)), 90, 3.0, tgt),
         area('rim', tgt - dirv * 2.5 + side * 1.2 + Vector((0, 0, 2.0)), 220, 1.5, tgt),
     ]
+    look.light(sc)
     sc.render.filepath = os.path.join(out_dir, f'{v}.png')
     bpy.ops.render.render(write_still=True)
     print('RENDERED', v)
