@@ -1853,7 +1853,7 @@ const closeSheet = async (pg) => {
     assert.ok((await page.locator('svg path').count()) > 50, 'миниатюры — схемы мышц');
     // у профиля женщины — тот же ролик с женской фигурой (<id>_f)
     const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1].replace(/_f$/, ''));
-    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift'];
+    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift', 'pec_deck', 'machine_row'];
     assert.ok(posters.every((p) => own.includes(p)), `постеры только своих петель: ${posters}`);
     await shot('library-thumbs');
   });
@@ -1903,6 +1903,37 @@ const closeSheet = async (pg) => {
     const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
     assert.match(media, /bench_press_f/, '3D-ролик с женской фигурой');
     await setProfile(before);
+  });
+
+  await check('70. Анатомическая 3D-модель: бабочка и рычажная тяга — ролик своей модели, подсветка в стиле референсов, атрибуция CC BY-SA, женская версия по профилю', async () => {
+    const setSex = (sex) => page.evaluate((x) => {
+      const raw = JSON.parse(localStorage.getItem('form.profile'));
+      raw.state.profile.sex = x;
+      localStorage.setItem('form.profile', JSON.stringify(raw));
+    }, sex);
+    const before = await page.evaluate(() => JSON.parse(localStorage.getItem('form.profile')).state.profile.sex);
+    for (const [sex, suffix] of [['male', ''], ['female', '_f']]) {
+      await setSex(sex);
+      for (const id of ['pec_deck', 'machine_row']) {
+        await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(1000);
+        await dismiss();
+        const box = page.getByTestId('technique-3d');
+        await box.scrollIntoViewIfNeeded();
+        assert.ok(await box.isVisible(), `${id}: 3D-блок`);
+        const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
+        assert.match(media, new RegExp(`posters.*${id}${suffix}\\.jpg`), `${id} (${sex}): постер своей фигуры`);
+        if (!suffix) assert.doesNotMatch(media, new RegExp(`${id}_f`), `${id}: у мужчины — мужская фигура`);
+        const credit = page.getByTestId('technique-3d-credit');
+        assert.match(await credit.innerText(), /Z-Anatomy.*BodyParts3D.*CC BY-SA 4\.0/, `${id}: атрибуция`);
+        await shot(`atlas-${id}${suffix}`);
+      }
+    }
+    // у роликов процедурной фигуры атрибуции атласа нет
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    assert.equal(await page.getByTestId('technique-3d-credit').count(), 0, 'жим — без атрибуции атласа');
+    await setSex(before);
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

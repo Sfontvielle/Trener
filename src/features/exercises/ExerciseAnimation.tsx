@@ -12,6 +12,11 @@ import { EXERCISE_ANIMATIONS, type ExerciseAnimation as Anim } from '@/data/exer
 const NATIVE = Platform.OS !== 'web';
 /** Значок «3D» — цвет подсветки работающих мышц в рендере (tools/anim/web/body.js), не акцент темы */
 const PRIMARY = '#3DDC84';
+/** Подсветка роликов анатомической модели (стиль референсов): основные — красно-оранжевые, вспомогательные — светло-оранжевые */
+const ATLAS_PRIMARY = '#E2481B';
+const ATLAS_SECONDARY = '#F4A261';
+/** CC BY-SA 4.0 требует указать авторство рядом с работой */
+export const ATLAS_CREDIT = 'Анатомия: Z-Anatomy, BodyParts3D © DBCLS · CC BY-SA 4.0';
 const RATIO = 4 / 3;
 
 export const animationFor = (ex: Exercise): Anim | undefined => EXERCISE_ANIMATIONS[ex.id];
@@ -29,6 +34,7 @@ export function ExerciseAnimation({ ex, anim, sex: sexProp, stabilizers = [], le
   const profileSex = useProfile((s) => s.profile?.sex);
   const sex = sexProp ?? profileSex;
   const media = mediaFor(anim, sex);
+  const atlas = anim.source === 'atlas';
   const [playing, setPlaying] = useState(() => !prefersReducedMotion());
   const [full, setFull] = useState(false);
   const ref = useRef<Image>(null);
@@ -61,7 +67,7 @@ export function ExerciseAnimation({ ex, anim, sex: sexProp, stabilizers = [], le
             </View>
           ) : null}
         </Pressable>
-        <View style={styles.badge} pointerEvents="none">
+        <View style={[styles.badge, atlas ? { backgroundColor: ATLAS_PRIMARY } : null]} pointerEvents="none">
           <T v="small" color="#0B0D06" style={{ fontWeight: '800', fontSize: 11 }}>
             3D
           </T>
@@ -80,9 +86,14 @@ export function ExerciseAnimation({ ex, anim, sex: sexProp, stabilizers = [], le
       </View>
       {legend ? (
         <View style={styles.legend} accessible accessibilityLabel={`Работают: ${names(anim.primary)}. Задействованы слегка: ${names([...anim.secondary, ...stabilizers]) || 'нет'}`}>
-          <Legend color={colors.musclePrimary} title="Работают" text={names(anim.primary)} />
-          {anim.secondary.length || stabilizers.length ? <Legend color={colors.muscleSecondary} title="Задействованы слегка" text={names([...anim.secondary, ...stabilizers])} /> : null}
+          <Legend color={atlas ? ATLAS_PRIMARY : colors.musclePrimary} title="Работают" text={names(anim.primary)} />
+          {anim.secondary.length || stabilizers.length ? <Legend color={atlas ? ATLAS_SECONDARY : colors.muscleSecondary} title="Задействованы слегка" text={names([...anim.secondary, ...stabilizers])} /> : null}
         </View>
+      ) : null}
+      {atlas ? (
+        <T v="caption" color={colors.textDim} style={{ fontSize: 11 }} testID="technique-3d-credit">
+          {ATLAS_CREDIT}
+        </T>
       ) : null}
       <FullScreen visible={full} media={media} title={ex.name} onClose={() => setFull(false)} />
     </View>

@@ -2,7 +2,7 @@
 import type { MuscleSlug } from '@/types';
 
 /**
- * 3D-анимации техники (зацикленный WebP, офлайн) и постеры для списков. Собственный рендер RYNJI (tools/anim).
+ * 3D-анимации техники (зацикленный WebP, офлайн) и постеры для списков. Собственный рендер RYNJI (tools/anim, tools/anatomy3d).
  * primary / secondary — мышцы, подсвеченные на рендере (зелёные / светло-жёлтые).
  * loopF / posterF — тот же ролик с женской фигурой (для профиля женщины).
  */
@@ -11,6 +11,8 @@ export interface ExerciseAnimation {
   poster: number;
   loopF?: number;
   posterF?: number;
+  /** 'atlas' — собственная анатомическая модель (Z-Anatomy / BodyParts3D, CC BY-SA 4.0): подсветка красно-оранжевая, нужна атрибуция */
+  source?: 'atlas';
   primary: MuscleSlug[];
   secondary: MuscleSlug[];
   checked: boolean;
@@ -24,6 +26,16 @@ export const EXERCISE_ANIMATIONS: Record<string, ExerciseAnimation> = {
     posterF: require('../../assets/anim/posters/bench_press_f.jpg'),
     primary: ['chest'],
     secondary: ['triceps', 'deltoids'],
+    checked: true,
+  },
+  pec_deck: {
+    loop: require('../../assets/anim/pec_deck.webp'),
+    poster: require('../../assets/anim/posters/pec_deck.jpg'),
+    loopF: require('../../assets/anim/pec_deck_f.webp'),
+    posterF: require('../../assets/anim/posters/pec_deck_f.jpg'),
+    source: 'atlas',
+    primary: ['chest'],
+    secondary: ['deltoids'],
     checked: true,
   },
   lat_pulldown: {
@@ -40,6 +52,16 @@ export const EXERCISE_ANIMATIONS: Record<string, ExerciseAnimation> = {
     poster: require('../../assets/anim/posters/db_row.jpg'),
     loopF: require('../../assets/anim/db_row_f.webp'),
     posterF: require('../../assets/anim/posters/db_row_f.jpg'),
+    primary: ['upper-back'],
+    secondary: ['biceps', 'deltoids'],
+    checked: true,
+  },
+  machine_row: {
+    loop: require('../../assets/anim/machine_row.webp'),
+    poster: require('../../assets/anim/posters/machine_row.jpg'),
+    loopF: require('../../assets/anim/machine_row_f.webp'),
+    posterF: require('../../assets/anim/posters/machine_row_f.jpg'),
+    source: 'atlas',
     primary: ['upper-back'],
     secondary: ['biceps', 'deltoids'],
     checked: true,

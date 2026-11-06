@@ -162,13 +162,15 @@ test('Запланированные: выполнение закрывает п
   useSchedule.getState().reset();
 });
 
-test('3D-петли: ровно 6, каждая — только своему упражнению, мышцы рендера совпадают с основными', async () => {
+test('3D-петли: ровно 8 (6 процедурных + 2 анатомической модели), каждая — только своему упражнению, мышцы рендера совпадают с основными', async () => {
   const fs = await import('node:fs');
   const { EXERCISES } = await import('../src/data/exercises');
   // Файл реестра подключает .webp через require — в Node его не импортировать, читаем как текст
   const src = fs.readFileSync(new URL('../src/data/exerciseAnimations.ts', import.meta.url), 'utf8');
   const entries = [...src.matchAll(/^ {2}([a-z_]+): \{[\s\S]*?loop: require\('\.\.\/\.\.\/assets\/anim\/([a-z_]+)\.webp'\)[\s\S]*?primary: \[([^\]]*)\]/gm)].map((m) => ({ id: m[1], file: m[2], primary: m[3].split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean) }));
-  assert.equal(entries.length, 6, 'шесть петель');
+  assert.equal(entries.length, 8, 'восемь петель');
+  // ролики анатомической модели (атлас, CC BY-SA) помечены source: 'atlas' — для атрибуции
+  for (const id of ['pec_deck', 'machine_row']) assert.match(src, new RegExp(`${id}: \\{[\\s\\S]*?source: 'atlas'`), `${id}: источник — атлас`);
   for (const e of entries) {
     const ex = EXERCISES.find((x) => x.id === e.id);
     assert.ok(ex, `упражнение ${e.id} существует`);

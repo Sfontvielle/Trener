@@ -1,5 +1,5 @@
 """Облегающая одежда по фигуре: ткань натянута по выпуклой оболочке срезов тела (перекрывает впадины, как настоящая ткань).
-male: плавки для позирования; female: спортивный топ с лямками и спортивные трусы.
+male: плавки для позирования; female: спортивный топ с открытой спиной (лямки до ленты) и спортивные трусы.
 Запуск: python -I garment.py -- <in.blend> <out.blend> male|female"""
 import bpy, sys, math, re
 import numpy as np
@@ -122,8 +122,9 @@ else:
     c2 = np.array([0.0, (br_lo[1] + sc_hi[1]) / 2])
     zb = br_lo[2] - 0.022
     ang = np.degrees(np.minimum(TH, 2 * np.pi - TH))                       # 0…180°, симметрично
-    zt = np.interp(ang, [0, 28, 90, 150, 180],
-                   [br_hi[2] - 0.004, br_hi[2] + 0.026, axilla - 0.02, sc_lo[2] + 0.45 * (sc_hi[2] - sc_lo[2]), sc_lo[2] + 0.42 * (sc_hi[2] - sc_lo[2])])
+    # спина открыта (вырез до ленты под грудью): ромбовидные, середина трапеции и широчайшие видны — важно для тяг
+    zt = np.interp(ang, [0, 28, 90, 125, 150, 180],
+                   [br_hi[2] - 0.004, br_hi[2] + 0.026, axilla - 0.035, zb + 0.075, zb + 0.05, zb + 0.045])
     zs2 = np.arange(zb - 0.02, zt.max() + 0.02, 0.0025)
     R2 = radial_grid(body_points(zs2[0] - 0.01, zs2[-1] + 0.01, xlim=0.155), XY, 2, zs2, c2, TH)
     top, TV = surface('Sport top', R2, XY, 2, zs2, c2, TH, np.full(NT, zb), zt, off=0.0045)
@@ -134,7 +135,7 @@ else:
         xs = sgn * 0.083
         w = 0.026
         c3 = np.array([(br_lo[1] + sc_hi[1]) / 2, axilla + 0.02])
-        th3 = np.radians(np.linspace(35, 325, 140))
+        th3 = np.radians(np.linspace(5, 325, 160))
         xr = np.arange(xs - w / 2 - 0.006, xs + w / 2 + 0.006, 0.002)
         sp = body_points(xr[0] - 0.004, xr[-1] + 0.004, axis=0, xlim=0.2)
         sp = sp[sp[:, 2] < hu_hi[2] + 0.085]                                 # только надплечье: голову и шею выше не трогаем
