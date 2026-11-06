@@ -5,6 +5,8 @@ import { figure } from '../src/features/exercises/anatomy/geometry';
 import { DETAIL, HEADS, roleOf, type HeadId } from '../src/features/exercises/anatomy/detail';
 import { ACCENTS, paletteFor, type AccentName } from '../src/theme/tokens';
 import type { Sex } from '../src/types';
+import { readFileSync } from 'node:fs';
+import { MUSCLES, MUSCLE_IDS, bothSides, musclesOfSlug } from '../src/features/exercises/anatomy/muscleIds';
 
 const SEXES: Sex[] = ['male', 'female'];
 
@@ -66,5 +68,47 @@ test('Анатомия: цвета мышц не зависят от акцен�
     assert.ok(g1 > r1 && g1 > b1, `${scheme}: основной — зелёный`);
     const [r2, g2, b2] = rgb(base.muscleSecondary);
     assert.ok(r2 > 180 && g2 > 150 && b2 < 140, `${scheme}: слегка — жёлтый`);
+  }
+});
+
+// ---- Канонические id мышц (общие для 2D-карты и 3D-моделей) ----
+
+test('Канонические id: формат snake_case, обе стороны с суффиксом .L/.R', () => {
+  for (const id of MUSCLE_IDS) {
+    assert.match(id, /^[a-z]+(_[a-z]+)*$/, id);
+    assert.deepEqual(bothSides(id), [`${id}.L`, `${id}.R`]);
+  }
+});
+
+test('Канонические id: контуры 2D-фигуры существуют, каждая мышца фигуры имеет канонический id', () => {
+  const muscleShapes = new Set([...figure('male', 'front'), ...figure('male', 'back')].filter((s) => s.kind === 'muscle').map((s) => s.base));
+  const mapped = new Set<string>();
+  for (const id of MUSCLE_IDS) for (const sh of MUSCLES[id].shapes) {
+    assert.ok(muscleShapes.has(sh), `${id}: нет контура ${sh}`);
+    mapped.add(sh);
+  }
+  for (const sh of muscleShapes) assert.ok(mapped.has(sh), `контур ${sh} без канонического id`);
+  for (const id of MUSCLE_IDS) if (MUSCLES[id].depth === 'superficial') assert.ok(MUSCLES[id].shapes.length > 0 || ['teres_minor'].includes(id), `${id}: поверхностная мышца без контура`);
+});
+
+test('Канонические id: у каждой группы приложения есть мышцы', () => {
+  const slugs = new Set(EXERCISES.flatMap((e) => [...e.primary, ...e.secondary]));
+  for (const s of slugs) assert.ok(musclesOfSlug(s).length > 0, `группа ${s} без канонических мышц`);
+});
+
+test('Спецификации демо-роликов: упражнения из каталога, подсветка — канонические id, цикл замкнут', () => {
+  const ids = new Set(EXERCISES.map((e) => e.id));
+  for (const name of ['machine_row', 'pec_deck']) {
+    const spec = JSON.parse(readFileSync(`tools/anatomy3d/exercises/${name}.json`, 'utf8'));
+    assert.equal(spec.exercise, name);
+    assert.ok(ids.has(spec.exercise), `${name}: нет в каталоге`);
+    for (const m of [...spec.highlight.primary, ...spec.highlight.secondary]) assert.ok((MUSCLE_IDS as string[]).includes(m), `${name}: неизвестная мышца ${m}`);
+    assert.ok(spec.highlight.primary.length > 0, `${name}: нет основных мышц`);
+    const first = spec.phases[0];
+    const last = spec.phases[spec.phases.length - 1];
+    assert.equal(first.t, 0);
+    assert.equal(last.t, 1);
+    for (const k of Object.keys(first.joints)) assert.equal(last.joints[k], first.joints[k], `${name}: первая и последняя поза расходятся по ${k}`);
+    assert.ok(spec.cameras.length >= 2, `${name}: нужно минимум два ракурса`);
   }
 });

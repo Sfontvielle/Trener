@@ -25,8 +25,9 @@ export function mediaFor(anim: Anim, sex: Sex | undefined): { loop: number; post
  * 3D-анимация техники: зацикленный рендер анатомической фигуры с подсветкой работающих мышц.
  * Файлы встроены в приложение (офлайн). Касание — пауза/пуск; «Уменьшение движения» — стоп-кадр, пуск вручную.
  */
-export function ExerciseAnimation({ ex, anim, stabilizers = [], legend = true }: { ex: Exercise; anim: Anim; stabilizers?: MuscleSlug[]; /** false — легенду показывает анатомическая карта под роликом */ legend?: boolean }) {
-  const sex = useProfile((s) => s.profile?.sex);
+export function ExerciseAnimation({ ex, anim, sex: sexProp, stabilizers = [], legend = true }: { ex: Exercise; anim: Anim; /** Пол фигуры в ролике; не задан — из профиля */ sex?: Sex; stabilizers?: MuscleSlug[]; /** false — легенду показывает анатомическая карта под роликом */ legend?: boolean }) {
+  const profileSex = useProfile((s) => s.profile?.sex);
+  const sex = sexProp ?? profileSex;
   const media = mediaFor(anim, sex);
   const [playing, setPlaying] = useState(() => !prefersReducedMotion());
   const [full, setFull] = useState(false);

@@ -25,7 +25,7 @@ export function TechniqueView({ ex, sex, onSurface }: { ex: Exercise; sex?: Sex;
     <View style={{ gap: space.md }}>
       {/* 3D-петля движения (если есть) и анатомическая карта — у каждого упражнения: какие мышцы работают
           (зелёным) и какие задействованы слегка (светло-жёлтым), фигура — по полу из профиля */}
-      {anim ? <ExerciseAnimation ex={ex} anim={anim} legend={false} /> : null}
+      {anim ? <ExerciseAnimation ex={ex} anim={anim} sex={sex ?? profile?.sex} legend={false} /> : null}
       <View testID="technique-muscles">
         <Anatomy primary={ex.primary} secondary={ex.secondary} stabilizers={t.stabilizers} sex={sex ?? profile?.sex} exerciseId={ex.id} large />
       </View>
