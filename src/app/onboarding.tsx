@@ -86,6 +86,8 @@ const GOALS: { v: GoalType; label: string; sub: string; image: number }[] = [
   { v: 'recomp', label: 'Рекомпозиция', sub: 'Улучшить состав тела', image: require('../../assets/art/goal_recomp.webp') },
   { v: 'maintain', label: 'Поддержание', sub: 'Сохранить текущую форму', image: require('../../assets/art/goal_maintain.webp') },
 ];
+/** С какого числа начинают барабан и линейки (средние значения взрослых) */
+const START = { age: 25, heightM: 178, heightF: 165, weightM: 78, weightF: 62 };
 const AGES = Array.from({ length: RANGE.age[1] - RANGE.age[0] + 1 }, (_, i) => RANGE.age[0] + i);
 
 export default function Onboarding() {
@@ -111,6 +113,16 @@ export default function Onboarding() {
 
   const pages = stage < Q_STAGES ? pagesOf(stage, draft) : [];
   const cur = pages[Math.min(page, pages.length - 1)];
+
+  // Возраст, рост и вес: число на экране — это и есть выбор. Иначе видно значение, а «Продолжить» тусклая,
+  // пока не тронешь шкалу (отзыв владельца, раунд 7). Человек поправляет, если число не его.
+  useEffect(() => {
+    const q = useQuestionnaire.getState();
+    const d = q.draft;
+    if (cur === 'age' && d.age === undefined) q.update({ age: START.age });
+    if (cur === 'height' && d.heightCm === undefined) q.update({ heightCm: d.sex === 'female' ? START.heightF : START.heightM });
+    if (cur === 'weight' && d.weightKg === undefined) q.update({ weightKg: d.sex === 'female' ? START.weightF : START.weightM });
+  }, [cur]);
   const canNext = !!cur && pageDone(cur, draft);
   const profile = useMemo(() => (stage === Q_STAGES ? draftToProfile(draft, 0) : null), [stage, draft]);
 
@@ -186,7 +198,7 @@ export default function Onboarding() {
           <>
             <StageTitle title="Сколько тебе лет?" sub="Только для пользователей 18+" />
             <View style={{ alignItems: 'center', gap: space.md, marginTop: space.md }}>
-              <DrumPicker label="Возраст" values={AGES} value={draft.age} start={25} onChange={(v) => update({ age: v })} format={(v) => `${v} лет`} testID="q-age" />
+              <DrumPicker label="Возраст" values={AGES} value={draft.age} start={START.age} onChange={(v) => update({ age: v })} format={(v) => `${v} лет`} testID="q-age" />
               {err.age ? (
                 <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                   {err.age}
@@ -199,7 +211,7 @@ export default function Onboarding() {
         {cur === 'height' ? (
           <>
             <StageTitle title="Какой у тебя рост?" />
-            <RulerPicker label="Рост" unit="см" value={draft.heightCm} onChange={(v) => update({ heightCm: v })} min={RANGE.heightCm[0]} max={RANGE.heightCm[1]} start={draft.sex === 'female' ? 165 : 178} testID="q-height" />
+            <RulerPicker label="Рост" unit="см" value={draft.heightCm} onChange={(v) => update({ heightCm: v })} min={RANGE.heightCm[0]} max={RANGE.heightCm[1]} start={draft.sex === 'female' ? START.heightF : START.heightM} testID="q-height" />
             {err.heightCm ? (
               <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                 {err.heightCm}
@@ -211,7 +223,7 @@ export default function Onboarding() {
         {cur === 'weight' ? (
           <>
             <StageTitle title="Сколько ты весишь?" />
-            <RulerPicker label="Текущий вес" unit="кг" value={draft.weightKg} onChange={(v) => update({ weightKg: v })} min={RANGE.weightKg[0]} max={RANGE.weightKg[1]} start={draft.sex === 'female' ? 62 : 78} step={0.1} decimals={1} testID="q-weight" />
+            <RulerPicker label="Текущий вес" unit="кг" value={draft.weightKg} onChange={(v) => update({ weightKg: v })} min={RANGE.weightKg[0]} max={RANGE.weightKg[1]} start={draft.sex === 'female' ? START.weightF : START.weightM} step={0.1} decimals={1} testID="q-weight" />
             {err.weightKg ? (
               <T v="callout" color={colors.danger} style={{ textAlign: 'center' }}>
                 {err.weightKg}

@@ -98,7 +98,9 @@ export function RulerPicker({
             const clean = t.replace(/[^\d.,]/g, '');
             setText(clean);
             const n = parseDecimal(clean);
-            if (clean && Number.isFinite(n)) onChange(fix(n));
+            // Промежуточные цифры («1», «17» при вводе 178) не считаются выбором и не дают ошибку —
+            // значение меняется, только когда число уже в допустимых пределах
+            if (clean && Number.isFinite(n) && n >= min && n <= max) onChange(fix(n));
           }}
           onBlur={() => setText(null)}
           keyboardType={decimals ? 'decimal-pad' : 'number-pad'}

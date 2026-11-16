@@ -85,22 +85,25 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await pg.getByLabel(PROFILE.sex === 'female' ? 'Женщина' : 'Мужчина').click();
   await next();
   assert.match(await body(), /Сколько тебе лет\?[\s\S]*Только для пользователей 18\+/);
-  // Барабан: «+» сверху, «−» снизу, без поля ручного ввода; пока не тронули — значение не выбрано
+  // Барабан: «+» сверху, «−» снизу, без поля ручного ввода; число на экране — уже выбор, «Продолжить» активна сразу
   assert.equal(await pg.getByLabel('Возраст, лет').count(), 0, 'поля ручного ввода нет');
-  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), '25', 'возраст не подставлен — стартовое приглушённо');
-  assert.ok(await disabled());
+  assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), '25 лет', 'видимое число выбрано');
+  assert.ok(!(await disabled()), 'кнопка активна, без касания шкалы');
   for (let i = 0; i < PROFILE.age - 25; i++) await pg.getByTestId('q-age-plus').click();
   assert.equal((await pg.getByTestId('q-age-value').innerText()).trim(), `${PROFILE.age} лет`);
   await next();
   assert.match(await body(), /Какой у тебя рост\?/);
-  assert.equal(await pg.getByLabel('Рост, см').inputValue(), '', 'рост не подставлен');
-  // линейка: «+» с пустого значения ставит отметку шкалы, затем точное значение с клавиатуры
+  assert.equal(await pg.getByLabel('Рост, см').inputValue(), PROFILE.sex === 'female' ? '165' : '178', 'на линейке — число, оно и выбрано');
+  assert.ok(!(await disabled()), 'кнопка активна сразу');
+  // промежуточные цифры при вводе не дают ошибку и не гасят кнопку
+  await pg.getByLabel('Рост, см').fill('1');
+  assert.ok(!(await disabled()), 'ввод «1» не гасит кнопку');
+  assert.doesNotMatch(await body(), /Рост: от/, 'без ошибки на промежуточной цифре');
   await pg.getByLabel('Рост: больше', { exact: true }).click();
-  assert.ok(!(await disabled()), 'после выбора на линейке — можно дальше');
   await pg.getByLabel('Рост, см').fill(String(PROFILE.heightCm));
   await next();
   assert.match(await body(), /Сколько ты весишь\?/);
-  assert.equal(await pg.getByLabel('Текущий вес, кг').inputValue(), '', 'вес не подставлен');
+  assert.equal(await pg.getByLabel('Текущий вес, кг').inputValue(), PROFILE.sex === 'female' ? '62,0' : '78,0', 'на линейке веса — выбранное число');
   await pg.getByLabel('Текущий вес, кг').fill(String(PROFILE.weightKg).replace('.', ','));
   await pg.getByLabel('Текущий вес: больше', { exact: true }).click();
   await pg.getByLabel('Текущий вес: меньше', { exact: true }).click();
