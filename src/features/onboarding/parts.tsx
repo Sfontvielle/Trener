@@ -52,7 +52,7 @@ export function StageTitle({ title, sub }: { title: string; sub?: string }) {
 }
 
 /** Карточка выбора: заголовок, подпись, у выбранной — лаймовая рамка, свечение и «›» */
-export function ChoiceCard({ title, sub, icon, active, onPress, image, tall }: { title: string; sub?: string; icon?: IconName; active: boolean; onPress: () => void; image?: ImageSourcePropType; tall?: boolean }) {
+export function ChoiceCard({ title, sub, icon, active, onPress, image, art, tall }: { title: string; sub?: string; icon?: IconName; active: boolean; onPress: () => void; image?: ImageSourcePropType; /** Рисунок (вектор) справа — вместо image */ art?: React.ReactNode; tall?: boolean }) {
   return (
     <Pressable
       accessibilityRole="radio"
@@ -76,7 +76,7 @@ export function ChoiceCard({ title, sub, icon, active, onPress, image, tall }: {
           </T>
         ) : null}
       </View>
-      {image ? <Image source={image} style={styles.cardImage} resizeMode="cover" accessibilityIgnoresInvertColors /> : active ? <Icon name="chevron-forward" size={20} color={colors.accent} /> : null}
+      {art ? <View style={styles.cardImage} testID="choice-art">{art}</View> : image ? <Image source={image} style={styles.cardImage} resizeMode="cover" accessibilityIgnoresInvertColors /> : active ? <Icon name="chevron-forward" size={20} color={colors.accent} /> : null}
     </Pressable>
   );
 }

@@ -111,7 +111,8 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   // 3 из 5 — цель: четыре иллюстрированные карточки, без целевого веса и сроков
   assert.match(await body(), /3 из 5[\s\S]*Твоя цель\?[\s\S]*Набор массы[\s\S]*Увеличить мышечную массу[\s\S]*Сушка[\s\S]*Рекомпозиция[\s\S]*Поддержание/);
   assert.doesNotMatch(await body(), /Целевой вес|срок|темп/i, 'целевой вес, срок и темп не спрашиваем');
-  assert.equal(await pg.locator('img').count() >= 4, true, 'у карточек целей есть изображения');
+  assert.equal(await pg.getByTestId('choice-art').count(), 4, 'у карточек целей — рисунки');
+  assert.equal(await pg.locator('img[src*="goal_"]').count(), 0, 'без 3D-рендеров');
   await pg.getByLabel(PROFILE.goal === 'cut' ? 'Сушка' : PROFILE.goal === 'recomp' ? 'Рекомпозиция' : PROFILE.goal === 'maintain' ? 'Поддержание' : 'Набор массы').click();
   await next();
   // 4 из 5 — опыт → раз в неделю → длительность → место
@@ -1314,42 +1315,19 @@ const closeSheet = async (pg) => {
     await shot('exercise-bars');
   });
 
-  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, под ним карта мышц с легендой, пауза, во весь экран', async () => {
-    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
-    await dismiss();
-    const box = page.getByTestId('technique-3d');
-    await box.scrollIntoViewIfNeeded();
-    assert.ok(await box.isVisible(), '3D-блок на месте');
-    const src = async () => (await page.getByTestId('technique-3d-media').locator('img').first().getAttribute('src')) || '';
-    assert.match(await box.innerText(), /3D/);
-    // легенда — у анатомической карты под роликом (те же цвета, что на рендере)
-    const legend = await page.getByTestId('technique-muscles').innerText();
-    assert.match(legend, /Работают:\s*Большая грудная/);
-    assert.match(legend, /Задействованы слегка:[\s\S]*Передний пучок дельты[\s\S]*Трицепс/);
-    // В автотесте (как при «Уменьшении движения») петля стоит на стоп-кадре, пуск — касанием
-    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'стоп-кадр до пуска');
-    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Воспроизвести$/).click();
-    await page.waitForTimeout(500);
-    assert.match(await src(), /anim.*bench_press(_f)?\.webp/, 'играет WebP-петля жима');
-    assert.ok(await page.getByText('Повторение по кругу').isVisible());
-    await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Пауза$/).click();
-    await page.waitForTimeout(400);
-    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'на паузе — стоп-кадр');
-    await page.getByTestId('technique-3d-full').click();
-    await page.waitForTimeout(700);
-    assert.ok(await page.getByTestId('technique-3d-close').isVisible(), 'полноэкранный просмотр');
-    await page.getByTestId('technique-3d-close').click();
-    await page.waitForTimeout(500);
-    // Упражнение без 3D-сцены: без заглушек «появится позже»
-    await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1200);
-    assert.equal(await page.getByTestId('technique-3d').count(), 0);
-    assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
-    // Без 3D — нейтральная схема мышц, без фото атлета
-    assert.ok(await page.getByTestId('technique-muscles').isVisible(), 'схема мышц');
-    const photos = await page.evaluate(() => [...document.querySelectorAll('img, div')].filter((el) => /assets\/exercises\/|free-exercise-db/.test(`${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`)).length);
-    assert.equal(photos, 0, 'фото атлета в технике нет');
+  await check('53. Техника без 3D: жим лёжа — карта мышц с легендой, без роликов и заглушек', async () => {
+    for (const id of ['bench_press', 'lateral_raise', 'pec_deck']) {
+      await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1200);
+      await dismiss();
+      assert.equal(await page.getByTestId('technique-3d').count(), 0, `${id}: 3D-блока нет`);
+      assert.equal(await page.getByText(/появится/).count(), 0, 'нет заглушек');
+      assert.ok(await page.getByTestId('technique-muscles').isVisible(), 'схема мышц');
+      const raster = await page.evaluate(() => [...document.querySelectorAll('img, div')].filter((el) => /assets\/(anim|exercises)\/|posters\/|free-exercise-db/.test(`${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`)).length);
+      assert.equal(raster, 0, `${id}: ни роликов, ни фото атлета`);
+    }
+    const legend = await page.evaluate(() => document.body.innerText);
+    assert.match(legend, /Работают:/);
   });
 
   await check('52. Программы: неделя «X из N» и дни недели; сегодня → состав с картой мышц в процентах', async () => {
@@ -1852,18 +1830,13 @@ const closeSheet = async (pg) => {
     }
   });
 
-  await check('67. Миниатюры упражнений: без фото атлета; 3D-постер — только у упражнений со своей петлёй', async () => {
+  await check('67. Миниатюры упражнений: только схемы мышц — без фото атлета и 3D-постеров', async () => {
     await page.goto(`${URL}/library`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
-    const media = () => page.evaluate(() => [...document.querySelectorAll('img, div')].map((el) => `${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`).filter((x) => x.trim()));
-    let all = await media();
-    assert.equal(all.filter((x) => /assets\/exercises\/|free-exercise-db/.test(x)).length, 0, 'в библиотеке нет фото атлета');
+    const all = await page.evaluate(() => [...document.querySelectorAll('img, div')].map((el) => `${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`).filter((x) => x.trim()));
+    assert.equal(all.filter((x) => /assets\/exercises\/|free-exercise-db|posters\/|assets\/anim\//.test(x)).length, 0, 'в библиотеке нет фото и постеров');
     assert.ok((await page.locator('svg path').count()) > 50, 'миниатюры — схемы мышц');
-    // у профиля женщины — тот же ролик с женской фигурой (<id>_f)
-    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1].replace(/_f$/, ''));
-    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift', 'pec_deck', 'machine_row'];
-    assert.ok(posters.every((p) => own.includes(p)), `постеры только своих петель: ${posters}`);
     await shot('library-thumbs');
   });
 
@@ -1909,40 +1882,7 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(800);
     await dismiss();
     assert.equal(await page.getByTestId('anatomy-figure-female').count(), 1, 'женская фигура для профиля женщины');
-    const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
-    assert.match(media, /bench_press_f/, '3D-ролик с женской фигурой');
     await setProfile(before);
-  });
-
-  await check('70. Анатомическая 3D-модель: бабочка и рычажная тяга — ролик своей модели, подсветка в стиле референсов, атрибуция CC BY-SA, женская версия по профилю', async () => {
-    const setSex = (sex) => page.evaluate((x) => {
-      const raw = JSON.parse(localStorage.getItem('form.profile'));
-      raw.state.profile.sex = x;
-      localStorage.setItem('form.profile', JSON.stringify(raw));
-    }, sex);
-    const before = await page.evaluate(() => JSON.parse(localStorage.getItem('form.profile')).state.profile.sex);
-    for (const [sex, suffix] of [['male', ''], ['female', '_f']]) {
-      await setSex(sex);
-      for (const id of ['pec_deck', 'machine_row']) {
-        await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
-        await page.waitForTimeout(1000);
-        await dismiss();
-        const box = page.getByTestId('technique-3d');
-        await box.scrollIntoViewIfNeeded();
-        assert.ok(await box.isVisible(), `${id}: 3D-блок`);
-        const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
-        assert.match(media, new RegExp(`posters.*${id}${suffix}\\.jpg`), `${id} (${sex}): постер своей фигуры`);
-        if (!suffix) assert.doesNotMatch(media, new RegExp(`${id}_f`), `${id}: у мужчины — мужская фигура`);
-        const credit = page.getByTestId('technique-3d-credit');
-        assert.match(await credit.innerText(), /Z-Anatomy.*BodyParts3D.*CC BY-SA 4\.0/, `${id}: атрибуция`);
-        await shot(`atlas-${id}${suffix}`);
-      }
-    }
-    // у роликов процедурной фигуры атрибуции атласа нет
-    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000);
-    assert.equal(await page.getByTestId('technique-3d-credit').count(), 0, 'жим — без атрибуции атласа');
-    await setSex(before);
   });
 
   await check('71. Расписание циклом «2 через 1»: профиль → Циклом → план без дней недели; сдвиг цикла; обратно по дням недели', async () => {

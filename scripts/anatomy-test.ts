@@ -95,20 +95,3 @@ test('Канонические id: у каждой группы приложен
   const slugs = new Set(EXERCISES.flatMap((e) => [...e.primary, ...e.secondary]));
   for (const s of slugs) assert.ok(musclesOfSlug(s).length > 0, `группа ${s} без канонических мышц`);
 });
-
-test('Спецификации демо-роликов: упражнения из каталога, подсветка — канонические id, цикл замкнут', () => {
-  const ids = new Set(EXERCISES.map((e) => e.id));
-  for (const name of ['machine_row', 'pec_deck']) {
-    const spec = JSON.parse(readFileSync(`tools/anatomy3d/exercises/${name}.json`, 'utf8'));
-    assert.equal(spec.exercise, name);
-    assert.ok(ids.has(spec.exercise), `${name}: нет в каталоге`);
-    for (const m of [...spec.highlight.primary, ...spec.highlight.secondary]) assert.ok((MUSCLE_IDS as string[]).includes(m), `${name}: неизвестная мышца ${m}`);
-    assert.ok(spec.highlight.primary.length > 0, `${name}: нет основных мышц`);
-    const first = spec.phases[0];
-    const last = spec.phases[spec.phases.length - 1];
-    assert.equal(first.t, 0);
-    assert.equal(last.t, 1);
-    for (const k of Object.keys(first.joints)) assert.equal(last.joints[k], first.joints[k], `${name}: первая и последняя поза расходятся по ${k}`);
-    assert.ok(spec.cameras.length >= 2, `${name}: нужно минимум два ракурса`);
-  }
-});

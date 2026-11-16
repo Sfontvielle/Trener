@@ -6,7 +6,6 @@ import { colors, radius, themed } from '@/theme';
 import { Button, Chip, EmptyState, Icon, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { Anatomy } from './Anatomy';
-import { ExerciseAnimation, animationFor } from './ExerciseAnimation';
 import { ExerciseThumb } from './ExerciseThumb';
 import { CATEGORY_LABEL, EQUIPMENT_LABEL, EXERCISES, MUSCLE_LABEL } from '@/data/exercises';
 import { useProfile } from '@/stores/profile';
@@ -155,13 +154,13 @@ const Row = memo(function Row({ ex, selected, onPress, onPreview }: { ex: Exerci
   );
 });
 
-/** Крупный показ упражнения: анимация фаз, мышцы, техника — и выбор */
+/** Крупный показ упражнения: мышцы, техника — и выбор */
 function PreviewSheet({ ex, onClose, onSelect }: { ex: Exercise | null; onClose: () => void; onSelect: (e: Exercise) => void }) {
   return (
     <Sheet visible={!!ex} onClose={onClose} title={ex?.name} subtitle={ex ? `${ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')} · ${ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}` : ''} footer={ex ? <Button title="Выбрать" icon="checkmark" size="lg" onPress={() => { onClose(); onSelect(ex); }} /> : undefined}>
       {ex ? (
         <View style={{ gap: 12 }}>
-          {animationFor(ex) ? <ExerciseAnimation ex={ex} anim={animationFor(ex)!} /> : <Anatomy primary={ex.primary} secondary={ex.secondary} exerciseId={ex.id} />}
+          <Anatomy primary={ex.primary} secondary={ex.secondary} exerciseId={ex.id} />
           {ex.cues.slice(0, 4).map((c) => (
             <T key={c} v="body" style={{ fontSize: 14 }}>
               • {c}

@@ -4,10 +4,11 @@
 
 | Ресурс | Где | Источник | Лицензия / права |
 |---|---|---|---|
-| 3D-анимации техники (зацикленный WebP) и постеры | `assets/anim/*.webp`, `assets/anim/posters/*.jpg` | собственный 3D-пайплайн RYNJI (`tools/anim`): процедурная фигура three.js, позы по биомеханике, рендер в headless Chromium | права наши (сгенерировано кодом этого репозитория); исходный код рендера — в `tools/anim` |
-| 3D-ролики анатомической модели (демо: `pec_deck`, `machine_row`, мужская и женская версии) и постеры | `assets/anim/{pec_deck,machine_row}{,_f}.webp`, `assets/anim/posters/…` | собственные модели RYNJI (`tools/anatomy3d/blender`) из атласа Z-Anatomy / BodyParts3D, рендер Blender Cycles | **CC BY-SA 4.0** (производная работа); атрибуция под роликом в приложении: «Анатомия: Z-Anatomy, BodyParts3D © DBCLS · CC BY-SA 4.0» |
-| Иллюстрации интерфейса: атлет на приветствии, атлет в карточке тренировки на главной, торсы целей, гантель, блин «Совета RYNJI» | `assets/art/*.webp` | тот же пайплайн (`tools/anim/web/stills.js` → `tools/anim/stills.cjs` → `tools/anim/art.py`) | права наши |
-| Слой «энергии» на приветствии (зелёные разряды) | `assets/art/energy.webp` | генерация `tools/anim/energy.py` (Pillow, фрактальная молния) | права наши |
+| ~~3D-анимации техники (WebP) и постеры~~ — удалены в раунде 7 по решению владельца («3D-модели не берём»): техника показывает анатомическую карту | был `assets/anim/*` (есть в истории git) | собственный 3D-пайплайн `tools/anim` (удалён) | — |
+| ~~3D-ролики анатомической модели (`pec_deck`, `machine_row`)~~ — удалены в раунде 7 | был `assets/anim/*` (есть в истории git) | — | — |
+| Иллюстрации целей в анкете (гантель, пламя, перекрёст линий, уровень) | `src/components/art/GoalArt.tsx` (вектор, цвета темы) | нарисованы для RYNJI | права наши |
+| Атлет на приветствии (3D-рендер, до замены рисунком) | `assets/art/welcome.webp` | пайплайн `tools/anim` (удалён) | права наши |
+| Слой «энергии» на приветствии (зелёные разряды) | `assets/art/energy.webp` | генерация Pillow (фрактальная молния), сценарий удалён вместе с `tools/anim` | права наши |
 | ~~Фото фаз движения для упражнений без 3D-петли~~ — удалены в фазе E (RYNJI 2.0): техника и миниатюры показывают анатомическую карту — собственную фигуру RYNJI (раунд 4, `src/features/exercises/anatomy`, права наши) | был `assets/exercises/*.jpg` (есть в истории git) | free-exercise-db (github.com/yuhonas/free-exercise-db) | Unlicense (общественное достояние) |
 | Значки интерфейса, знак-бицепс | `@expo/vector-icons` (Ionicons, MaterialCommunityIcons) | npm | Ionicons — MIT; Material Design Icons — Apache 2.0 |
 | Иконка приложения и заставка | `assets/icon.png`, `assets/splash-icon.png` | из проекта | права владельца проекта |
@@ -36,7 +37,6 @@
 
 | Инструмент | Использование | Лицензия |
 |---|---|---|
-| three.js 0.186.1 (devDependency) | геометрия, свет и рендер 3D-сцен | MIT |
 | Playwright + Chromium (SwiftShader) | headless-рендер WebGL2 | Apache 2.0 / BSD |
 | Pillow | сборка WebP/JPEG, слой энергии | MIT-CMU (HPND) |
 | Blender 5.0.1 (`bpy` с PyPI, headless) — для анатомических моделей, `tools/anatomy3d` | сборка сцен, Cycles-рендер | GPL (программа); на рендеры GPL не распространяется, права на них — по лицензии модели (CC BY-SA 4.0) |

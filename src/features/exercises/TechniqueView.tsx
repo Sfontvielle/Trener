@@ -6,12 +6,11 @@ import { Icon, T, type IconName } from '@/components/ui';
 import { useProfile } from '@/stores/profile';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { checkAllowed } from '@/features/training/engine/scoring';
-import { ExerciseAnimation, animationFor } from './ExerciseAnimation';
 import { Anatomy } from './Anatomy';
 import { techniqueFor } from './technique';
 
 /**
- * Техника упражнения целиком: 3D-анимация с подсветкой мышц (или нейтральная схема мышц, пока её нет), анатомия (основные / вспомогательные / стабилизаторы,
+ * Техника упражнения целиком: анатомия (основные / вспомогательные / стабилизаторы,
  * спереди и сзади), как выполнять, положение тела, амплитуда, дыхание, ошибки и безопасность —
  * с учётом ограничений из профиля пользователя.
  */
@@ -19,13 +18,11 @@ export function TechniqueView({ ex, sex, onSurface }: { ex: Exercise; sex?: Sex;
   const profile = useProfile((s) => s.profile);
   const t = techniqueFor(ex);
   const allowed = profile ? checkAllowed(ex, profile, getPrefs(profile)) : { ok: true as const };
-  const anim = animationFor(ex);
   const block = onSurface ? [styles.block, styles.raised] : styles.block;
   return (
     <View style={{ gap: space.md }}>
-      {/* 3D-петля движения (если есть) и анатомическая карта — у каждого упражнения: какие мышцы работают
-          (зелёным) и какие задействованы слегка (светло-жёлтым), фигура — по полу из профиля */}
-      {anim ? <ExerciseAnimation ex={ex} anim={anim} sex={sex ?? profile?.sex} legend={false} /> : null}
+      {/* Анатомическая карта — у каждого упражнения: какие мышцы работают (зелёным) и какие задействованы
+          слегка (светло-жёлтым), фигура — по полу из профиля */}
       <View testID="technique-muscles">
         <Anatomy primary={ex.primary} secondary={ex.secondary} stabilizers={t.stabilizers} sex={sex ?? profile?.sex} exerciseId={ex.id} large />
       </View>

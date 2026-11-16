@@ -12,6 +12,7 @@ import { DrumPicker } from '@/components/DrumPicker';
 import { RulerPicker } from '@/components/RulerPicker';
 import { ChoiceCard, CyclePicker, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
 import { cycleWeeklyCount } from '@/features/training/slots';
+import { GoalArt } from '@/components/art/GoalArt';
 import { PlanReady } from '@/features/onboarding/PlanReady';
 import {
   ACTIVITY_OPTIONS,
@@ -81,11 +82,11 @@ function pageDone(p: Page, d: QDraft): boolean {
 /** Первая неотвеченная страница этапа (после перезапуска) */
 const firstOpen = (stage: number, d: QDraft) => Math.max(0, pagesOf(stage, d).findIndex((p) => !pageDone(p, d)));
 
-const GOALS: { v: GoalType; label: string; sub: string; image: number }[] = [
-  { v: 'bulk', label: 'Набор массы', sub: 'Увеличить мышечную массу', image: require('../../assets/art/goal_bulk.webp') },
-  { v: 'cut', label: 'Сушка', sub: 'Снизить процент жира', image: require('../../assets/art/goal_cut.webp') },
-  { v: 'recomp', label: 'Рекомпозиция', sub: 'Улучшить состав тела', image: require('../../assets/art/goal_recomp.webp') },
-  { v: 'maintain', label: 'Поддержание', sub: 'Сохранить текущую форму', image: require('../../assets/art/goal_maintain.webp') },
+const GOALS: { v: GoalType; label: string; sub: string }[] = [
+  { v: 'bulk', label: 'Набор массы', sub: 'Увеличить мышечную массу' },
+  { v: 'cut', label: 'Сушка', sub: 'Снизить процент жира' },
+  { v: 'recomp', label: 'Рекомпозиция', sub: 'Улучшить состав тела' },
+  { v: 'maintain', label: 'Поддержание', sub: 'Сохранить текущую форму' },
 ];
 /** С какого числа начинают барабан и линейки (средние значения взрослых) */
 const START = { age: 25, heightM: 178, heightF: 165, weightM: 78, weightF: 62 };
@@ -238,7 +239,7 @@ export default function Onboarding() {
             <StageTitle title="Твоя цель?" />
             <View style={{ gap: 14 }}>
               {GOALS.map((g) => (
-                <ChoiceCard key={g.v} tall title={g.label} sub={g.sub} image={g.image} active={draft.goal === g.v} onPress={() => update({ goal: g.v })} />
+                <ChoiceCard key={g.v} tall title={g.label} sub={g.sub} art={<GoalArt goal={g.v} />} active={draft.goal === g.v} onPress={() => update({ goal: g.v })} />
               ))}
             </View>
           </>
