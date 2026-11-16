@@ -9,25 +9,22 @@
       "distribution": "internal",
       "ios": {
         "resourceClass": "default"
-      },
-      "env": {
-        "EXPO_PUBLIC_COACH_API_URL": ""
+      }
+    },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
       "ios": {
         "resourceClass": "default"
-      },
-      "env": {
-        "EXPO_PUBLIC_COACH_API_URL": ""
       }
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_COACH_API_URL": ""
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

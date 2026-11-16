@@ -121,6 +121,12 @@
     },
     "locales": {
       "ru": "./locales/ru.json"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "780acba8-a2f7-4762-a3c1-6273c70755a0"
+      }
+    },
+    "owner": "krediblack"
   }
 }

@@ -23,3 +23,6 @@ tools/anim/out/
 
 # отличия регрессии снимков (scripts/visual-web.cjs)
 visual-out/
+
+# сессия EAS Simulator: содержит токен — не коммитить
+.env.eas-simulator
