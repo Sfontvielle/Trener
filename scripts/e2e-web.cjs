@@ -1305,7 +1305,7 @@ const closeSheet = async (pg) => {
     await shot('exercise-bars');
   });
 
-  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, легенда подсвеченных мышц, пауза, во весь экран', async () => {
+  await check('53. 3D-анимация техники: жим лёжа — зацикленный рендер, бейдж 3D, под ним карта мышц с легендой, пауза, во весь экран', async () => {
     await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     await dismiss();
@@ -1313,19 +1313,20 @@ const closeSheet = async (pg) => {
     await box.scrollIntoViewIfNeeded();
     assert.ok(await box.isVisible(), '3D-блок на месте');
     const src = async () => (await page.getByTestId('technique-3d-media').locator('img').first().getAttribute('src')) || '';
-    const legend = await box.innerText();
-    assert.match(legend, /Основные мышцы[\s\S]*Большая грудная/);
-    assert.match(legend, /Дополнительные[\s\S]*Трицепс, Дельтовидные/);
-    assert.match(legend, /3D/);
+    assert.match(await box.innerText(), /3D/);
+    // легенда — у анатомической карты под роликом (те же цвета, что на рендере)
+    const legend = await page.getByTestId('technique-muscles').innerText();
+    assert.match(legend, /Работают:\s*Большая грудная/);
+    assert.match(legend, /Задействованы слегка:[\s\S]*Передний пучок дельты[\s\S]*Трицепс/);
     // В автотесте (как при «Уменьшении движения») петля стоит на стоп-кадре, пуск — касанием
-    assert.match(await src(), /posters.*bench_press\.jpg/, 'стоп-кадр до пуска');
+    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'стоп-кадр до пуска');
     await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Воспроизвести$/).click();
     await page.waitForTimeout(500);
-    assert.match(await src(), /anim.*bench_press\.webp/, 'играет WebP-петля жима');
+    assert.match(await src(), /anim.*bench_press(_f)?\.webp/, 'играет WebP-петля жима');
     assert.ok(await page.getByText('Повторение по кругу').isVisible());
     await page.getByLabel(/^3D-анимация: Жим штанги лёжа\. Пауза$/).click();
     await page.waitForTimeout(400);
-    assert.match(await src(), /posters.*bench_press\.jpg/, 'на паузе — стоп-кадр');
+    assert.match(await src(), /posters.*bench_press(_f)?\.jpg/, 'на паузе — стоп-кадр');
     await page.getByTestId('technique-3d-full').click();
     await page.waitForTimeout(700);
     assert.ok(await page.getByTestId('technique-3d-close').isVisible(), 'полноэкранный просмотр');
@@ -1850,10 +1851,89 @@ const closeSheet = async (pg) => {
     let all = await media();
     assert.equal(all.filter((x) => /assets\/exercises\/|free-exercise-db/.test(x)).length, 0, 'в библиотеке нет фото атлета');
     assert.ok((await page.locator('svg path').count()) > 50, 'миниатюры — схемы мышц');
-    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1]);
-    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift'];
+    // у профиля женщины — тот же ролик с женской фигурой (<id>_f)
+    const posters = all.filter((x) => /posters\//.test(x)).map((x) => x.match(/posters\/([a-z_]+)/)[1].replace(/_f$/, ''));
+    const own = ['bench_press', 'lat_pulldown', 'db_row', 'db_curl', 'back_squat', 'romanian_deadlift', 'pec_deck', 'machine_row'];
     assert.ok(posters.every((p) => own.includes(p)), `постеры только своих петель: ${posters}`);
     await shot('library-thumbs');
+  });
+
+  await check('68. Экран упражнения: длинное название видно целиком (до двух строк, без многоточия)', async () => {
+    for (const [id, name] of [['decline_bench_press', 'Жим штанги с отрицательным наклоном'], ['pec_deck', 'Сведение рук в тренажёре (бабочка)'], ['good_morning', 'Наклоны со штангой (гуд-монинг)']]) {
+      await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(500);
+      const cut = await page.evaluate((n) => {
+        const el = [...document.querySelectorAll('[role="heading"]')].find((h) => h.textContent.trim() === n);
+        if (!el) return 'нет заголовка';
+        return el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1 ? 'обрезано' : '';
+      }, name);
+      assert.equal(cut, '', `${name}: ${cut}`);
+    }
+  });
+
+  await check('69. Анатомия: зелёный и жёлтый в любой теме, точный пучок мышцы, женская фигура для профиля женщины', async () => {
+    const setProfile = (patch) => page.evaluate((p) => {
+      const raw = JSON.parse(localStorage.getItem('form.profile'));
+      if (p.accent) raw.state.settings.accent = p.accent;
+      if (p.sex) raw.state.profile.sex = p.sex;
+      localStorage.setItem('form.profile', JSON.stringify(raw));
+    }, patch);
+    const before = await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('form.profile')); return { accent: r.state.settings.accent || 'lime', sex: r.state.profile.sex }; });
+    for (const accent of ['orange', 'blue']) {
+      await setProfile({ accent, sex: 'male' });
+      await page.goto(`${URL}/exercise/lateral_raise`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      await dismiss();
+      const map = page.getByTestId('technique-muscles');
+      await map.scrollIntoViewIfNeeded();
+      const stops = await map.evaluate((el) => [...el.querySelectorAll('stop')].map((s) => (s.getAttribute('stop-color') || s.getAttribute('stopColor') || '').toUpperCase()));
+      assert.ok(stops.includes('#3DDC84') && stops.includes('#F4DE77'), `${accent}: зелёный и жёлтый (${[...new Set(stops)].join(' ')})`);
+      assert.ok(!stops.includes('#FF8A3D') && !stops.includes('#6CB6FF'), `${accent}: без цвета акцента`);
+      assert.ok((await map.locator('path').count()) > 120, 'подробная фигура: отдельные мышцы и волокна');
+      assert.equal(await page.getByTestId('anatomy-figure-male').count(), 1, 'мужская фигура');
+      const legend = await map.innerText();
+      assert.match(legend, /Работают:\s*Средний пучок дельты/, 'махи в стороны — средний пучок');
+      assert.match(legend, /Задействованы слегка:.*Передний пучок дельты/, 'передний пучок — слегка');
+    }
+    await setProfile({ sex: 'female', accent: 'lime' });
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(800);
+    await dismiss();
+    assert.equal(await page.getByTestId('anatomy-figure-female').count(), 1, 'женская фигура для профиля женщины');
+    const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
+    assert.match(media, /bench_press_f/, '3D-ролик с женской фигурой');
+    await setProfile(before);
+  });
+
+  await check('70. Анатомическая 3D-модель: бабочка и рычажная тяга — ролик своей модели, подсветка в стиле референсов, атрибуция CC BY-SA, женская версия по профилю', async () => {
+    const setSex = (sex) => page.evaluate((x) => {
+      const raw = JSON.parse(localStorage.getItem('form.profile'));
+      raw.state.profile.sex = x;
+      localStorage.setItem('form.profile', JSON.stringify(raw));
+    }, sex);
+    const before = await page.evaluate(() => JSON.parse(localStorage.getItem('form.profile')).state.profile.sex);
+    for (const [sex, suffix] of [['male', ''], ['female', '_f']]) {
+      await setSex(sex);
+      for (const id of ['pec_deck', 'machine_row']) {
+        await page.goto(`${URL}/exercise/${id}`, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(1000);
+        await dismiss();
+        const box = page.getByTestId('technique-3d');
+        await box.scrollIntoViewIfNeeded();
+        assert.ok(await box.isVisible(), `${id}: 3D-блок`);
+        const media = await page.getByTestId('technique-3d-media').evaluate((el) => el.outerHTML);
+        assert.match(media, new RegExp(`posters.*${id}${suffix}\\.jpg`), `${id} (${sex}): постер своей фигуры`);
+        if (!suffix) assert.doesNotMatch(media, new RegExp(`${id}_f`), `${id}: у мужчины — мужская фигура`);
+        const credit = page.getByTestId('technique-3d-credit');
+        assert.match(await credit.innerText(), /Z-Anatomy.*BodyParts3D.*CC BY-SA 4\.0/, `${id}: атрибуция`);
+        await shot(`atlas-${id}${suffix}`);
+      }
+    }
+    // у роликов процедурной фигуры атрибуции атласа нет
+    await page.goto(`${URL}/exercise/bench_press`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1000);
+    assert.equal(await page.getByTestId('technique-3d-credit').count(), 0, 'жим — без атрибуции атласа');
+    await setSex(before);
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

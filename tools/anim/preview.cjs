@@ -13,7 +13,7 @@ const serve = require('./serve.cjs');
   const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
   page.on('console', (m) => m.type() === 'error' && console.log('console:', m.text()));
   page.on('pageerror', (e) => console.log('pageerror:', e.message));
-  await page.goto('http://localhost:8790/tools/anim/web/index.html?w=960&h=720');
+  await page.goto(`http://localhost:8790/tools/anim/web/index.html?w=960&h=720${process.env.SEX === 'female' ? '&sex=female' : ''}`);
   await page.waitForFunction(() => window.rynjiReady, null, { timeout: 30000 });
   const t0 = Date.now();
   const verts = await page.evaluate(([p, s, h]) => { window.rynji.rest(); return window.rynji.build(p, s, h); }, [hl[0], hl[1], H]);

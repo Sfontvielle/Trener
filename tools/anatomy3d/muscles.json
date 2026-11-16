@@ -1,0 +1,574 @@
+[
+  {
+    "id": "sternocleidomastoid",
+    "sided": [
+      "sternocleidomastoid.L",
+      "sternocleidomastoid.R"
+    ],
+    "label": "Грудино-ключично-сосцевидная",
+    "slug": "neck",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "splenius_capitis",
+    "sided": [
+      "splenius_capitis.L",
+      "splenius_capitis.R"
+    ],
+    "label": "Ременная мышца головы",
+    "slug": "neck",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "pectoralis_major_clavicular",
+    "sided": [
+      "pectoralis_major_clavicular.L",
+      "pectoralis_major_clavicular.R"
+    ],
+    "label": "Большая грудная: ключичная часть (верх груди)",
+    "slug": "chest",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "pectoralis_major_sternal",
+    "sided": [
+      "pectoralis_major_sternal.L",
+      "pectoralis_major_sternal.R"
+    ],
+    "label": "Большая грудная: грудино-рёберная часть (середина)",
+    "slug": "chest",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "pectoralis_major_abdominal",
+    "sided": [
+      "pectoralis_major_abdominal.L",
+      "pectoralis_major_abdominal.R"
+    ],
+    "label": "Большая грудная: брюшная часть (низ груди)",
+    "slug": "chest",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "pectoralis_minor",
+    "sided": [
+      "pectoralis_minor.L",
+      "pectoralis_minor.R"
+    ],
+    "label": "Малая грудная",
+    "slug": "chest",
+    "view": "front",
+    "depth": "deep"
+  },
+  {
+    "id": "serratus_anterior",
+    "sided": [
+      "serratus_anterior.L",
+      "serratus_anterior.R"
+    ],
+    "label": "Передняя зубчатая",
+    "slug": null,
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "deltoid_anterior",
+    "sided": [
+      "deltoid_anterior.L",
+      "deltoid_anterior.R"
+    ],
+    "label": "Дельтовидная: передний пучок",
+    "slug": "deltoids",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "deltoid_lateral",
+    "sided": [
+      "deltoid_lateral.L",
+      "deltoid_lateral.R"
+    ],
+    "label": "Дельтовидная: средний пучок",
+    "slug": "deltoids",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "deltoid_posterior",
+    "sided": [
+      "deltoid_posterior.L",
+      "deltoid_posterior.R"
+    ],
+    "label": "Дельтовидная: задний пучок",
+    "slug": "deltoids",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "supraspinatus",
+    "sided": [
+      "supraspinatus.L",
+      "supraspinatus.R"
+    ],
+    "label": "Надостная",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "deep"
+  },
+  {
+    "id": "infraspinatus",
+    "sided": [
+      "infraspinatus.L",
+      "infraspinatus.R"
+    ],
+    "label": "Подостная",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "teres_minor",
+    "sided": [
+      "teres_minor.L",
+      "teres_minor.R"
+    ],
+    "label": "Малая круглая",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "teres_major",
+    "sided": [
+      "teres_major.L",
+      "teres_major.R"
+    ],
+    "label": "Большая круглая",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "trapezius_upper",
+    "sided": [
+      "trapezius_upper.L",
+      "trapezius_upper.R"
+    ],
+    "label": "Трапециевидная: верхняя часть",
+    "slug": "trapezius",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "trapezius_middle",
+    "sided": [
+      "trapezius_middle.L",
+      "trapezius_middle.R"
+    ],
+    "label": "Трапециевидная: средняя часть",
+    "slug": "trapezius",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "trapezius_lower",
+    "sided": [
+      "trapezius_lower.L",
+      "trapezius_lower.R"
+    ],
+    "label": "Трапециевидная: нижняя часть",
+    "slug": "trapezius",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "rhomboid_major",
+    "sided": [
+      "rhomboid_major.L",
+      "rhomboid_major.R"
+    ],
+    "label": "Большая ромбовидная",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "rhomboid_minor",
+    "sided": [
+      "rhomboid_minor.L",
+      "rhomboid_minor.R"
+    ],
+    "label": "Малая ромбовидная",
+    "slug": "upper-back",
+    "view": "back",
+    "depth": "deep"
+  },
+  {
+    "id": "latissimus_dorsi",
+    "sided": [
+      "latissimus_dorsi.L",
+      "latissimus_dorsi.R"
+    ],
+    "label": "Широчайшая мышца спины",
+    "slug": "upper-back",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "erector_spinae",
+    "sided": [
+      "erector_spinae.L",
+      "erector_spinae.R"
+    ],
+    "label": "Мышца, выпрямляющая позвоночник",
+    "slug": "lower-back",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "biceps_brachii_long",
+    "sided": [
+      "biceps_brachii_long.L",
+      "biceps_brachii_long.R"
+    ],
+    "label": "Бицепс плеча: длинная головка",
+    "slug": "biceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "biceps_brachii_short",
+    "sided": [
+      "biceps_brachii_short.L",
+      "biceps_brachii_short.R"
+    ],
+    "label": "Бицепс плеча: короткая головка",
+    "slug": "biceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "brachialis",
+    "sided": [
+      "brachialis.L",
+      "brachialis.R"
+    ],
+    "label": "Плечевая",
+    "slug": "biceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "triceps_long",
+    "sided": [
+      "triceps_long.L",
+      "triceps_long.R"
+    ],
+    "label": "Трицепс: длинная головка",
+    "slug": "triceps",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "triceps_lateral",
+    "sided": [
+      "triceps_lateral.L",
+      "triceps_lateral.R"
+    ],
+    "label": "Трицепс: латеральная головка",
+    "slug": "triceps",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "triceps_medial",
+    "sided": [
+      "triceps_medial.L",
+      "triceps_medial.R"
+    ],
+    "label": "Трицепс: медиальная головка",
+    "slug": "triceps",
+    "view": "back",
+    "depth": "deep"
+  },
+  {
+    "id": "brachioradialis",
+    "sided": [
+      "brachioradialis.L",
+      "brachioradialis.R"
+    ],
+    "label": "Плечелучевая",
+    "slug": "forearm",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "forearm_flexors",
+    "sided": [
+      "forearm_flexors.L",
+      "forearm_flexors.R"
+    ],
+    "label": "Сгибатели запястья и пальцев",
+    "slug": "forearm",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "forearm_extensors",
+    "sided": [
+      "forearm_extensors.L",
+      "forearm_extensors.R"
+    ],
+    "label": "Разгибатели запястья и пальцев",
+    "slug": "forearm",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "rectus_abdominis",
+    "sided": [
+      "rectus_abdominis.L",
+      "rectus_abdominis.R"
+    ],
+    "label": "Прямая мышца живота",
+    "slug": "abs",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "external_oblique",
+    "sided": [
+      "external_oblique.L",
+      "external_oblique.R"
+    ],
+    "label": "Наружная косая мышца живота",
+    "slug": "obliques",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "internal_oblique",
+    "sided": [
+      "internal_oblique.L",
+      "internal_oblique.R"
+    ],
+    "label": "Внутренняя косая мышца живота",
+    "slug": "obliques",
+    "view": "front",
+    "depth": "deep"
+  },
+  {
+    "id": "gluteus_maximus",
+    "sided": [
+      "gluteus_maximus.L",
+      "gluteus_maximus.R"
+    ],
+    "label": "Большая ягодичная",
+    "slug": "gluteal",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "gluteus_medius",
+    "sided": [
+      "gluteus_medius.L",
+      "gluteus_medius.R"
+    ],
+    "label": "Средняя ягодичная",
+    "slug": "gluteal",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "tensor_fasciae_latae",
+    "sided": [
+      "tensor_fasciae_latae.L",
+      "tensor_fasciae_latae.R"
+    ],
+    "label": "Напрягатель широкой фасции",
+    "slug": null,
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "rectus_femoris",
+    "sided": [
+      "rectus_femoris.L",
+      "rectus_femoris.R"
+    ],
+    "label": "Квадрицепс: прямая мышца бедра",
+    "slug": "quadriceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "vastus_lateralis",
+    "sided": [
+      "vastus_lateralis.L",
+      "vastus_lateralis.R"
+    ],
+    "label": "Квадрицепс: латеральная широкая",
+    "slug": "quadriceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "vastus_medialis",
+    "sided": [
+      "vastus_medialis.L",
+      "vastus_medialis.R"
+    ],
+    "label": "Квадрицепс: медиальная широкая",
+    "slug": "quadriceps",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "vastus_intermedius",
+    "sided": [
+      "vastus_intermedius.L",
+      "vastus_intermedius.R"
+    ],
+    "label": "Квадрицепс: промежуточная широкая",
+    "slug": "quadriceps",
+    "view": "front",
+    "depth": "deep"
+  },
+  {
+    "id": "sartorius",
+    "sided": [
+      "sartorius.L",
+      "sartorius.R"
+    ],
+    "label": "Портняжная",
+    "slug": null,
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "adductor_longus",
+    "sided": [
+      "adductor_longus.L",
+      "adductor_longus.R"
+    ],
+    "label": "Длинная приводящая",
+    "slug": "adductors",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "adductor_magnus",
+    "sided": [
+      "adductor_magnus.L",
+      "adductor_magnus.R"
+    ],
+    "label": "Большая приводящая",
+    "slug": "adductors",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "gracilis",
+    "sided": [
+      "gracilis.L",
+      "gracilis.R"
+    ],
+    "label": "Тонкая мышца",
+    "slug": "adductors",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "biceps_femoris",
+    "sided": [
+      "biceps_femoris.L",
+      "biceps_femoris.R"
+    ],
+    "label": "Двуглавая мышца бедра",
+    "slug": "hamstring",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "semitendinosus",
+    "sided": [
+      "semitendinosus.L",
+      "semitendinosus.R"
+    ],
+    "label": "Полусухожильная",
+    "slug": "hamstring",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "semimembranosus",
+    "sided": [
+      "semimembranosus.L",
+      "semimembranosus.R"
+    ],
+    "label": "Полуперепончатая",
+    "slug": "hamstring",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "gastrocnemius_medial",
+    "sided": [
+      "gastrocnemius_medial.L",
+      "gastrocnemius_medial.R"
+    ],
+    "label": "Икроножная: медиальная головка",
+    "slug": "calves",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "gastrocnemius_lateral",
+    "sided": [
+      "gastrocnemius_lateral.L",
+      "gastrocnemius_lateral.R"
+    ],
+    "label": "Икроножная: латеральная головка",
+    "slug": "calves",
+    "view": "back",
+    "depth": "superficial"
+  },
+  {
+    "id": "soleus",
+    "sided": [
+      "soleus.L",
+      "soleus.R"
+    ],
+    "label": "Камбаловидная",
+    "slug": "calves",
+    "view": "both",
+    "depth": "superficial"
+  },
+  {
+    "id": "fibularis_longus",
+    "sided": [
+      "fibularis_longus.L",
+      "fibularis_longus.R"
+    ],
+    "label": "Длинная малоберцовая",
+    "slug": "calves",
+    "view": "front",
+    "depth": "superficial"
+  },
+  {
+    "id": "tibialis_anterior",
+    "sided": [
+      "tibialis_anterior.L",
+      "tibialis_anterior.R"
+    ],
+    "label": "Передняя большеберцовая",
+    "slug": "tibialis",
+    "view": "front",
+    "depth": "superficial"
+  }
+]

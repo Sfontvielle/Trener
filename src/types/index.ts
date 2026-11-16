@@ -415,7 +415,7 @@ export interface ReadinessResult {
 
 // ─── Exercises ──────────────────────────────────────────────────────────────
 
-/** Слаги мышц для анатомической карты (совпадают с react-native-body-highlighter) */
+/** Группы мышц для анатомической карты (src/features/exercises/anatomy) */
 export type MuscleSlug =
   | 'chest'
   | 'deltoids'

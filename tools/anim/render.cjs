@@ -22,10 +22,13 @@ const serve = require('./serve.cjs');
     const page = await browser.newPage({ viewport: { width: W, height: Hh } });
     page.on('pageerror', (e) => console.log('pageerror:', e.message));
     page.on('console', (m) => m.type() === 'error' && console.log('console:', m.text()));
-    await page.goto(`http://localhost:${port}/tools/anim/web/index.html?w=${W}&h=${Hh}`);
+    // SEX=female — женская фигура, файлы <id>_f.webp и posters/<id>_f.jpg
+    const female = process.env.SEX === 'female';
+    const name = female ? `${id}_f` : id;
+    await page.goto(`http://localhost:${port}/tools/anim/web/index.html?w=${W}&h=${Hh}${female ? '&sex=female' : ''}`);
     await page.waitForFunction(() => window.rynjiReady, null, { timeout: 30000 });
     await page.evaluate((x) => window.rynji.load(x), id);
-    const out = path.resolve(__dirname, 'out', id);
+    const out = path.resolve(__dirname, 'out', name);
     fs.rmSync(out, { recursive: true, force: true });
     fs.mkdirSync(out, { recursive: true });
     const t0 = Date.now();
@@ -36,7 +39,7 @@ const serve = require('./serve.cjs');
     }
     console.log(id, 'frames', only ? only.length : FRAMES, 's', ((Date.now() - t0) / 1000).toFixed(1));
     await page.close();
-    if (!only && !process.env.NO_ENCODE) execFileSync('python3', [path.resolve(__dirname, 'encode.py'), out, path.resolve(__dirname, '../../assets/anim', `${id}.webp`)], { stdio: 'inherit' });
+    if (!only && !process.env.NO_ENCODE) execFileSync(process.env.PYTHON || 'python3', [path.resolve(__dirname, 'encode.py'), out, path.resolve(__dirname, '../../assets/anim', `${name}.webp`)], { stdio: 'inherit' });
   }
   await browser.close();
   server.close();

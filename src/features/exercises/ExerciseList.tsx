@@ -161,7 +161,7 @@ function PreviewSheet({ ex, onClose, onSelect }: { ex: Exercise | null; onClose:
     <Sheet visible={!!ex} onClose={onClose} title={ex?.name} subtitle={ex ? `${ex.primary.map((m) => MUSCLE_LABEL[m]).join(', ')} · ${ex.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ')}` : ''} footer={ex ? <Button title="Выбрать" icon="checkmark" size="lg" onPress={() => { onClose(); onSelect(ex); }} /> : undefined}>
       {ex ? (
         <View style={{ gap: 12 }}>
-          {animationFor(ex) ? <ExerciseAnimation ex={ex} anim={animationFor(ex)!} /> : <Anatomy primary={ex.primary} secondary={ex.secondary} />}
+          {animationFor(ex) ? <ExerciseAnimation ex={ex} anim={animationFor(ex)!} /> : <Anatomy primary={ex.primary} secondary={ex.secondary} exerciseId={ex.id} />}
           {ex.cues.slice(0, 4).map((c) => (
             <T key={c} v="body" style={{ fontSize: 14 }}>
               • {c}

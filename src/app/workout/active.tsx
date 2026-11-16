@@ -348,7 +348,8 @@ export default function ActiveWorkout() {
         )
       ) : null}
 
-      {pr ? <PrBanner key={pr.n} text={pr.text} top={insets.top + 70} /> : null}
+      {/* Над нижней панелью, а не сверху: название упражнения в карточке не закрывается */}
+      {pr ? <PrBanner key={pr.n} text={pr.text} bottom={insets.bottom + 92} /> : null}
 
       <ExerciseNoteSheet we={active.exercises.find((x) => x.id === noteFor)} onClose={() => setNoteFor(null)} />
       <WorkoutNavigator
@@ -547,7 +548,7 @@ function holdStart(weId: string, setId: string) {
 
 /** Новый рекорд: «празднование» — плашка с пружиной, пульс кубка и разлёт искр; вибрация — haptic.record() */
 const SPARKS = Array.from({ length: 10 }, (_, i) => (i / 10) * Math.PI * 2);
-function PrBanner({ text, top }: { text: string; top: number }) {
+function PrBanner({ text, bottom }: { text: string; bottom: number }) {
   const [a] = useState(() => new Animated.Value(0));
   const [burst] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -564,7 +565,7 @@ function PrBanner({ text, top }: { text: string; top: number }) {
   }, [a, burst, text]);
   const cup = a.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.6, 1.25, 1] });
   return (
-    <Animated.View pointerEvents="none" style={[styles.pr, { top, opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
+    <Animated.View pointerEvents="none" style={[styles.pr, { bottom, opacity: a, transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
       <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
         {SPARKS.map((ang, i) => (
           <Animated.View

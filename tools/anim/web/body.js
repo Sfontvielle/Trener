@@ -13,10 +13,14 @@ export const GROUPS = ['chest', 'deltoids', 'biceps', 'triceps', 'forearm', 'abs
 const SKIN = 'skin';
 const SHORTS = 'shorts';
 const SHOE = 'shoe';
+const HAIR = 'hair';
 
 // ---------- скелет ----------
 
-export function createSkeleton() {
+/** female — уже плечи, шире таз (те же суставы и движения) */
+export function createSkeleton({ female = false } = {}) {
+  const SH = female ? 0.188 : 0.205;
+  const HP = female ? 0.096 : 0.09;
   const joints = {};
   const J = (name, parent, x, y, z) => {
     const o = new THREE.Object3D();
@@ -33,11 +37,11 @@ export function createSkeleton() {
   const neck = J('neck', chest, 0, 0.215, -0.012);
   J('head', neck, 0, 0.085, 0.01);
   for (const [s, x] of [['L', 1], ['R', -1]]) {
-    const sh = J(`shoulder${s}`, chest, x * 0.205, 0.198, -0.014);
+    const sh = J(`shoulder${s}`, chest, x * SH, 0.198, -0.014);
     const el = J(`elbow${s}`, sh, 0, -0.295, 0);
     const wr = J(`wrist${s}`, el, 0, -0.255, 0);
     J(`hand${s}`, wr, 0, 0, 0);
-    const hip = J(`hip${s}`, pelvis, x * 0.09, -0.07, 0);
+    const hip = J(`hip${s}`, pelvis, x * HP, -0.07, 0);
     const kn = J(`knee${s}`, hip, 0, -0.43, 0);
     const an = J(`ankle${s}`, kn, 0, -0.42, 0);
     J(`foot${s}`, an, 0, 0, 0);
@@ -56,7 +60,8 @@ const C = (joint, a, b, r1, r2, group, k) => ({ t: 'c', joint, a, b, r1, r2, gro
  * (меньше — рельефнее), def — сглаживание между мышцами (меньше — чётче борозды), head — размер головы (крупный план).
  * По умолчанию — атлет сцен техники.
  */
-export function anatomy({ mass = 1, lean = 1, def = 1, head = 1 } = {}) {
+export function anatomy({ mass = 1, lean = 1, def = 1, head = 1, female = false } = {}) {
+  if (female) return femaleAnatomy(anatomy({ mass, lean, def, head }));
   const P = [];
   // Таз (шорты) и ягодицы
   P.push(E('pelvis', [0, 0.03, -0.005], [0.148, 0.115, 0.104], [0, 0, 0], SKIN, 0.05));
@@ -142,9 +147,38 @@ export function anatomy({ mass = 1, lean = 1, def = 1, head = 1 } = {}) {
   });
 }
 
-/** Объёмы шорт: всё, что внутри, красится тканью (кроме подсвеченных мышц — их видно сквозь шорты) */
-export function clothVolumes() {
+const UPPER = ['chest', 'deltoids', 'biceps', 'triceps', 'forearm', 'trapezius', 'upper-back'];
+
+/**
+ * Женская фигура из мужской: грудная клетка и талия уже, таз и ягодицы шире, бёдра чуть полнее,
+ * мышцы верха тела меньше; грудь в спортивном топе, причёска с пучком.
+ */
+function femaleAnatomy(P) {
+  const out = P.map((p) => {
+    const scaleR = (k) => (p.t === 'e' ? { ...p, r: p.r.map((x, i) => (i === 0 ? x * k : x)) } : { ...p, r1: p.r1 * k, r2: p.r2 * k });
+    if (p.group === SKIN && p.joint === 'chest') return scaleR(0.9);
+    if (p.group === SKIN && p.joint === 'spine') return scaleR(0.84);
+    if (p.group === SKIN && p.joint === 'pelvis') return scaleR(1.12);
+    if (p.group === 'gluteal') return p.t === 'e' ? { ...p, r: p.r.map((x) => x * 1.12) } : p;
+    if (p.group === SKIN && (p.joint === 'hipL' || p.joint === 'hipR') && p.t === 'c') return { ...p, r1: p.r1 * 1.07, r2: p.r2 * 1.03 };
+    if (UPPER.includes(p.group)) {
+      const q = p.t === 'e' ? { ...p, r: p.r.map((x) => x * 0.86) } : { ...p, r1: p.r1 * 0.86, r2: p.r2 * 0.86 };
+      // мышцы туловища — ближе к оси вместе с более узкой грудной клеткой
+      if (p.joint === 'chest' && p.t === 'e') return { ...q, c: [p.c[0] * 0.92, p.c[1], p.c[2]] };
+      return q;
+    }
+    return p;
+  });
+  for (const s of [1, -1]) out.push(E('chest', [s * 0.06, 0.104, 0.086], [0.056, 0.05, 0.046], [0.3, s * 0.22, 0], SHORTS, 0.03));
+  out.push(E('head', [0, 0.115, -0.02], [0.09, 0.092, 0.095], [0, 0, 0], HAIR, 0.015));
+  out.push(E('head', [0, 0.13, -0.106], [0.042, 0.042, 0.04], [0, 0, 0], HAIR, 0.01));
+  return out;
+}
+
+/** Объёмы шорт (и топа у женской фигуры): всё, что внутри, красится тканью (кроме подсвеченных мышц — их видно сквозь ткань) */
+export function clothVolumes({ female = false } = {}) {
   const V = [E('pelvis', [0, -0.005, -0.005], [0.172, 0.13, 0.13], [0, 0, 0], SHORTS, 0)];
+  if (female) V.push(E('chest', [0, 0.1, 0.0], [0.155, 0.058, 0.13], [0, 0, 0], SHORTS, 0));
   for (const sd of ['L', 'R']) V.push(C(`hip${sd}`, [0, 0.04, 0], [0, -0.17, 0.004], 0.125, 0.11, SHORTS, 0));
   return V;
 }
@@ -309,8 +343,10 @@ export const COLORS = {
   shorts: lin(0x16181b),
   shoe: lin(0x1d2024),
   muscle: lin(0x868c94),
-  primary: lin(0xa6ea2a),
-  secondary: lin(0xd8d58a),
+  // те же цвета, что у анатомической карты приложения: зелёный — работает, светло-жёлтый — слегка
+  primary: lin(0x3ddc84),
+  secondary: lin(0xf4de77),
+  hair: lin(0x2a2622),
 };
 
 export function buildMesh(prims, { primary = [], secondary = [], h = 0.009, cloth = [], skin = null } = {}) {
@@ -360,10 +396,10 @@ export function buildMesh(prims, { primary = [], secondary = [], h = 0.009, clot
     }
     for (const [p, d] of ds) {
       // ткань (шорты, кроссовки) — чёткая граница, мышцы и кожа — мягкий переход
-      const cloth = p.group === SHORTS || p.group === SHOE;
+      const cloth = p.group === SHORTS || p.group === SHOE || p.group === HAIR;
       const w = Math.exp(-Math.max(0, d - dmin) / (cloth ? 0.0012 : 0.004)) * (cloth ? 1.6 : 1);
       if (w < 1e-3) continue;
-      const c = p.group === SKIN ? SK : p.group === SHORTS ? COLORS.shorts : p.group === SHOE ? COLORS.shoe : primary.includes(p.group) ? COLORS.primary : secondary.includes(p.group) ? COLORS.secondary : MU;
+      const c = p.group === SKIN ? SK : p.group === SHORTS ? COLORS.shorts : p.group === SHOE ? COLORS.shoe : p.group === HAIR ? COLORS.hair : primary.includes(p.group) ? COLORS.primary : secondary.includes(p.group) ? COLORS.secondary : MU;
       r += c[0] * w;
       g += c[1] * w;
       b += c[2] * w;
@@ -406,7 +442,7 @@ export function bodyMaterial() {
   const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.46, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.5, sheen: 0.35, sheenRoughness: 0.55, sheenColor: new THREE.Color(0x9aa3ad) });
   m.onBeforeCompile = (s) => {
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float emi;\nvarying float vEmi;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvEmi = emi;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vEmi;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.33, 0.62, 0.02) * vEmi * 0.75;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vEmi;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.08, 0.6, 0.3) * vEmi * 0.75;');
   };
   return m;
 }
