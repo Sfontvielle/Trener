@@ -1441,3 +1441,53 @@ test('Напоминания о замерах: вес часто, талия р
   assert.equal(measurementDue([w(1), w(2), w(3)], [{ id: 'm', date: addDays(ref, -3), kind: 'waist', value: 84 }], ref), null);
   assert.equal(measurementDue([w(1), w(2), w(3)], [{ id: 'm', date: addDays(ref, -3), kind: 'waist', value: 84 }, { id: 'a', date: addDays(ref, -30), kind: 'arm', value: 38 }], ref)?.kind, 'arm');
 });
+
+import { cycleDaysPerWeek, cyclePosition, isTrainingSlot, nextSlots, plannedPerWeek, scheduleLabel, slotTemplateId } from '../src/features/training/slots';
+import { trainingKcalPerDay } from '../src/features/nutrition/targets';
+import { weekAgenda } from '../src/features/training/weekAgenda';
+
+test('Цикл «2 через 1»: дни не зависят от недели, шаблоны идут по кругу', () => {
+  const anchor = '2026-11-16'; // понедельник
+  const p = { ...base, daysPerWeek: 5, cycle: { on: 2, off: 1, anchor } };
+  const plan = generatePlan(p);
+  assert.deepEqual(plan.cycle, p.cycle);
+  assert.ok(plan.schedule.every((x) => x === null), 'дни недели не используются');
+  const pattern = Array.from({ length: 9 }, (_, i) => isTrainingSlot(plan, addDays(anchor, i)));
+  assert.deepEqual(pattern, [true, true, false, true, true, false, true, true, false]);
+  // Сдвиг относительно недели: следующий понедельник (через 7 дней) — второй день тренировки, ещё через неделю — отдых
+  assert.deepEqual([0, 7, 14].map((k) => cyclePosition(p.cycle, addDays(anchor, k)).pos), [0, 1, 2]);
+  // До начала цикла счёт продолжается назад: вчера — отдых, позавчера — тренировка
+  assert.equal(isTrainingSlot(plan, addDays(anchor, -1)), false);
+  assert.equal(isTrainingSlot(plan, addDays(anchor, -2)), true);
+  // Шаблоны: тренировочные дни подряд берут rotation по кругу
+  const ids = nextSlots(plan, anchor, plan.rotation.length * 2).map((s) => s.templateId);
+  assert.deepEqual(ids, [...plan.rotation, ...plan.rotation]);
+  assert.equal(slotTemplateId(plan, addDays(anchor, 2)), null);
+  assert.equal(scheduleLabel(plan), '2 через 1');
+  assert.ok(Math.abs(plannedPerWeek(plan) - 14 / 3) < 1e-9, '≈4,67 тренировки в неделю');
+});
+
+test('Цикл: объём и калории считаются от 4,67 тренировки в неделю', () => {
+  const c = { on: 2, off: 1, anchor: '2026-11-16' };
+  assert.ok(Math.abs(cycleDaysPerWeek(c) - 4.667) < 0.001);
+  const weekly = trainingKcalPerDay({ ...base, daysPerWeek: 5 }, 80);
+  const cyc = trainingKcalPerDay({ ...base, daysPerWeek: 5, cycle: c }, 80);
+  assert.ok(cyc < weekly && Math.abs(cyc / weekly - 14 / 15) < 1e-9, 'не 5, а 4,67 тренировки');
+  const t = computeNutritionTarget({ ...base, daysPerWeek: 5, cycle: c });
+  assert.ok(t.steps.some((s) => s.label === 'Тренировки' && /2 через 1/.test(s.note ?? '')), 'в расчёте видно цикл');
+});
+
+test('Цикл: сегодня/неделя продолжают ротацию после пропуска', () => {
+  const anchor = '2026-11-16';
+  const plan = generatePlan({ ...base, daysPerWeek: 5, cycle: { on: 2, off: 1, anchor } });
+  // Сделана только первая тренировка (16-го); 17-го пропуск; 19-го (тренировочный день) — вторая по очереди, не третья
+  const s: WorkoutSession = { id: 's1', date: anchor, startedAt: 1, status: 'completed', source: 'plan', templateId: plan.rotation[0], exercises: [] } as unknown as WorkoutSession;
+  const d19 = addDays(anchor, 3);
+  const r = resolveToday({ date: d19, plan, sessions: [s] });
+  assert.equal(r.kind, 'workout');
+  assert.equal(r.template!.id, plan.rotation[1], 'пропуск не «съедает» тренировку');
+  const rest = resolveToday({ date: addDays(anchor, 2), plan, sessions: [s] });
+  assert.equal(rest.kind, 'rest', '18-е — день отдыха цикла');
+  const ag = weekAgenda({ today: anchor, plan, sessions: [], weekStart: anchor });
+  assert.deepEqual(ag.map((d) => d.date), [anchor, addDays(anchor, 1), addDays(anchor, 3), addDays(anchor, 4), addDays(anchor, 6)]);
+});

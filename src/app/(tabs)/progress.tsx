@@ -202,7 +202,7 @@ function applyProposal(p: WeeklyProposal) {
   const profile = useProfile.getState().profile;
   if (!profile) return;
   if (p.kind === 'days' && p.days) {
-    applyProfile({ ...profile, daysPerWeek: p.days, preferredDays: [] });
+    applyProfile({ ...profile, daysPerWeek: p.days, preferredDays: [], cycle: null });
     toast(`План перестроен на ${p.days} дн. в неделю`);
     return;
   }

@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { AppSettings, WorkoutPlan } from '@/types';
 import { BRAND } from '@/config/brand';
+import { cycleLabel, isValidCycle, nextSlots } from '@/features/training/slots';
+import { parseISODate, today } from '@/utils/date';
 
 /**
  * Локальные уведомления (без сервера): конец отдыха в фоне, утренний чек-ин, тренировка по плану.
@@ -12,6 +14,8 @@ const REST_ID = 'form-rest';
 const REST_WARN_ID = 'form-rest-warn';
 const MORNING_ID = 'form-morning';
 const TRAIN_PREFIX = 'form-train-';
+/** Сколько ближайших тренировок цикла держать в напоминаниях (~3 недели при «2 через 1») */
+const CYCLE_REMINDERS = 14;
 
 let configured = false;
 export function configureNotifications() {
@@ -100,6 +104,7 @@ export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | n
   await cancel(REVIEW_ID);
   await cancel(WEIGH_ID);
   for (let i = 0; i < 7; i++) await cancel(`${TRAIN_PREFIX}${i}`);
+  for (let i = 0; i < CYCLE_REMINDERS; i++) await cancel(`${TRAIN_PREFIX}c${i}`);
   const weighIn = settings.weighInReminder !== false;
   if (!settings.morningReminder && !settings.trainingReminder && !settings.weeklyReview && !weighIn) return;
   const perm = await Notifications.getPermissionsAsync().catch(() => null);
@@ -127,7 +132,23 @@ export async function syncReminders(settings: AppSettings, plan: WorkoutPlan | n
         trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: toExpoWeekday(0), hour: 9, minute: 5 },
       });
     }
-    if (settings.trainingReminder && plan) {
+    if (settings.trainingReminder && plan && isValidCycle(plan.cycle)) {
+      // Цикл «2 через 1» не совпадает с днями недели — ставим разовые напоминания на ближайшие тренировочные дни.
+      // Расписание пересоздаётся при каждом запуске приложения, так что запас в 3 недели не кончается
+      const now = Date.now();
+      const slots = nextSlots(plan, today(), CYCLE_REMINDERS);
+      for (let i = 0; i < slots.length; i++) {
+        const t = plan.templates.find((x) => x.id === slots[i].templateId);
+        const at = parseISODate(slots[i].date);
+        at.setHours(settings.trainingTime.hour, settings.trainingTime.minute, 0, 0);
+        if (!t || at.getTime() <= now) continue;
+        await Notifications.scheduleNotificationAsync({
+          identifier: `${TRAIN_PREFIX}c${i}`,
+          content: { title: 'Сегодня тренировка', body: `По циклу ${cycleLabel(plan.cycle)}: ${t.name} · ${t.focus}. Открой ${BRAND} — веса уже подобраны.` },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+        });
+      }
+    } else if (settings.trainingReminder && plan) {
       for (let i = 0; i < 7; i++) {
         const t = plan.templates.find((x) => x.id === plan.schedule[i]);
         if (!t) continue;

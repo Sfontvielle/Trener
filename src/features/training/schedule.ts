@@ -1,6 +1,7 @@
 import type { DayOverride, Exercise, ISODate, WorkoutPlan, WorkoutSession, WorkoutTemplate } from '@/types';
 import { getExercise } from '@/data/exercises';
-import { addDays, weekdayIndex } from '@/utils/date';
+import { addDays } from '@/utils/date';
+import { isTrainingSlot } from './slots';
 import { plannedTemplateFor } from './today';
 
 /**
@@ -20,7 +21,7 @@ export interface ShiftProposal {
   overrides: DayOverride[];
 }
 
-const isSlot = (plan: WorkoutPlan, d: ISODate) => !!plan.schedule[weekdayIndex(d)];
+const isSlot = (plan: WorkoutPlan, d: ISODate) => isTrainingSlot(plan, d);
 const doneOn = (sessions: WorkoutSession[], d: ISODate) => sessions.some((s) => s.status === 'completed' && s.date === d);
 
 function muscles(t: WorkoutTemplate, customs: Exercise[]): Set<string> {

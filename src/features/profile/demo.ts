@@ -8,7 +8,8 @@ import { useNutrition } from '@/stores/nutrition';
 import { getExercise } from '@/data/exercises';
 import { LOCAL_FOODS } from '@/data/foods';
 import { macrosFor } from '@/features/nutrition/status';
-import { addDays, parseISODate, today, weekdayIndex } from '@/utils/date';
+import { addDays, parseISODate, today } from '@/utils/date';
+import { isTrainingSlot } from '@/features/training/slots';
 import { uid } from '@/utils/id';
 
 /**
@@ -53,7 +54,7 @@ export function seedDemoData(days = 28) {
   let rot = 0;
   for (let i = days; i >= 1; i--) {
     const date = addDays(d0, -i);
-    if (!plan.schedule[weekdayIndex(date)] || rand() < 0.12) continue;
+    if (!isTrainingSlot(plan, date) || rand() < 0.12) continue;
     const t = plan.templates.find((x) => x.id === plan.rotation[rot % plan.rotation.length])!;
     rot++;
     const start = parseISODate(date).getTime() + 18 * 3600000;

@@ -30,6 +30,7 @@ import { AccountSheet, accountSummary } from '@/features/account/AccountSheet';
 import { LOCATION_LABEL } from '@/features/profile/questionnaire';
 import { Image } from 'expo-image';
 import { pickAvatar, removeAvatar } from '@/services/avatar';
+import { cycleLabel, isValidCycle } from '@/features/training/slots';
 
 function prefsSummary(p: UserProfile): string {
   const t = getPrefs(p);
@@ -155,7 +156,7 @@ export default function Profile() {
       <SectionHeader title="Цели и тренировки" />
       <Group>
         <ListRow icon="flag-outline" title="Цель" value={GOAL_LABEL[profile.goal]} accessibilityLabel="Цель" hint={GOAL_LABEL[profile.goal]} onPress={() => open('goal')} />
-        <ListRow icon="barbell-outline" title="Тренировки" subtitle={`${profile.daysPerWeek}×/нед · ${profile.sessionMinutes} мин · ${LOCATION_LABEL[profile.location] ?? 'зал'}`} accessibilityLabel="Тренировки" hint={`${profile.daysPerWeek} раза в неделю, ${profile.sessionMinutes} минут`} onPress={() => open('training')} />
+        <ListRow icon="barbell-outline" title="Тренировки" subtitle={`${isValidCycle(profile.cycle) ? cycleLabel(profile.cycle) : `${profile.daysPerWeek}×/нед`} · ${profile.sessionMinutes} мин · ${LOCATION_LABEL[profile.location] ?? 'зал'}`} accessibilityLabel="Тренировки" hint={`${isValidCycle(profile.cycle) ? `Циклом ${cycleLabel(profile.cycle)}` : `${profile.daysPerWeek} раза в неделю`}, ${profile.sessionMinutes} минут`} onPress={() => open('training')} />
         <ListRow icon="options-outline" title="Предпочтения и ограничения" subtitle={prefsSummary(profile)} onPress={() => router.push('/training-prefs')} />
         <ListRow icon="disc-outline" title="Оборудование зала" subtitle={gymLine} onPress={() => setGymOpen(true)} />
         <ListRow icon="document-text-outline" title="Мой план и расчёты" subtitle="Программа, КБЖУ и как они посчитаны" onPress={() => router.push('/plan')} />

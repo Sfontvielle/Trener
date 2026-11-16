@@ -4,6 +4,7 @@ import { getPrefs } from './engine/prefs';
 import { progressStatus } from './engine/scoring';
 import { SPLIT_LABEL } from './engine/split';
 import { workingSets } from './progression';
+import { isValidCycle } from './slots';
 
 /**
  * Адаптация программы по фактическим данным. Программа не «выбирается навсегда»:
@@ -87,8 +88,9 @@ export function analyzeProgram(args: {
     });
   }
 
-  // 1б) Пропускаются конкретные дни недели — перенести тренировки на дни, когда получается
-  if (!out.length) {
+  // 1б) Пропускаются конкретные дни недели — перенести тренировки на дни, когда получается.
+  // У цикла («2 через 1») дни недели плавают — это правило к нему не относится
+  if (!out.length && !isValidCycle(plan.cycle)) {
     const missedBy: number[] = Array(7).fill(0);
     const doneBy: number[] = Array(7).fill(0);
     for (let d = addDays(ref, -27); d <= ref; d = addDays(d, 1)) {

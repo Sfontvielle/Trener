@@ -7,7 +7,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Field, NumberStepper } from '@/components/inputs';
 import { EQUIPMENT_LABEL } from '@/data/exercises';
 import { GOAL_LABEL, GOAL_SHORT, defaultRate } from '@/features/nutrition/targets';
-import { WEEKDAYS_SHORT } from '@/utils/date';
+import { addDays, formatDayShort, today, WEEKDAYS_SHORT, weekdayIndex } from '@/utils/date';
+import { CYCLES, cycleDaysPerWeek, cycleLabel, cyclePosition, cycleWeeklyCount, isValidCycle, newCycle } from '@/features/training/slots';
 import { haptic } from '@/services/haptics';
 import { healthOf, healthTraining } from './health';
 import { DURATION_OPTIONS, EQUIPMENT_CHOICES, LOCATION_OPTIONS, SLEEP_OPTIONS, STEP_BUCKETS, stepBucketOf } from './questionnaire';
@@ -245,6 +246,76 @@ export function DayPicker({ p, set }: { p: UserProfile; set: Setter }) {
   return <WeekdayChips days={days} onChange={(next) => set({ preferredDays: next, daysPerWeek: next.length })} min={2} />;
 }
 
+/**
+ * Расписание: по дням недели (чипы Пн…Вс) или циклом («2 через 1» — дни недели не важны).
+ * Цикл сдвигается одной кнопкой: «Сегодня тренировка» / «Сегодня отдых».
+ */
+export function SchedulePicker({ p, set }: { p: UserProfile; set: Setter }) {
+  const cycle = isValidCycle(p.cycle) ? p.cycle : null;
+  return (
+    <View style={{ gap: 10 }}>
+      <Segmented
+        items={[
+          { key: 'week', label: 'По дням недели' },
+          { key: 'cycle', label: 'Циклом' },
+        ]}
+        value={cycle ? 'cycle' : 'week'}
+        onChange={(k) => {
+          if (k === 'cycle' && !cycle) set({ cycle: newCycle(2, 1), daysPerWeek: cycleWeeklyCount({ on: 2, off: 1 }), preferredDays: [] });
+          if (k === 'week' && cycle) set({ cycle: null, preferredDays: [] });
+        }}
+      />
+      {cycle ? <CycleSettings cycle={cycle} set={set} /> : <DayPicker p={p} set={set} />}
+    </View>
+  );
+}
+
+function CycleSettings({ cycle, set }: { cycle: NonNullable<UserProfile['cycle']>; set: Setter }) {
+  const now = today();
+  const pos = cyclePosition(cycle, now);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(now, i));
+  const avg = String(Math.round(cycleDaysPerWeek(cycle) * 10) / 10).replace('.', ',');
+  return (
+    <View style={{ gap: 10 }} testID="cycle-settings">
+      <View style={styles.wrap} accessibilityRole="radiogroup">
+        {CYCLES.map((c) => (
+          <Chip key={c.label} label={c.label} active={c.on === cycle.on && c.off === cycle.off} onPress={() => set({ cycle: newCycle(c.on, c.off, cycle.anchor), daysPerWeek: cycleWeeklyCount(c) })} />
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }} accessible accessibilityLabel={`Ближайшие 7 дней: ${days.map((d) => `${WEEKDAYS_SHORT[weekdayIndex(d)]} ${cyclePosition(cycle, d).training ? 'тренировка' : 'отдых'}`).join(', ')}`}>
+        {days.map((d, i) => {
+          const on = cyclePosition(cycle, d).training;
+          return (
+            <View key={d} style={[styles.day, on && styles.dayOn]}>
+              <T v="small" style={{ fontWeight: '700', fontSize: 12 }} color={on ? colors.bg : colors.textDim}>
+                {i === 0 ? 'Сег' : WEEKDAYS_SHORT[weekdayIndex(d)]}
+              </T>
+            </View>
+          );
+        })}
+      </View>
+      <T v="small">
+        {cycleLabel(cycle)}: {cycle.on === 1 ? 'день' : `${cycle.on} дня`} тренировки, {cycle.off === 1 ? 'день' : `${cycle.off} дня`} отдыха по кругу — в среднем {avg} раза в неделю. Сегодня {pos.training ? `тренировка (${pos.pos + 1}-й день из ${cycle.on})` : 'отдых'}.
+      </T>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Chip label="Начать цикл сегодня" active={false} onPress={() => set({ cycle: newCycle(cycle.on, cycle.off, now) })} />
+        <Chip label="Сегодня отдых" active={false} onPress={() => set({ cycle: newCycle(cycle.on, cycle.off, addDays(now, 1)) })} />
+      </View>
+      <T v="small" style={{ fontSize: 12 }}>
+        Сбился цикл — «Начать цикл сегодня»: сегодня первый день тренировки; «Сегодня отдых»: цикл начнётся завтра. Следующая тренировка — {nextTrainingText(cycle, now)}.
+      </T>
+    </View>
+  );
+}
+
+function nextTrainingText(cycle: NonNullable<UserProfile['cycle']>, now: string): string {
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(now, i);
+    if (cyclePosition(cycle, d).training) return i === 1 ? 'завтра' : formatDayShort(d);
+  }
+  return '—';
+}
+
 /** Дни недели чипами. В анкете начинаем с пустого выбора (min 0), но больше 6 дней не даём — нужен отдых */
 export function WeekdayChips({ days, onChange, min = 0 }: { days: number[]; onChange: (days: number[]) => void; min?: number }) {
   const toggle = (d: number) => {
@@ -346,8 +417,8 @@ export function TrainingSection({ p, set, compact }: { p: UserProfile; set: Sett
       </View>
       {compact ? null : <NumberStepper label="Стаж тренировок, лет" value={p.trainingYears} onChange={(v) => set({ trainingYears: v })} step={0.5} decimals={1} min={0} max={40} />}
       <View style={{ gap: 8 }}>
-        <T v="caption">Дни тренировок</T>
-        <DayPicker p={p} set={set} />
+        <T v="caption">Расписание тренировок</T>
+        <SchedulePicker p={p} set={set} />
       </View>
       {compact ? null : (
       <>

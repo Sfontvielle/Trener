@@ -19,6 +19,7 @@ import { WORKOUT_COLORS } from './colors';
 import { estimateMinutes } from './planGenerator';
 import { openCustomBuilder } from './actions';
 import { startUserTemplate } from './planning';
+import { cycleLabel, isValidCycle } from './slots';
 
 /**
  * «Шаблоны» (эталон «Создание программы»): программа от RYNJI, свои шаблоны и «Создать с нуля». Свой шаблон —
@@ -38,7 +39,7 @@ export function TemplatesTab({ bottom }: { bottom: number }) {
             Программа от {BRAND}
           </T>
           <T v="small" style={{ marginTop: -4 }}>
-            {plan.splitLabel} · {plan.daysPerWeek} {plural(plan.daysPerWeek, 'тренировка', 'тренировки', 'тренировок')} в неделю
+            {plan.splitLabel} · {isValidCycle(plan.cycle) ? `циклом ${cycleLabel(plan.cycle)}` : `${plan.daysPerWeek} ${plural(plan.daysPerWeek, 'тренировка', 'тренировки', 'тренировок')} в неделю`}
           </T>
           <View style={styles.list}>
             {plan.templates.map((t, i) => (

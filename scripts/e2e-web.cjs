@@ -120,7 +120,13 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   await next();
   assert.match(await body(), /Сколько раз в неделю планируешь тренироваться\?/);
   assert.ok(await disabled(), 'частота не выбрана за человека');
+  // Цикл «2 через 1» без дней недели: выбор цикла снимает число, число — снимает цикл
+  await pg.getByRole('radio', { name: /^2 через 1/ }).click();
+  assert.equal((await pg.getByTestId('q-freq-value').innerText()).trim(), '—', 'при цикле число раз в неделю не показывается');
+  assert.match(await body(), /2 дня тренировки, 1 день отдыха — в среднем 4,7 раза в неделю/);
+  assert.ok(!(await disabled()), 'цикл — тоже ответ');
   await pg.getByLabel('4 раза в неделю', { exact: true }).click();
+  assert.match(await body(), /Например, 2 через 1/, 'число раз в неделю снимает цикл');
   await pg.getByLabel('Реже', { exact: true }).click();
   assert.equal((await pg.getByTestId('q-freq-value').innerText()).trim(), '3', '−/+ меняют частоту');
   await next();
@@ -1937,6 +1943,55 @@ const closeSheet = async (pg) => {
     await page.waitForTimeout(1000);
     assert.equal(await page.getByTestId('technique-3d-credit').count(), 0, 'жим — без атрибуции атласа');
     await setSex(before);
+  });
+
+  await check('71. Расписание циклом «2 через 1»: профиль → Циклом → план без дней недели; сдвиг цикла; обратно по дням недели', async () => {
+    const page2 = page;
+    await page2.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
+    await page2.waitForTimeout(1200);
+    await dismiss();
+    await page2.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page2.waitForTimeout(900);
+    await page2.getByText('Циклом', { exact: true }).click();
+    await page2.waitForTimeout(400);
+    const box = page2.getByTestId('cycle-settings');
+    assert.match(await box.innerText(), /2 через 1: 2 дня тренировки, день отдыха по кругу — в среднем 4,7 раза в неделю\. Сегодня тренировка \(1-й день из 2\)/);
+    await box.getByText('Сегодня отдых', { exact: true }).click();
+    await page2.waitForTimeout(300);
+    assert.match(await box.innerText(), /Сегодня отдых\.[\s\S]*Следующая тренировка — завтра/, 'сдвиг: сегодня отдых, цикл с завтра');
+    await box.getByText('Начать цикл сегодня', { exact: true }).click();
+    await page2.getByText('Сохранить и пересчитать', { exact: true }).click();
+    await page2.waitForTimeout(1500);
+    const plan = await page2.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
+    assert.equal(plan.cycle.on, 2);
+    assert.equal(plan.cycle.off, 1);
+    assert.ok(plan.schedule.every((x) => x === null), 'дни недели не используются');
+    await page2.goto(`${URL}/training?seg=program`, { waitUntil: 'networkidle' });
+    await page2.waitForTimeout(1200);
+    await dismiss();
+    await shot('training-cycle');
+    // Неделя: тренировки только в дни цикла (сегодня и завтра — да, послезавтра — отдых)
+    const week = await page2.evaluate(() => document.body.innerText);
+    const dd = (k) => { const d = new Date(); d.setDate(d.getDate() + k); return d; };
+    const sameWeek = (k) => { const a = dd(0), b = dd(k); const mon = (x) => { const y = new Date(x); y.setDate(y.getDate() - ((y.getDay() + 6) % 7)); return y.toDateString(); }; return mon(a) === mon(b); };
+    const labelOf = (k) => `${['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][dd(k).getDay()]}\n${dd(k).getDate()}\n`;
+    const agenda = week.slice(week.indexOf('тренировок'));
+    for (const k of [0, 1, 2, 3]) if (sameWeek(k)) assert.equal(agenda.includes(labelOf(k)), k !== 2, `день +${k}: ${k === 2 ? 'отдых' : 'тренировка'}`);
+    await page2.goto(`${URL}/training?seg=plan`, { waitUntil: 'networkidle' });
+    await page2.waitForTimeout(1500);
+    await dismiss();
+    assert.match(await page2.evaluate(() => document.body.innerText), /Циклом 2 через 1/);
+    // обратно — по дням недели
+    await page2.goto(`${URL}/profile`, { waitUntil: 'networkidle' });
+    await page2.waitForTimeout(1200);
+    await page2.getByRole('button', { name: 'Тренировки', exact: true }).click();
+    await page2.waitForTimeout(900);
+    await page2.getByText('По дням недели', { exact: true }).click();
+    await page2.getByText('Сохранить и пересчитать', { exact: true }).click();
+    await page2.waitForTimeout(1500);
+    const back = await page2.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
+    assert.ok(!back.cycle, 'цикл снят');
+    assert.ok(back.schedule.some(Boolean), 'дни недели вернулись');
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

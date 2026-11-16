@@ -31,6 +31,13 @@ export type WorkStyle = 'desk' | 'mixed' | 'physical';
 export type TrainingTime = 'morning' | 'day' | 'evening' | 'any';
 export type WeightUnit = 'kg' | 'lb';
 
+/** Цикл тренировок: on дней тренировок, затем off дней отдыха, по кругу от даты anchor (первый тренировочный день) */
+export interface TrainingCycle {
+  on: number;
+  off: number;
+  anchor: ISODate;
+}
+
 export interface UserProfile {
   name: string;
   sex: Sex;
@@ -66,6 +73,8 @@ export interface UserProfile {
   preferredTime: TrainingTime;
   /** Предпочтительные дни тренировок, 0 = Пн … 6 = Вс */
   preferredDays: number[];
+  /** Тренировки циклом без привязки к дням недели («2 через 1»). Если задан — preferredDays не используются */
+  cycle?: TrainingCycle | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -311,8 +320,10 @@ export interface WorkoutPlan {
   /** Целевые рабочие подходы в неделю на мышечную группу */
   weeklySetsTarget: [number, number];
   templates: WorkoutTemplate[];
-  /** Расписание недели: индекс дня (0=Пн) → id шаблона или null (отдых) */
+  /** Расписание недели: индекс дня (0=Пн) → id шаблона или null (отдых). При цикле — все null, дни считает cycle */
   schedule: (ID | null)[];
+  /** Тренировки циклом («2 через 1») вместо дней недели. Какой день тренировочный — slots.ts */
+  cycle?: TrainingCycle | null;
   /** Порядок ротации шаблонов (если тренировка пропущена — следующая по очереди) */
   rotation: ID[];
   rationale: CalcStep[];

@@ -10,7 +10,8 @@ import { PrimaryAction } from '@/components/ds';
 import { FadeIn } from '@/components/motion';
 import { DrumPicker } from '@/components/DrumPicker';
 import { RulerPicker } from '@/components/RulerPicker';
-import { ChoiceCard, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
+import { ChoiceCard, CyclePicker, Dropdown, FrequencyPicker, SexCards, StageHeader, StageTitle } from '@/features/onboarding/parts';
+import { cycleWeeklyCount } from '@/features/training/slots';
 import { PlanReady } from '@/features/onboarding/PlanReady';
 import {
   ACTIVITY_OPTIONS,
@@ -257,8 +258,9 @@ export default function Onboarding() {
         {cur === 'freq' ? (
           <>
             <StageTitle title="Сколько раз в неделю планируешь тренироваться?" />
-            <View style={{ marginTop: space.lg }}>
-              <FrequencyPicker value={draft.daysPerWeek} onChange={(v) => update({ daysPerWeek: v })} />
+            <View style={{ marginTop: space.lg, gap: space.xl }}>
+              <FrequencyPicker value={draft.cycle ? undefined : draft.daysPerWeek} onChange={(v) => update({ daysPerWeek: v, cycle: null })} />
+              <CyclePicker value={draft.cycle} onChange={(c) => update({ cycle: c, daysPerWeek: cycleWeeklyCount(c) })} />
             </View>
           </>
         ) : null}

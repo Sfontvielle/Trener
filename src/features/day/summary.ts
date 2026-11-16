@@ -4,7 +4,7 @@ import { getExercise } from '@/data/exercises';
 import { historyFor, isPersonalRecord, PR_HISTORY, workingSets } from '@/features/training/progression';
 import { sumFiber, sumMacros } from '@/features/nutrition/status';
 import { sleepMinutesOf } from '@/features/science/recovery';
-import { weekdayIndex } from '@/utils/date';
+import { isTrainingSlot, slotTemplateId } from '@/features/training/slots';
 import { sessionKind, type WorkoutKind } from '@/features/training/journal';
 
 /**
@@ -136,7 +136,7 @@ export function buildDaySummary(date: ISODate, src: DaySources): DaySummary {
     .map((r) => ({ id: r.id, lab: r.lab, count: r.results.length, outOfRange: r.results.filter((x) => x.flag || (x.refHigh !== undefined && x.value > x.refHigh) || (x.refLow !== undefined && x.value < x.refLow)).length }));
   const bp: DaySummary['bp'] = (src.bp ?? []).filter((x) => x.date === date).map((x) => ({ systolic: x.systolic, diastolic: x.diastolic, pulse: x.pulse }));
 
-  const tplId = src.plan?.schedule[weekdayIndex(date)] ?? null;
+  const tplId = src.plan ? slotTemplateId(src.plan, date) : null;
   const plannedName = tplId ? src.plan?.templates.find((t) => t.id === tplId)?.name : undefined;
   const hasRecord = workouts.some((x) => x.prs > 0);
   return {
@@ -170,7 +170,7 @@ export function dayMarkers(dates: ISODate[], src: DaySources): Record<ISODate, D
     out[d] = {
       trained,
       record: trained ? buildDaySummary(d, src).hasRecord : false,
-      rest: !trained && !!src.plan && !src.plan.schedule[weekdayIndex(d)],
+      rest: !trained && !!src.plan && !isTrainingSlot(src.plan, d),
       data: trained || dataDays.has(d),
       ...(last ? { kind: sessionKind(last, src.customs) } : {}),
     };

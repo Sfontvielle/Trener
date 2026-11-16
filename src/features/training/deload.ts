@@ -1,6 +1,7 @@
 import type { DailyCheckIn, ISODate, PlanAdjustment, WorkoutPlan, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
-import { addDays, daysBetween, today, weekdayIndex } from '@/utils/date';
+import { addDays, daysBetween, today } from '@/utils/date';
+import { isTrainingSlot } from './slots';
 import { e1rm, historyFor } from './progression';
 
 /**
@@ -89,7 +90,7 @@ export function deloadDates(plan: WorkoutPlan, ref: ISODate = today()): ISODate[
   const out: ISODate[] = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(ref, i);
-    if (plan.schedule[weekdayIndex(d)]) out.push(d);
+    if (isTrainingSlot(plan, d)) out.push(d);
   }
   return out;
 }

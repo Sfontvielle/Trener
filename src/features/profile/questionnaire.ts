@@ -2,6 +2,8 @@ import type { ActivityLevel, Equipment, ExperienceLevel, GoalType, Sex, Training
 import { EMPTY_HEALTH } from './health';
 import { goalPresets, recommendedPreset } from '@/features/coach/decisions/goals';
 import { defaultRate } from '@/features/nutrition/targets';
+import { cycleWeeklyCount, newCycle } from '@/features/training/slots';
+import { toISODate } from '@/utils/date';
 
 /**
  * Анкета первого запуска — 5 этапов (эталоны onboarding/02–06):
@@ -21,8 +23,10 @@ export interface QDraft {
   weightKg?: number;
   goal?: GoalType;
   level?: ExperienceLevel;
-  /** Тренировок в неделю, 2–6 */
+  /** Тренировок в неделю, 2–6 (при цикле — округлённое среднее, для подбора сплита) */
   daysPerWeek?: number;
+  /** Тренировки циклом без дней недели («2 через 1»); null/нет — по числу раз в неделю */
+  cycle?: { on: number; off: number } | null;
   /** Старые черновики: дни недели (0 = Пн … 6 = Вс) — переводятся в daysPerWeek */
   days?: number[];
   sessionMinutes?: number;
@@ -205,7 +209,7 @@ export function draftToProfile(d: QDraft, now: number): UserProfile | null {
     ratePctPerWeek: rec?.ratePct ?? defaultRate(goal, level),
     level,
     trainingYears: LEVEL_OPTIONS.find((x) => x.v === level)!.years,
-    daysPerWeek: d.daysPerWeek!,
+    daysPerWeek: d.cycle ? cycleWeeklyCount(d.cycle) : d.daysPerWeek!,
     sessionMinutes: d.sessionMinutes!,
     location: d.location!,
     equipment: [...d.equipment],
@@ -222,6 +226,8 @@ export function draftToProfile(d: QDraft, now: number): UserProfile | null {
     preferredTime: 'any',
     // дни расставляет план (DEFAULT_DAYS под частоту); поменять — в Профиле
     preferredDays: [],
+    // цикл начинается в день завершения анкеты: сегодня — первый день тренировок
+    cycle: d.cycle ? newCycle(d.cycle.on, d.cycle.off, toISODate(new Date(now))) : null,
     createdAt: now,
     updatedAt: now,
   };

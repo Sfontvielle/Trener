@@ -1,6 +1,7 @@
 import type { CalcStep, GoalType, NutritionTarget, UserProfile } from '@/types';
 import { clamp, round } from '@/utils/format';
 import { BRAND } from '@/config/brand';
+import { cycleDaysPerWeek, cycleLabel, isValidCycle } from '@/features/training/slots';
 
 /**
  * Стартовый расчёт КБЖУ — только начальная оценка (initial estimate). Дальше калории корректируются по
@@ -69,8 +70,13 @@ export function nonTrainingFactor(p: Pick<UserProfile, 'stepsPerDay' | 'workStyl
 }
 
 /** Средний расход на силовые, ккал/день (≈0.07 ккал/кг/мин сверх покоя) */
-export function trainingKcalPerDay(p: Pick<UserProfile, 'daysPerWeek' | 'sessionMinutes'>, weightKg: number): number {
-  return (p.daysPerWeek * p.sessionMinutes * 0.07 * weightKg) / 7;
+export function trainingKcalPerDay(p: Pick<UserProfile, 'daysPerWeek' | 'sessionMinutes' | 'cycle'>, weightKg: number): number {
+  return (trainingsPerWeek(p) * p.sessionMinutes * 0.07 * weightKg) / 7;
+}
+
+/** Тренировок в неделю: по дням недели — их число, циклом «2 через 1» — в среднем 4,67 */
+function trainingsPerWeek(p: Pick<UserProfile, 'daysPerWeek' | 'cycle'>): number {
+  return isValidCycle(p.cycle) ? cycleDaysPerWeek(p.cycle) : p.daysPerWeek;
 }
 
 /** Вес для расчёта белка: при высоком ИМТ используем «референсный» вес */
@@ -107,7 +113,7 @@ export function computeNutritionTarget(
   steps.push({ label: 'Бытовая активность', value: `×${nt.factor.toFixed(2)}`, note: nt.note });
 
   const train = trainingKcalPerDay(profile, w);
-  steps.push({ label: 'Тренировки', value: `+${round(train, 10)} ккал/день`, note: `${profile.daysPerWeek}× по ~${profile.sessionMinutes} мин, в среднем на день` });
+  steps.push({ label: 'Тренировки', value: `+${round(train, 10)} ккал/день`, note: `${isValidCycle(profile.cycle) ? `${cycleLabel(profile.cycle)} (~${String(Math.round(cycleDaysPerWeek(profile.cycle) * 10) / 10).replace('.', ',')}× в неделю)` : `${profile.daysPerWeek}×`} по ~${profile.sessionMinutes} мин, в среднем на день` });
 
   let tdee = neat + train;
   let source: NutritionTarget['source'] = 'formula';

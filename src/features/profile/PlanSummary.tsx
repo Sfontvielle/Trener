@@ -3,11 +3,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { CalcStep, NutritionTarget, WorkoutPlan } from '@/types';
 import { colors, radius, space, themed } from '@/theme';
 import { Card, Icon, T, linkHit } from '@/components/ui';
-import { WEEKDAYS_SHORT } from '@/utils/date';
+import { addDays, today, WEEKDAYS_SHORT, weekdayIndex } from '@/utils/date';
 import { fmtNum } from '@/utils/format';
 import { VM_LABEL } from '@/features/training/engine/muscles';
 import { SplitCompareButton } from '@/features/training/SplitCompare';
 import { BRAND } from '@/config/brand';
+import { isValidCycle, scheduleLabel, slotTemplateId } from '@/features/training/slots';
 
 export function MacroTiles({ target }: { target: NutritionTarget }) {
   const items = [
@@ -73,14 +74,20 @@ export function CalcSteps({ steps, title = 'Как посчитано', footer =
 }
 
 export function WeekStrip({ plan }: { plan: WorkoutPlan }) {
+  // По дням недели — Пн…Вс; циклом («2 через 1») — ближайшие 7 дней с сегодняшнего, дни недели плавают
+  const cycle = isValidCycle(plan.cycle);
+  const start = today();
+  const cells = cycle
+    ? Array.from({ length: 7 }, (_, i) => { const d = addDays(start, i); return { key: d, label: i === 0 ? 'Сег' : WEEKDAYS_SHORT[weekdayIndex(d)], tid: slotTemplateId(plan, d) }; })
+    : plan.schedule.map((tid, i) => ({ key: String(i), label: WEEKDAYS_SHORT[i], tid }));
   return (
     <View style={{ flexDirection: 'row', gap: 6 }}>
-      {plan.schedule.map((tid, i) => {
+      {cells.map(({ key, label, tid }) => {
         const t = plan.templates.find((x) => x.id === tid);
         return (
-          <View key={i} style={[styles.day, !t && { backgroundColor: 'transparent' }]}>
+          <View key={key} style={[styles.day, !t && { backgroundColor: 'transparent' }]}>
             <T v="small" style={{ fontSize: 11 }}>
-              {WEEKDAYS_SHORT[i]}
+              {label}
             </T>
             <T v="small" color={t ? colors.text : colors.muted} style={{ fontSize: 11, fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit>
               {t ? t.name.replace('Всё тело', 'Тело').replace('Конечности', 'Конеч.').replace('Жимовая', 'Жим').replace('Тяговая', 'Тяга') : '—'}
@@ -107,7 +114,7 @@ export function PlanOverview({ plan, target }: { plan: WorkoutPlan; target: Nutr
       <Card>
         <T v="caption">Тренировки</T>
         <T v="h2" style={{ marginTop: 6 }}>
-          {plan.splitLabel} · {plan.daysPerWeek}× в неделю
+          {plan.splitLabel} · {scheduleLabel(plan)}
         </T>
         <T v="small">
           {plan.sessionMinutes[0]}–{plan.sessionMinutes[1]} мин · {plan.weeklySetsTarget[0]}–{plan.weeklySetsTarget[1]} рабочих подходов в неделю на группу

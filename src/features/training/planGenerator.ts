@@ -25,6 +25,7 @@ import { estimateMinutes } from './engine/time';
 import { substitutesFor } from './engine/substitute';
 import { healthTraining } from '@/features/profile/health';
 import { BRAND } from '@/config/brand';
+import { cycleDaysPerWeek, cycleLabel, isValidCycle, plannedPerWeek } from './slots';
 
 export { estimateMinutes };
 
@@ -102,6 +103,19 @@ export function rotationFor(split: SplitType, days: number): string[] {
 }
 
 const DEFAULT_DAYS: Record<number, number[]> = { 1: [2], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
+
+/** Дни недели тренировок (0 = Пн): выбранные пользователем или стандартные под частоту */
+function weekDays(p: UserProfile): number[] {
+  return p.preferredDays.length === p.daysPerWeek ? [...p.preferredDays].sort() : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
+}
+
+/** Неделя по дням: шаблоны по очереди на дни тренировок; при цикле — пусто (дни считает slots.ts) */
+function weekSchedule(p: UserProfile, ids: string[]): (string | null)[] {
+  const schedule: (string | null)[] = Array(7).fill(null);
+  if (isValidCycle(p.cycle) || !ids.length) return schedule;
+  weekDays(p).forEach((d, i) => (schedule[d] = ids[i % ids.length]));
+  return schedule;
+}
 
 /** Диапазон для отображения «цель на крупную группу» */
 export function weeklySetsTarget(p: UserProfile): [number, number] {
@@ -186,9 +200,11 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
   const legsRestricted = pool.filter((e) => e.mechanic === 'compound' && (e.pattern === 'squat' || e.pattern === 'hinge' || e.pattern === 'lunge')).length < 4;
   const choice = chooseSplit(p, prefs, sessions, recovery, { legsRestricted });
   const keys = rotationFor(choice.split, p.daysPerWeek);
-  const days = p.preferredDays.length === p.daysPerWeek ? [...p.preferredDays].sort() : DEFAULT_DAYS[p.daysPerWeek] ?? DEFAULT_DAYS[3];
+  const cycle = isValidCycle(p.cycle) ? p.cycle : null;
+  // Цикл «2 через 1» — в среднем 4,67 тренировки в неделю; объём на каждый шаблон считается от этой частоты
+  const perWeek = cycle ? cycleDaysPerWeek(cycle) : weekDays(p).length;
   const nTemplates = keys.length;
-  const occPerTemplate = days.length / nTemplates;
+  const occPerTemplate = perWeek / nTemplates;
   const notes: string[] = [];
   const limits = setLimits(prefs.setStyle, p.level);
   const health = healthTraining(p);
@@ -372,8 +388,7 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
     m.pe.why = parts.join(' · ');
   }
 
-  const schedule: (string | null)[] = Array(7).fill(null);
-  days.forEach((d, i) => (schedule[d] = templates[i % templates.length].id));
+  const schedule = weekSchedule(p, templates.map((t) => t.id));
 
   const occMap = Object.fromEntries(templates.map((t) => [t.id, occPerTemplate]));
   const planned = plannedFineVolume(templates, occMap, customs);
@@ -389,6 +404,7 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
   const range = weeklySetsTarget(p);
   const rationale: CalcStep[] = [
     { label: 'Сплит', value: SPLIT_LABEL[choice.split], note: choice.reasons.join('; ') },
+    ...(cycle ? [{ label: 'Расписание', value: `${cycleLabel(cycle)}, без привязки к дням недели`, note: `в среднем ${fmtOcc(perWeek)} тренировки в неделю; шаблоны идут по кругу` }] : []),
     { label: 'Объём', value: `~${targets.chest} подх./нед на грудь, ~${targets.quads} на квадрицепс`, note: `цели по каждой группе — от уровня (${LEVEL_LABEL[p.level]}) и цели${prefs.priorityMuscles.length ? '; приоритетные группы +30%' : ''}` },
     { label: 'Восстановление', value: recovery.factor === 1 ? 'стандартный объём' : `объём ×${String(recovery.factor).replace('.', ',')}`, note: recovery.reasons.join('; ') || 'по фактическим данным' },
     { label: 'Подходы', value: prefs.setStyle === 'auto' ? `${BRAND} решает` : `обычно ${prefs.setStyle}`, note: 'недельная цель группы ÷ число упражнений на неё в неделю' },
@@ -407,6 +423,7 @@ export function generatePlan(p: UserProfile, opts: GeneratePlanOptions = {}): Wo
     weeklySetsTarget: range,
     templates,
     schedule,
+    cycle,
     rotation: templates.map((t) => t.id),
     rationale,
     createdAt: Date.now(),
@@ -444,7 +461,12 @@ function keepCustom(previous: WorkoutPlan, p: UserProfile, prefs: TrainingPrefer
       .filter((x): x is PlannedExercise => !!x),
   }));
   templates.forEach((t) => (t.estMinutes = estimateMinutes(t.exercises, customs)));
-  return { ...previous, templates, splitChoice: { preference: 'custom', reasons: ['Свой формат: шаблоны изменяются только вручную'] }, notes, createdAt: Date.now() };
+  const cycle = isValidCycle(p.cycle) ? p.cycle : null;
+  // Переход цикл ↔ дни недели: свой формат сохраняет шаблоны, но дни пересчитываются
+  const keepWeek = !cycle && !previous.cycle && previous.schedule.some(Boolean);
+  const schedule = keepWeek ? previous.schedule : weekSchedule(p, previous.rotation);
+  const daysPerWeek = keepWeek ? previous.daysPerWeek : p.daysPerWeek;
+  return { ...previous, templates, schedule, cycle, daysPerWeek, splitChoice: { preference: 'custom', reasons: ['Свой формат: шаблоны изменяются только вручную'] }, notes, createdAt: Date.now() };
 }
 
 /** Аналоги для замены (с учётом ограничений и предпочтений) */
@@ -454,7 +476,7 @@ export function alternativesFor(exerciseId: string, p: UserProfile, customs: Exe
 
 /** Объём по группам из текущего плана (для экранов и AI) */
 export function planVolume(plan: WorkoutPlan, customs: Exercise[] = []): Record<VolumeMuscle, number> {
-  const occ = plan.schedule.filter(Boolean).length / Math.max(1, plan.templates.length);
+  const occ = plannedPerWeek(plan) / Math.max(1, plan.templates.length);
   return plannedFineVolume(plan.templates, Object.fromEntries(plan.templates.map((t) => [t.id, occ])), customs);
 }
 

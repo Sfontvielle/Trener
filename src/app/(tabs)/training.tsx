@@ -32,6 +32,7 @@ import { useCheckins } from '@/stores/checkins';
 import { confirm, toast } from '@/components/Dialog';
 import { Sheet } from '@/components/Sheet';
 import { addDays, formatDayShort, plural, startOfWeek, today, weekdayIndex as weekdayIndexOf } from '@/utils/date';
+import { cycleLabel, isValidCycle, scheduleLabel, slotTemplateId } from '@/features/training/slots';
 import { fmtNum } from '@/utils/format';
 import { sessionStats } from '@/features/training/journal';
 import { MyWorkouts, EMPTY_FILTER, isFiltered, type HistoryFilter } from '@/features/training/MyWorkouts';
@@ -177,7 +178,7 @@ function WeekTab({ bottom, openPlan }: { bottom: number; openPlan?: boolean }) {
                 Неделя с −40% подходов и запасом 3–4 повтора снимает накопленную усталость — после неё веса обычно снова растут.
               </T>
               {deloadDates(plan).map((dd) => {
-                const t = plan.templates.find((x) => x.id === plan.schedule[weekdayIndexOf(dd)]);
+                const t = plan.templates.find((x) => x.id === slotTemplateId(plan, dd));
                 const sets = t ? scaleSets(t.exercises.map((e) => e.sets), DELOAD_FACTOR).reduce((a, b) => a + b, 0) : 0;
                 const was = t ? t.exercises.reduce((a, e) => a + e.sets, 0) : 0;
                 return (
@@ -483,7 +484,7 @@ function PlanContent({ onDone }: { onDone: () => void }) {
             <T v="caption">Твой план</T>
             <T v="display" style={{ fontSize: 34 }}>{plan.splitLabel}</T>
             <T v="bodyDim">
-              {plan.daysPerWeek} {plan.daysPerWeek === 1 ? 'тренировка' : plan.daysPerWeek < 5 ? 'тренировки' : 'тренировок'} в неделю · {plan.sessionMinutes[0]}–{plan.sessionMinutes[1]} мин
+              {isValidCycle(plan.cycle) ? `Циклом ${cycleLabel(plan.cycle)}` : `${plan.daysPerWeek} ${plan.daysPerWeek === 1 ? 'тренировка' : plan.daysPerWeek < 5 ? 'тренировки' : 'тренировок'} в неделю`} · {plan.sessionMinutes[0]}–{plan.sessionMinutes[1]} мин
               {prefs.excluded.length ? ` · исключено упражнений: ${prefs.excluded.length}` : ''}
             </T>
             <View style={{ marginTop: space.sm }}>
@@ -536,7 +537,7 @@ function PlanContent({ onDone }: { onDone: () => void }) {
             <Card style={{ gap: 8 }}>
               <T v="h3">{shown.splitLabel}: так будет выглядеть неделя</T>
               <T v="small">
-                {shown.daysPerWeek}× в неделю · {shown.sessionMinutes[0]}–{shown.sessionMinutes[1]} мин · твои исключения и ограничения учтены
+                {scheduleLabel(shown)} · {shown.sessionMinutes[0]}–{shown.sessionMinutes[1]} мин · твои исключения и ограничения учтены
               </T>
               {cand ? (
                 <View style={{ gap: 2 }}>

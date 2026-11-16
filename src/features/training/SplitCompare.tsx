@@ -6,6 +6,7 @@ import { Button, Icon, T } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { SPLIT_LABEL } from './engine/split';
 import { BRAND } from '@/config/brand';
+import { cycleLabel, isValidCycle } from './slots';
 
 /**
  * «Сравнить с другими вариантами» / «Почему не Full Body?».
@@ -20,7 +21,7 @@ export function SplitCompareButton({ plan, style }: { plan: WorkoutPlan; style?:
   return (
     <>
       <Button title={fb ? 'Почему не «Всё тело»?' : 'Сравнить с другими вариантами'} icon="git-compare-outline" size="sm" variant="secondary" onPress={() => setOpen(true)} style={style} />
-      <Sheet visible={open} onClose={() => setOpen(false)} title="Варианты программы" subtitle={`${plan.daysPerWeek} дн. в неделю · сравнение под твои параметры`}>
+      <Sheet visible={open} onClose={() => setOpen(false)} title="Варианты программы" subtitle={`${isValidCycle(plan.cycle) ? `Циклом ${cycleLabel(plan.cycle)}` : `${plan.daysPerWeek} дн. в неделю`} · сравнение под твои параметры`}>
         <View style={{ gap: 10 }}>
           {[...cands].sort((a, b) => (a.split === chosen ? -1 : b.split === chosen ? 1 : b.score - a.score)).map((c) => (
             <Item key={c.split} c={c} chosen={c.split === chosen} />

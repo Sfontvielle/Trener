@@ -168,3 +168,11 @@ test('Главная: приветствие по времени и шаги з�
   assert.equal(stepsAverage(w), Math.round((6840 + 9000 + 12000) / 3));
   assert.equal(stepsAverage(w.slice(5)), null, 'меньше трёх дней — без среднего');
 });
+
+test('Анкета: цикл «2 через 1» → профиль с циклом от дня анкеты', () => {
+  const now = new Date(2026, 10, 16, 12).getTime();
+  const p = draftToProfile({ ...full, cycle: { on: 2, off: 1 }, daysPerWeek: 5 }, now)!;
+  assert.deepEqual(p.cycle, { on: 2, off: 1, anchor: '2026-11-16' }, 'сегодня — первый день тренировок');
+  assert.equal(p.daysPerWeek, 5, '4,67 в среднем → 5 для подбора сплита');
+  assert.equal(draftToProfile(full, now)!.cycle, null, 'без цикла — по дням недели');
+});

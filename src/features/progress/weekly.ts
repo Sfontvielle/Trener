@@ -3,7 +3,8 @@ import { getExercise } from '@/data/exercises';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { progressStatus } from '@/features/training/engine/scoring';
 import { substitutesFor } from '@/features/training/engine/substitute';
-import { addDays, startOfWeek, today, weekdayIndex } from '@/utils/date';
+import { addDays, startOfWeek, today } from '@/utils/date';
+import { isTrainingSlot } from '@/features/training/slots';
 import { sessionVolume } from '@/features/training/analytics';
 import { weightTrend } from './weightTrend';
 
@@ -38,7 +39,7 @@ export function lastWeekSummary(args: {
 
   const done = args.sessions.filter((s) => s.status === 'completed' && inWeek(s.date));
   let planned = 0;
-  for (let d = from; d <= to; d = addDays(d, 1)) if (args.plan?.schedule[weekdayIndex(d)]) planned++;
+  for (let d = from; d <= to; d = addDays(d, 1)) if (args.plan && isTrainingSlot(args.plan, d)) planned++;
   const sets = done.reduce((a, s) => a + sessionVolume(s).sets, 0);
 
   const byDay = new Map<ISODate, { kcal: number; protein: number }>();

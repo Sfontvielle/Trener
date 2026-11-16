@@ -15,8 +15,8 @@ import { computeNutritionTarget, GOAL_LABEL, retargetForWeight, shiftTargetKcal 
 import { latestTrendWeight } from '@/features/progress/weightTrend';
 import { today } from '@/utils/date';
 
-const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays', 'training', 'health', 'limitations'];
-const NUTRITION_KEYS: (keyof UserProfile)[] = ['goal', 'ratePctPerWeek', 'sex', 'age', 'heightCm', 'weightKg', 'stepsPerDay', 'workStyle', 'activity', 'daysPerWeek', 'sessionMinutes'];
+const TRAINING_KEYS: (keyof UserProfile)[] = ['goal', 'level', 'daysPerWeek', 'sessionMinutes', 'location', 'equipment', 'avoidExerciseIds', 'preferredDays', 'cycle', 'training', 'health', 'limitations'];
+const NUTRITION_KEYS: (keyof UserProfile)[] = ['goal', 'ratePctPerWeek', 'sex', 'age', 'heightCm', 'weightKg', 'stepsPerDay', 'workStyle', 'activity', 'daysPerWeek', 'cycle', 'sessionMinutes'];
 
 /**
  * Единая точка изменения профиля: сохраняет профиль и пересчитывает связанные части системы.

@@ -1,6 +1,7 @@
 import type { Exercise, ISODate, MuscleGroup, WorkoutPlan, WorkoutSession } from '@/types';
 import { getExercise } from '@/data/exercises';
-import { addDays, daysBetween, today, weekdayIndex } from '@/utils/date';
+import { addDays, daysBetween, today } from '@/utils/date';
+import { isTrainingSlot } from './slots';
 import { bestSet, e1rm, workingSets } from './progression';
 import { fmtWeight } from '@/utils/format';
 
@@ -45,7 +46,7 @@ export function adherence(sessions: WorkoutSession[], plan: WorkoutPlan | null, 
   if (!plan) return { pct: null, done: 0, planned: 0, workoutsDone: 0, workoutsPlanned: 0 };
   const from = addDays(ref, -days + 1);
   let workoutsPlanned = 0;
-  for (let d = from; d <= ref; d = addDays(d, 1)) if (plan.schedule[weekdayIndex(d)]) workoutsPlanned++;
+  for (let d = from; d <= ref; d = addDays(d, 1)) if (isTrainingSlot(plan, d)) workoutsPlanned++;
   const done = completed(sessions).filter((s) => s.date >= from && s.date <= ref);
   const workoutsDone = done.length;
   let setsDone = 0;

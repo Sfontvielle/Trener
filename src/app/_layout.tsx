@@ -43,7 +43,7 @@ function Gate() {
   const plan = usePlan((s) => s.plan);
 
   // Напоминания всегда соответствуют текущему плану (смена расписания → перепланирование)
-  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, settings.weeklyReview, settings.weighInReminder, plan?.schedule, plan?.templates.map((t) => t.name)]);
+  const reminderKey = JSON.stringify([settings.morningReminder, settings.morningTime, settings.trainingReminder, settings.trainingTime, settings.weeklyReview, settings.weighInReminder, plan?.schedule, plan?.cycle, plan?.templates.map((t) => t.name)]);
   const hasProfile = !!profile;
   useEffect(() => {
     if (hydrated && hasProfile) void syncReminders(useProfile.getState().settings, usePlan.getState().plan);

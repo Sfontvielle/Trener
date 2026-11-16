@@ -1,5 +1,6 @@
 import type { DayOverride, ISODate, ReadinessResult, WorkoutPlan, WorkoutSession, WorkoutTemplate } from '@/types';
-import { addDays, weekdayIndex } from '@/utils/date';
+import { addDays } from '@/utils/date';
+import { slotTemplateId } from './slots';
 import { estimateMinutes } from './planGenerator';
 import { scaleSets } from './scale';
 
@@ -24,7 +25,8 @@ export interface TodayWorkout {
  * чтобы пропуск не «съедал» тренировку (Pull не выпадет, если пропустил вторник).
  */
 export function plannedTemplateFor(date: ISODate, plan: WorkoutPlan, sessions: WorkoutSession[]): WorkoutTemplate | undefined {
-  if (!plan.schedule[weekdayIndex(date)]) return undefined;
+  const id = slotTemplateId(plan, date);
+  if (!id) return undefined;
   const lastPlan = sessions
     .filter((s) => s.status === 'completed' && s.source === 'plan' && s.templateId && s.date < date)
     .sort((a, b) => b.startedAt - a.startedAt)[0];
@@ -33,7 +35,6 @@ export function plannedTemplateFor(date: ISODate, plan: WorkoutPlan, sessions: W
     const idx = rot.indexOf(lastPlan.templateId);
     return plan.templates.find((t) => t.id === rot[(idx + 1) % rot.length]);
   }
-  const id = plan.schedule[weekdayIndex(date)];
   return plan.templates.find((t) => t.id === id);
 }
 

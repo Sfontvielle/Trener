@@ -20,6 +20,7 @@ import { reviewCalories } from '@/features/nutrition/adaptive';
 import { weeklyRate, weightTrend } from '@/features/progress/weightTrend';
 import { adherence, progressRows, sessionVolume, setsByGroup } from '@/features/training/analytics';
 import { resolveToday, MODE_LABEL } from '@/features/training/today';
+import { cycleLabel, isValidCycle, scheduleLabel } from '@/features/training/slots';
 import { EQUIPMENT_LABEL, GROUP_LABEL, getExercise } from '@/data/exercises';
 import { LOCAL_FOODS } from '@/data/foods';
 import { addDays, formatHours, today, WEEKDAYS_SHORT, toISODate } from '@/utils/date';
@@ -81,7 +82,7 @@ export function buildCoachContext(i: CoachInputs): string {
 
   sec('USER PROFILE');
   L.push(`${p.name}, ${p.sex === 'male' ? 'муж' : 'жен'}, ${p.age} лет, рост ${p.heightCm} см, вес (профиль) ${p.weightKg} кг`);
-  L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${p.daysPerWeek} трен/нед по ~${p.sessionMinutes} мин; место: ${LOCATION_LABEL[p.location] ?? 'зал'}`);
+  L.push(`Уровень: ${LEVEL_LABEL[p.level]}, стаж ${p.trainingYears} г.; ${isValidCycle(p.cycle) ? `циклом ${cycleLabel(p.cycle)} (без привязки к дням недели)` : `${p.daysPerWeek} трен/нед`} по ~${p.sessionMinutes} мин; место: ${LOCATION_LABEL[p.location] ?? 'зал'}`);
   L.push(`Оборудование: ${p.equipment.map((e) => EQUIPMENT_LABEL[e]).join(', ') || '—'}`);
   const hp = healthOf(p);
   const hs = healthSummary(hp);
@@ -100,8 +101,10 @@ export function buildCoachContext(i: CoachInputs): string {
   sec('CURRENT PLAN');
   if (i.target) L.push(`Питание: ${i.target.kcal} ккал, Б ${i.target.protein} / Ж ${i.target.fat} / У ${i.target.carbs}; TDEE ~${i.target.tdee} (${i.target.source === 'adaptive' ? 'адаптивный' : 'по формуле'}), поправка ${i.target.adjustmentKcal} ккал`);
   if (i.plan) {
-    L.push(`Сплит: ${i.plan.splitLabel}, ${i.plan.daysPerWeek}×/нед, цель объёма ${i.plan.weeklySetsTarget[0]}–${i.plan.weeklySetsTarget[1]} подходов/нед на группу`);
-    L.push(`Расписание: ${i.plan.schedule.map((t, idx) => `${WEEKDAYS_SHORT[idx]}=${t ? i.plan!.templates.find((x) => x.id === t)?.name : 'отдых'}`).join(', ')}`);
+    L.push(`Сплит: ${i.plan.splitLabel}, ${scheduleLabel(i.plan)}, цель объёма ${i.plan.weeklySetsTarget[0]}–${i.plan.weeklySetsTarget[1]} подходов/нед на группу`);
+    const pl = i.plan;
+    if (isValidCycle(pl.cycle)) L.push(`Расписание: цикл ${cycleLabel(pl.cycle)} от ${pl.cycle.anchor}, шаблоны по кругу: ${pl.rotation.map((id) => pl.templates.find((x) => x.id === id)?.name).filter(Boolean).join(' → ')}`);
+    else L.push(`Расписание: ${pl.schedule.map((t, idx) => `${WEEKDAYS_SHORT[idx]}=${t ? pl.templates.find((x) => x.id === t)?.name : 'отдых'}`).join(', ')}`);
     L.push('templates:');
     for (const t of i.plan.templates) {
       L.push(`- id=${t.id} «${t.name}» (${t.focus}), ~${t.estMinutes} мин: ${t.exercises.map((e) => `${getExercise(e.exerciseId)?.name ?? e.exerciseId} [${e.exerciseId}] ${e.sets}×${e.repMin}-${e.repMax}`).join('; ')}`);

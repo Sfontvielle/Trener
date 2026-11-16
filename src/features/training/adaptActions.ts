@@ -14,7 +14,7 @@ export function applyProgramProposal(p: ProgramProposal): string {
   const profile = useProfile.getState().profile;
   if (!profile) return '';
   let next = profile;
-  if (p.change.daysPerWeek !== undefined) next = { ...next, daysPerWeek: p.change.daysPerWeek };
+  if (p.change.daysPerWeek !== undefined) next = { ...next, daysPerWeek: p.change.daysPerWeek, cycle: null };
   if (p.change.preferredDays !== undefined) next = { ...next, preferredDays: p.change.preferredDays };
   if (p.change.split) next = withPrefs(next, { preferredSplit: p.change.split });
   if (p.change.volumeDelta) {

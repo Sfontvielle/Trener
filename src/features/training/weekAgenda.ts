@@ -1,5 +1,6 @@
 import type { DayOverride, ISODate, WorkoutPlan, WorkoutSession, WorkoutTemplate } from '@/types';
-import { addDays, startOfWeek, weekdayIndex } from '@/utils/date';
+import { addDays, startOfWeek } from '@/utils/date';
+import { slotTemplateId } from './slots';
 import { plannedTemplateFor } from './today';
 
 /**
@@ -36,7 +37,8 @@ export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; ses
     const date = addDays(from, i);
     const s = done.filter((x) => x.date === date).sort((a, b) => b.startedAt - a.startedAt)[0];
     const ov = overrides[date];
-    const scheduled = plan ? !!plan.schedule[weekdayIndex(date)] : false;
+    const slotId = plan ? slotTemplateId(plan, date) : null;
+    const scheduled = !!slotId;
     if (s) {
       out.push({ date, status: 'done', session: s, template: byId(s.templateId) });
       if (s.source === 'plan' && s.templateId) last = s.templateId;
@@ -49,7 +51,7 @@ export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; ses
     const explicit = ov && ov.templateId !== undefined ? byId(ov.templateId) : undefined;
     const restByOverride = ov?.mode === 'rest' || (ov?.templateId !== undefined && !ov.templateId);
     if (date < today) {
-      if (!restByOverride && (explicit || scheduled)) out.push({ date, status: 'missed', template: explicit ?? byId(plan.schedule[weekdayIndex(date)]) });
+      if (!restByOverride && (explicit || scheduled)) out.push({ date, status: 'missed', template: explicit ?? byId(slotId) });
       continue;
     }
     if (date === today) {
@@ -68,8 +70,8 @@ export function weekAgenda(args: { today: ISODate; plan: WorkoutPlan | null; ses
     if (!scheduled) continue;
     if (!last) last = lastPlanned(done, date);
     const rot = plan.rotation;
-    const nextId = last && rot.includes(last) ? rot[(rot.indexOf(last) + 1) % rot.length] : plan.schedule[weekdayIndex(date)];
-    const t = byId(nextId) ?? byId(plan.schedule[weekdayIndex(date)]);
+    const nextId = last && rot.includes(last) ? rot[(rot.indexOf(last) + 1) % rot.length] : slotId;
+    const t = byId(nextId) ?? byId(slotId);
     if (t) {
       out.push({ date, status: 'planned', template: t });
       last = t.id;

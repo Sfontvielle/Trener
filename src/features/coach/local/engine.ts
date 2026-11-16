@@ -5,6 +5,7 @@ import type { HealthContext } from '@/features/health/model';
 import { EXERCISES, getExercise, GROUP_LABEL } from '@/data/exercises';
 import { getPrefs } from '@/features/training/engine/prefs';
 import { substitutesFor } from '@/features/training/engine/substitute';
+import { cycleLabel, isValidCycle } from '@/features/training/slots';
 import { progressStatus } from '@/features/training/engine/scoring';
 import { historyFor, recommend } from '@/features/training/progression';
 import { reviewCalories } from '@/features/nutrition/adaptive';
@@ -401,7 +402,7 @@ export function localCoach(c: LocalCtx): LocalReply {
   // 9б. Программа: «подходит ли мне сплит», «что поменять в программе», «почему фулбади»
   if (c.plan && has(n, /(программ|сплит|full ?body|фулбади|всё тело|все тело|верх.?низ|жим.?тяга|ppl|структур)/) && has(n, /(подход|поменя|смени|измени|почему|какой|лучше|советуеш|выбрал|адапт|перестро)/)) {
     const props = analyzeProgram({ profile: c.profile, plan: c.plan, sessions: c.sessions, checkins: c.checkins });
-    const lines = [`**Сейчас: ${c.plan.splitLabel}, ${c.plan.daysPerWeek} дн/нед.** ${splitFitText(c.plan.split, c.plan.daysPerWeek)}`];
+    const lines = [`**Сейчас: ${c.plan.splitLabel}, ${isValidCycle(c.plan.cycle) ? `циклом ${cycleLabel(c.plan.cycle)}` : `${c.plan.daysPerWeek} дн/нед`}.** ${splitFitText(c.plan.split, c.plan.daysPerWeek)}`];
     if (c.plan.splitChoice?.reasons.length) lines.push(`Почему он выбран для тебя: ${c.plan.splitChoice.reasons.slice(0, 3).join('; ')}.`);
     if (props.length) {
       const p = props[0];

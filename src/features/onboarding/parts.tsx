@@ -7,6 +7,7 @@ import { Icon, T, type IconName } from '@/components/ui';
 import { Progress } from '@/components/motion';
 import { Sheet } from '@/components/Sheet';
 import { haptic } from '@/services/haptics';
+import { CYCLES, cycleDaysPerWeek } from '@/features/training/slots';
 
 /**
  * Детали анкеты по эталонам onboarding/02–06: шапка «N из 5» с полосой, крупный заголовок по центру,
@@ -143,6 +144,42 @@ export function FrequencyPicker({ value, onChange, min = 2, max = 6 }: { value: 
 }
 const daysWord = (n: number) => (n >= 2 && n <= 4 ? 'раза в неделю' : 'раз в неделю');
 
+/**
+ * Тренировки циклом, без привязки к дням недели: «1 через 1», «2 через 1», «3 через 1».
+ * Выбор цикла и число «раз в неделю» взаимоисключающие: что нажато последним, то и действует.
+ */
+export function CyclePicker({ value, onChange }: { value: { on: number; off: number } | null | undefined; onChange: (c: { on: number; off: number }) => void }) {
+  const cur = value ? CYCLES.find((c) => c.on === value.on && c.off === value.off) : undefined;
+  return (
+    <View style={{ alignItems: 'center', gap: 12 }} testID="q-cycle">
+      <T v="bodyStrong">Или циклом, без привязки к дням недели</T>
+      <View style={{ flexDirection: 'row', gap: 10 }} accessibilityRole="radiogroup">
+        {CYCLES.map((c) => {
+          const on = cur === c;
+          return (
+            <Pressable
+              key={c.label}
+              onPress={() => {
+                haptic.tap();
+                onChange({ on: c.on, off: c.off });
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${c.label}: ${c.hint}`}
+              style={({ pressed }) => [styles.cycle, on && styles.cardOn, pressed && { opacity: 0.7 }]}
+            >
+              <T v="headline">{c.label}</T>
+            </Pressable>
+          );
+        })}
+      </View>
+      <T v="callout" color={colors.textDim} style={{ textAlign: 'center' }}>
+        {cur ? `${cur.hint} — в среднем ${String(Math.round(cycleDaysPerWeek(cur) * 10) / 10).replace('.', ',')} раза в неделю. Цикл начнётся сегодня, сдвинуть можно в профиле` : 'Например, 2 через 1: два дня тренировки, день отдыха — по кругу'}
+      </T>
+    </View>
+  );
+}
+
 /** Выпадающий список (эталон 06_lifestyle): поле с подписью и «⌄», выбор — в листе снизу */
 export function Dropdown<V extends string | number>({ label, value, options, onChange, placeholder = 'Выбери', testID }: { label: string; value: V | undefined; options: { v: V; label: string; sub?: string }[]; onChange: (v: V) => void; placeholder?: string; testID?: string }) {
   const [open, setOpen] = useState(false);
@@ -193,6 +230,7 @@ const styles = themed({
   cardImage: { width: 112, height: 104, marginVertical: -14, marginRight: -18 },
   sex: { flex: 1, aspectRatio: 0.82, alignItems: 'center', justifyContent: 'center', gap: 14, borderRadius: radius.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
   freq: { flexDirection: 'row', alignItems: 'center', gap: 30, paddingHorizontal: 28, height: 92, borderRadius: radius.xl, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  cycle: { paddingHorizontal: 14, height: 50, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
   chip: { width: 50, height: 50, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
   drop: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
 });

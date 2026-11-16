@@ -11,6 +11,7 @@ import { GOAL_SHORT, computeNutritionTarget } from '@/features/nutrition/targets
 import { generatePlan } from '@/features/training/planGenerator';
 import { BRAND } from '@/config/brand';
 import { fmtNum } from '@/utils/format';
+import { scheduleLabel } from '@/features/training/slots';
 
 const automation = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as { webdriver?: boolean }).webdriver;
 /** Этапы — те же, что реально считает приложение (анкета → КБЖУ → программа); на каждый пункт ~0,25 с */
@@ -175,7 +176,7 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
       <Appear i={2} style={styles.card}>
         <T v="caption">Программа</T>
         <T v="headline">
-          {plan.splitLabel} · {plan.daysPerWeek}× в неделю · ~{profile.sessionMinutes} мин
+          {plan.splitLabel} · {scheduleLabel(plan)} · ~{profile.sessionMinutes} мин
         </T>
         <WeekStrip plan={plan} />
         <T v="callout" color={colors.textDim}>
