@@ -195,7 +195,7 @@
     "label": "Большая ромбовидная",
     "slug": "upper-back",
     "view": "back",
-    "depth": "superficial"
+    "depth": "deep"
   },
   {
     "id": "rhomboid_minor",
@@ -293,8 +293,8 @@
     ],
     "label": "Трицепс: медиальная головка",
     "slug": "triceps",
-    "view": "back",
-    "depth": "deep"
+    "view": "both",
+    "depth": "superficial"
   },
   {
     "id": "brachioradialis",
@@ -359,8 +359,8 @@
     ],
     "label": "Внутренняя косая мышца живота",
     "slug": "obliques",
-    "view": "front",
-    "depth": "deep"
+    "view": "both",
+    "depth": "superficial"
   },
   {
     "id": "gluteus_maximus",
@@ -437,7 +437,7 @@
     "label": "Квадрицепс: промежуточная широкая",
     "slug": "quadriceps",
     "view": "front",
-    "depth": "deep"
+    "depth": "superficial"
   },
   {
     "id": "sartorius",

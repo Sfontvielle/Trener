@@ -6,11 +6,11 @@ import { colors, radius, themed } from '@/theme';
 import { Segmented, T } from '@/components/ui';
 import { useProfile } from '@/stores/profile';
 import { MUSCLE_LABEL } from '@/data/exercises';
-import { figure, FIGURE_BOX, type Shape, type View as Side } from './anatomy/geometry';
+import { ATLAS_CREDIT, figure, FIGURE_BOX, type Shape, type View as Side } from './anatomy/geometry';
 import { DETAIL, legendNames, roleOf, type Role } from './anatomy/detail';
 
 /**
- * Анатомическая карта (своя фигура, мужская и женская): каждая мышца и головка отдельно, волокна, сухожилия.
+ * Анатомическая карта (фигура по атласу Z-Anatomy, мужская и женская): каждая мышца и её сторона — отдельный контур.
  * Цвета — строго по нагрузке, не по акценту темы: зелёный — мышца работает, светло-жёлтый — задействована слегка
  * (вспомогательные и стабилизаторы), остальное — нейтральное. Для упражнений, где это важно, подсветка
  * уточняется по пучкам и головкам (махи в стороны — средний пучок дельты, жим на наклонной — верх груди).
@@ -62,6 +62,9 @@ export const Anatomy = memo(function Anatomy({
             onChange={setSide}
             style={{ marginTop: 12, minWidth: 220 }}
           />
+          <T v="caption" style={styles.credit} testID="anatomy-credit">
+            {ATLAS_CREDIT}
+          </T>
         </View>
         {legend}
       </View>
@@ -212,4 +215,5 @@ const styles = themed({
   row: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.surface2, borderRadius: radius.lg, paddingVertical: 12 },
   side: { alignItems: 'center' },
   label: { marginTop: 4, color: colors.textDim },
+  credit: { marginTop: 10, fontSize: 11, color: colors.textDim, textAlign: 'center', paddingHorizontal: 12 },
 });

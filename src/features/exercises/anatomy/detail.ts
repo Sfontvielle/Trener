@@ -15,10 +15,11 @@ export const HEADS = {
   'delt-post': { label: 'Задний пучок дельты', slug: 'deltoids', shapes: ['delt-post'] },
   'pec-clav': { label: 'Верх груди (ключичная часть)', slug: 'chest', shapes: ['pec-clav'] },
   'pec-stern': { label: 'Середина и низ груди', slug: 'chest', shapes: ['pec-stern'] },
-  serratus: { label: 'Передняя зубчатая', slug: null, shapes: ['serr-1', 'serr-2', 'serr-3'] },
+  serratus: { label: 'Передняя зубчатая', slug: null, shapes: ['serr-1'] },
   lat: { label: 'Широчайшие', slug: 'upper-back', shapes: ['lat', 'lat-f'] },
-  rhomboid: { label: 'Ромбовидные', slug: 'upper-back', shapes: ['rhomboid'] },
-  teres: { label: 'Большая круглая', slug: 'upper-back', shapes: ['teres'] },
+  // под трапециевидной: на фигуре не видны, в легенде остаются
+  rhomboid: { label: 'Ромбовидные', slug: 'upper-back', shapes: [] },
+  teres: { label: 'Большая круглая', slug: 'upper-back', shapes: ['teres', 'teres-minor'] },
   infraspin: { label: 'Подостная', slug: 'upper-back', shapes: ['infraspin'] },
   biceps: { label: 'Бицепс', slug: 'biceps', shapes: ['biceps'] },
   brachialis: { label: 'Плечевая', slug: 'biceps', shapes: ['brachialis'] },
@@ -32,7 +33,7 @@ export const HEADS = {
   tfl: { label: 'Напрягатель широкой фасции', slug: null, shapes: ['tfl'] },
   sartorius: { label: 'Портняжная', slug: null, shapes: ['sartorius'] },
   gastro: { label: 'Икроножная', slug: 'calves', shapes: ['gastro-lat', 'gastro-med', 'gastro-med-f'] },
-  soleus: { label: 'Камбаловидная', slug: 'calves', shapes: ['soleus-f', 'soleus-l', 'soleus-m'] },
+  soleus: { label: 'Камбаловидная', slug: 'calves', shapes: ['soleus-f', 'soleus-l'] },
   peroneus: { label: 'Малоберцовые', slug: 'calves', shapes: ['peroneus'] },
 } as const satisfies Record<string, { label: string; slug: MuscleSlug | null; shapes: readonly string[] }>;
 

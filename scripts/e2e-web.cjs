@@ -1325,6 +1325,10 @@ const closeSheet = async (pg) => {
       assert.ok(await page.getByTestId('technique-muscles').isVisible(), 'схема мышц');
       const raster = await page.evaluate(() => [...document.querySelectorAll('img, div')].filter((el) => /assets\/(anim|exercises)\/|posters\/|free-exercise-db/.test(`${el.getAttribute('src') || ''} ${el.style?.backgroundImage || ''}`)).length);
       assert.equal(raster, 0, `${id}: ни роликов, ни фото атлета`);
+      // фигура по атласу: подпись об авторстве (CC BY-SA)
+      assert.match(await page.getByTestId('anatomy-credit').innerText(), /Z-Anatomy.*BodyParts3D.*CC BY-SA 4\.0/);
+      await page.getByTestId('technique-muscles').scrollIntoViewIfNeeded();
+      await shot(`technique-${id}`);
     }
     const legend = await page.evaluate(() => document.body.innerText);
     assert.match(legend, /Работают:/);
@@ -1871,7 +1875,7 @@ const closeSheet = async (pg) => {
       const stops = await map.evaluate((el) => [...el.querySelectorAll('stop')].map((s) => (s.getAttribute('stop-color') || s.getAttribute('stopColor') || '').toUpperCase()));
       assert.ok(stops.includes('#3DDC84') && stops.includes('#F4DE77'), `${accent}: зелёный и жёлтый (${[...new Set(stops)].join(' ')})`);
       assert.ok(!stops.includes('#FF8A3D') && !stops.includes('#6CB6FF'), `${accent}: без цвета акцента`);
-      assert.ok((await map.locator('path').count()) > 120, 'подробная фигура: отдельные мышцы и волокна');
+      assert.ok((await map.locator('path').count()) > 90, 'подробная фигура: отдельные мышцы');
       assert.equal(await page.getByTestId('anatomy-figure-male').count(), 1, 'мужская фигура');
       const legend = await map.innerText();
       assert.match(legend, /Работают:\s*Средний пучок дельты/, 'махи в стороны — средний пучок');

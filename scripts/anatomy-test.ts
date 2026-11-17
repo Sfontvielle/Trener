@@ -31,26 +31,35 @@ test('Анатомия: каждая группа мышц приложения 
 });
 
 test('Анатомия: уточнения по головкам ссылаются на существующие контуры и упражнения', () => {
-  const bases = new Set([...figure('male', 'front'), ...figure('male', 'back')].map((s) => s.base));
+  const bases = new Set(SEXES.flatMap((sx) => [...figure(sx, 'front'), ...figure(sx, 'back')]).map((s) => s.base));
   for (const h of Object.keys(HEADS) as HeadId[]) for (const sh of HEADS[h].shapes) assert.ok(bases.has(sh), `головка ${h}: нет контура ${sh}`);
   const ids = new Set(EXERCISES.map((e) => e.id));
   for (const id of Object.keys(DETAIL)) assert.ok(ids.has(id), `уточнение для неизвестного упражнения ${id}`);
 });
 
-test('Анатомия: женская фигура — те же мышцы, плюс причёска и контур груди', () => {
+test('Анатомия: фигура по атласу — женская с теми же мышцами, причёской и контуром груди; пропорции свои', () => {
+  const groups = (sex: Sex, side: 'front' | 'back') => new Set(figure(sex, side).filter((s) => s.kind === 'muscle' && !s.base.startsWith('x-')).map((s) => s.base));
   for (const side of ['front', 'back'] as const) {
-    const m = figure('male', side).filter((s) => s.kind === 'muscle').map((s) => s.id).sort();
-    const f = figure('female', side).filter((s) => s.kind === 'muscle').map((s) => s.id).sort();
-    assert.deepEqual(f, m, `${side}: набор мышц одинаковый`);
+    const m = groups('male', side);
+    const f = groups('female', side);
+    const miss = [...m].filter((b) => !f.has(b));
+    // краешки мышц соседней стороны (передняя дельта сзади и т. п.) у разных пропорций видны по-разному
+    assert.ok(miss.length <= 3, `${side}: у женской фигуры нет ${miss}`);
     assert.ok(figure('female', side).some((s) => s.kind === 'hair'), `${side}: причёска`);
   }
   assert.ok(figure('female', 'front').some((s) => s.kind === 'contour'), 'контур груди');
-  // пропорции: плечи уже, таз шире
-  const width = (sex: Sex, id: string) => {
-    const s = figure(sex, 'front').find((x) => x.id === id)!;
-    return s.box[2] - s.box[0];
+  assert.ok(figure('female', 'front').some((s) => s.base === 'pec-stern' && s.kind === 'muscle'), 'грудные под контуром видны');
+  // пропорции атласа: рост одинаковый (400), женская фигура уже
+  const width = (sex: Sex) => {
+    const b = figure(sex, 'front').filter((x) => x.kind === 'skin');
+    return Math.max(...b.map((x) => x.box[2])) - Math.min(...b.map((x) => x.box[0]));
   };
-  assert.ok(width('female', 'torso') <= width('male', 'torso'), 'плечи у женской фигуры не шире');
+  assert.ok(width('female') < width('male'), 'женская фигура уже мужской');
+  for (const sex of SEXES) for (const side of ['front', 'back'] as const) {
+    const f = figure(sex, side);
+    assert.ok(Math.min(...f.map((x) => x.box[1])) > -2 && Math.max(...f.map((x) => x.box[3])) <= 400, `${sex} ${side}: от макушки до стоп`);
+    assert.ok(f.filter((x) => x.kind === 'muscle').length > 70, `${sex} ${side}: отдельные мышцы`);
+  }
 });
 
 test('Анатомия: цвета мышц не зависят от акцента темы (зелёный — работает, светло-жёлтый — слегка)', () => {
@@ -81,14 +90,15 @@ test('Канонические id: формат snake_case, обе сторон�
 });
 
 test('Канонические id: контуры 2D-фигуры существуют, каждая мышца фигуры имеет канонический id', () => {
-  const muscleShapes = new Set([...figure('male', 'front'), ...figure('male', 'back')].filter((s) => s.kind === 'muscle').map((s) => s.base));
+  const muscleShapes = new Set(SEXES.flatMap((sx) => [...figure(sx, 'front'), ...figure(sx, 'back')]).filter((s) => s.kind === 'muscle').map((s) => s.base));
   const mapped = new Set<string>();
   for (const id of MUSCLE_IDS) for (const sh of MUSCLES[id].shapes) {
     assert.ok(muscleShapes.has(sh), `${id}: нет контура ${sh}`);
     mapped.add(sh);
   }
-  for (const sh of muscleShapes) assert.ok(mapped.has(sh), `контур ${sh} без канонического id`);
-  for (const id of MUSCLE_IDS) if (MUSCLES[id].depth === 'superficial') assert.ok(MUSCLES[id].shapes.length > 0 || ['teres_minor'].includes(id), `${id}: поверхностная мышца без контура`);
+  // мышцы атласа без группы приложения (x-…) — нейтральные, канонический id им не нужен
+  for (const sh of muscleShapes) if (!sh.startsWith('x-')) assert.ok(mapped.has(sh), `контур ${sh} без канонического id`);
+  for (const id of MUSCLE_IDS) if (MUSCLES[id].depth === 'superficial') assert.ok(MUSCLES[id].shapes.length > 0, `${id}: поверхностная мышца без контура`);
 });
 
 test('Канонические id: у каждой группы приложения есть мышцы', () => {

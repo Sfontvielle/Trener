@@ -1,0 +1,372 @@
+{
+ "_": "Какие контуры (shapes из muscleIds.ts) рисуются на виде спереди и сзади — trace.py выбирает по ним имя контура мышцы для вида. muscles — канонические id: группа приложения и контуры.",
+ "front": [
+  "scm",
+  "trap-f",
+  "delt-ant",
+  "delt-lat",
+  "pec-clav",
+  "pec-stern",
+  "serr-1",
+  "serr-2",
+  "serr-3",
+  "lat-f",
+  "rectus",
+  "oblique",
+  "tfl",
+  "sartorius",
+  "rect-fem",
+  "vast-lat",
+  "vast-med",
+  "add-long",
+  "gracilis-f",
+  "tib-ant",
+  "peroneus",
+  "gastro-med-f",
+  "soleus-f",
+  "biceps",
+  "brachialis",
+  "triceps-f",
+  "brachiorad",
+  "flexors"
+ ],
+ "back": [
+  "splenius",
+  "lat",
+  "erector",
+  "trap",
+  "rhomboid",
+  "infraspin",
+  "teres",
+  "oblique-b",
+  "glute-med",
+  "glute-max",
+  "bic-fem",
+  "semiten",
+  "semimem",
+  "add-mag",
+  "gracilis-b",
+  "gastro-lat",
+  "gastro-med",
+  "soleus-l",
+  "soleus-m",
+  "delt-post",
+  "delt-lat-b",
+  "tri-long",
+  "tri-lat",
+  "extensors",
+  "flexors-b"
+ ],
+ "muscles": {
+  "sternocleidomastoid": {
+   "slug": "neck",
+   "shapes": [
+    "scm"
+   ]
+  },
+  "splenius_capitis": {
+   "slug": "neck",
+   "shapes": [
+    "splenius"
+   ]
+  },
+  "pectoralis_major_clavicular": {
+   "slug": "chest",
+   "shapes": [
+    "pec-clav"
+   ]
+  },
+  "pectoralis_major_sternal": {
+   "slug": "chest",
+   "shapes": [
+    "pec-stern"
+   ]
+  },
+  "pectoralis_major_abdominal": {
+   "slug": "chest",
+   "shapes": [
+    "pec-stern"
+   ]
+  },
+  "pectoralis_minor": {
+   "slug": "chest",
+   "shapes": []
+  },
+  "serratus_anterior": {
+   "slug": null,
+   "shapes": [
+    "serr-1",
+    "serr-2",
+    "serr-3"
+   ]
+  },
+  "deltoid_anterior": {
+   "slug": "deltoids",
+   "shapes": [
+    "delt-ant"
+   ]
+  },
+  "deltoid_lateral": {
+   "slug": "deltoids",
+   "shapes": [
+    "delt-lat",
+    "delt-lat-b"
+   ]
+  },
+  "deltoid_posterior": {
+   "slug": "deltoids",
+   "shapes": [
+    "delt-post"
+   ]
+  },
+  "supraspinatus": {
+   "slug": "upper-back",
+   "shapes": []
+  },
+  "infraspinatus": {
+   "slug": "upper-back",
+   "shapes": [
+    "infraspin"
+   ]
+  },
+  "teres_minor": {
+   "slug": "upper-back",
+   "shapes": []
+  },
+  "teres_major": {
+   "slug": "upper-back",
+   "shapes": [
+    "teres"
+   ]
+  },
+  "trapezius_upper": {
+   "slug": "trapezius",
+   "shapes": [
+    "trap-f",
+    "trap"
+   ]
+  },
+  "trapezius_middle": {
+   "slug": "trapezius",
+   "shapes": [
+    "trap"
+   ]
+  },
+  "trapezius_lower": {
+   "slug": "trapezius",
+   "shapes": [
+    "trap"
+   ]
+  },
+  "rhomboid_major": {
+   "slug": "upper-back",
+   "shapes": [
+    "rhomboid"
+   ]
+  },
+  "rhomboid_minor": {
+   "slug": "upper-back",
+   "shapes": []
+  },
+  "latissimus_dorsi": {
+   "slug": "upper-back",
+   "shapes": [
+    "lat",
+    "lat-f"
+   ]
+  },
+  "erector_spinae": {
+   "slug": "lower-back",
+   "shapes": [
+    "erector"
+   ]
+  },
+  "biceps_brachii_long": {
+   "slug": "biceps",
+   "shapes": [
+    "biceps"
+   ]
+  },
+  "biceps_brachii_short": {
+   "slug": "biceps",
+   "shapes": [
+    "biceps"
+   ]
+  },
+  "brachialis": {
+   "slug": "biceps",
+   "shapes": [
+    "brachialis"
+   ]
+  },
+  "triceps_long": {
+   "slug": "triceps",
+   "shapes": [
+    "tri-long",
+    "triceps-f"
+   ]
+  },
+  "triceps_lateral": {
+   "slug": "triceps",
+   "shapes": [
+    "tri-lat"
+   ]
+  },
+  "triceps_medial": {
+   "slug": "triceps",
+   "shapes": []
+  },
+  "brachioradialis": {
+   "slug": "forearm",
+   "shapes": [
+    "brachiorad"
+   ]
+  },
+  "forearm_flexors": {
+   "slug": "forearm",
+   "shapes": [
+    "flexors",
+    "flexors-b"
+   ]
+  },
+  "forearm_extensors": {
+   "slug": "forearm",
+   "shapes": [
+    "extensors"
+   ]
+  },
+  "rectus_abdominis": {
+   "slug": "abs",
+   "shapes": [
+    "rectus"
+   ]
+  },
+  "external_oblique": {
+   "slug": "obliques",
+   "shapes": [
+    "oblique",
+    "oblique-b"
+   ]
+  },
+  "internal_oblique": {
+   "slug": "obliques",
+   "shapes": []
+  },
+  "gluteus_maximus": {
+   "slug": "gluteal",
+   "shapes": [
+    "glute-max"
+   ]
+  },
+  "gluteus_medius": {
+   "slug": "gluteal",
+   "shapes": [
+    "glute-med"
+   ]
+  },
+  "tensor_fasciae_latae": {
+   "slug": null,
+   "shapes": [
+    "tfl"
+   ]
+  },
+  "rectus_femoris": {
+   "slug": "quadriceps",
+   "shapes": [
+    "rect-fem"
+   ]
+  },
+  "vastus_lateralis": {
+   "slug": "quadriceps",
+   "shapes": [
+    "vast-lat"
+   ]
+  },
+  "vastus_medialis": {
+   "slug": "quadriceps",
+   "shapes": [
+    "vast-med"
+   ]
+  },
+  "vastus_intermedius": {
+   "slug": "quadriceps",
+   "shapes": []
+  },
+  "sartorius": {
+   "slug": null,
+   "shapes": [
+    "sartorius"
+   ]
+  },
+  "adductor_longus": {
+   "slug": "adductors",
+   "shapes": [
+    "add-long"
+   ]
+  },
+  "adductor_magnus": {
+   "slug": "adductors",
+   "shapes": [
+    "add-mag"
+   ]
+  },
+  "gracilis": {
+   "slug": "adductors",
+   "shapes": [
+    "gracilis-f",
+    "gracilis-b"
+   ]
+  },
+  "biceps_femoris": {
+   "slug": "hamstring",
+   "shapes": [
+    "bic-fem"
+   ]
+  },
+  "semitendinosus": {
+   "slug": "hamstring",
+   "shapes": [
+    "semiten"
+   ]
+  },
+  "semimembranosus": {
+   "slug": "hamstring",
+   "shapes": [
+    "semimem"
+   ]
+  },
+  "gastrocnemius_medial": {
+   "slug": "calves",
+   "shapes": [
+    "gastro-med",
+    "gastro-med-f"
+   ]
+  },
+  "gastrocnemius_lateral": {
+   "slug": "calves",
+   "shapes": [
+    "gastro-lat"
+   ]
+  },
+  "soleus": {
+   "slug": "calves",
+   "shapes": [
+    "soleus-f",
+    "soleus-l",
+    "soleus-m"
+   ]
+  },
+  "fibularis_longus": {
+   "slug": "calves",
+   "shapes": [
+    "peroneus"
+   ]
+  },
+  "tibialis_anterior": {
+   "slug": "tibialis",
+   "shapes": [
+    "tib-ant"
+   ]
+  }
+ }
+}

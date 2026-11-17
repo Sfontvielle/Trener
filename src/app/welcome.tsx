@@ -8,6 +8,7 @@ import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-nat
 import { space } from '@/theme';
 import { Button, T } from '@/components/ui';
 import { BRAND_LIME } from '@/components/BrandMark';
+import { AtlasHero, HERO_ORIGIN, HERO_VIEWBOX } from '@/components/art/AtlasHero';
 import { useAccount } from '@/stores/account';
 import { entryRoute } from '@/features/account/route';
 import { BRAND } from '@/config/brand';
@@ -15,17 +16,17 @@ import { haptic } from '@/services/haptics';
 
 const native = Platform.OS !== 'web';
 const automation = Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as { webdriver?: boolean }).webdriver;
-const HERO = require('../../assets/art/welcome.webp');
 const ENERGY = require('../../assets/art/energy.webp');
-const RATIO = 1350 / 1080;
+const RATIO = HERO_VIEWBOX.h / HERO_VIEWBOX.w;
 /** Точка, откуда расходится энергия: между лопаток атлета (доли кадра иллюстрации) */
-const ORIGIN = { x: 0.5, y: 0.36 };
+const ORIGIN = HERO_ORIGIN;
 
 /**
  * Приветствие (эталон onboarding/01_welcome, тексты — по ТЗ). Только при первом запуске.
  * Двойной энергетический импульс один раз: искра → первая волна (проявляется атлет) → вторая волна →
  * бицепс → RYNJI → текст и «Начать». Около 1,6 с, ничего не ждёт искусственно. «Уменьшение движения» и
- * автотесты — сразу итоговый кадр. Изображения — собственный 3D-рендер (tools/anim), права наши.
+ * автотесты — сразу итоговый кадр. Атлет — рисунок по анатомической фигуре RYNJI (контуры по атласу Z-Anatomy,
+ * CC BY-SA 4.0), без 3D; зелёные разряды — свой рисунок (assets/art/energy.webp).
  */
 export default function Welcome() {
   const { width, height } = useWindowDimensions();
@@ -128,7 +129,9 @@ export default function Welcome() {
         pointerEvents="none"
         style={{ position: 'absolute', top: artTop, left: 0, width: artW, height: artH, opacity: a.hero, transform: [{ scale: a.hero.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1] }) }] }}
       >
-        <Image source={HERO} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition="top" accessibilityLabel="Атлет со спины в зелёном свете" />
+        <View style={StyleSheet.absoluteFill} accessible accessibilityRole="image" accessibilityLabel="Атлет со спины в зелёном свете">
+          <AtlasHero width={artW} height={artH} lime={BRAND_LIME} />
+        </View>
         {/* низ иллюстрации растворяется в фоне — без жёсткого края */}
         <View style={[StyleSheet.absoluteFill, { top: artH * 0.55 }]}>
           <Svg width="100%" height="100%">
