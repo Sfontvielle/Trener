@@ -13,10 +13,10 @@
       "bundleIdentifier": "net.fontvielle.form",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов и фотографировать бланки анализов.",
+        "NSCameraUsageDescription": "RYNJI использует камеру, чтобы сканировать штрихкоды продуктов, делать фото прогресса и скан тела (фото обрабатываются на телефоне).",
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "RYNJI читает сон, шаги, пульс покоя, HRV, активные калории, тренировки и вес, чтобы точнее оценивать готовность к тренировке. Данные остаются на устройстве.",
-        "NSPhotoLibraryUsageDescription": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве.",
+        "NSPhotoLibraryUsageDescription": "RYNJI использует фото для фото прогресса, скана тела и загрузки бланков анализов. Фото остаются на устройстве.",
         "CFBundleDevelopmentRegion": "ru",
         "CFBundleAllowMixedLocalizations": true
       },
@@ -101,8 +101,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "RYNJI использует фото для фото прогресса и для загрузки бланков анализов. Фото остаются на устройстве.",
-          "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов, фото прогресса и бланков анализов.",
+          "photosPermission": "RYNJI использует фото для фото прогресса, скана тела и загрузки бланков анализов. Фото остаются на устройстве.",
+          "cameraPermission": "RYNJI использует камеру для штрихкодов продуктов, фото прогресса, скана тела и бланков анализов.",
           "microphonePermission": false
         }
       ],

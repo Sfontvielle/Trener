@@ -35,7 +35,7 @@ const STRATEGY: Record<UserProfile['goal'], string> = {
  * сразу итог) — и «Твой план готов!»: калории и БЖУ, программа на неделю — реальные формулы приложения
  * (computeNutritionTarget, generatePlan), подробности расчёта — по тапу.
  */
-export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile | null; onStart: () => void; onBack: () => void }) {
+export function PlanReady({ profile, onStart, onBack, onScan }: { profile: UserProfile | null; onStart: () => void; onBack: () => void; /** Уточнить план сканом тела (после сохранения профиля) */ onScan?: () => void }) {
   const [phase, setPhase] = useState(automation ? PHASES.length : 0);
   const [tick, setTick] = useState(0);
   const [more, setMore] = useState(false);
@@ -202,6 +202,18 @@ export function PlanReady({ profile, onStart, onBack }: { profile: UserProfile |
         ) : null}
       </Appear>
 
+      {onScan ? (
+        <Pressable onPress={onScan} accessibilityRole="button" testID="plan-scan" style={({ pressed }) => [styles.readyRow, { marginTop: space.lg }, pressed && { opacity: 0.8 }]}>
+          <Icon name="scan-outline" size={22} color={colors.accent} />
+          <View style={{ flex: 1, paddingVertical: 10 }}>
+            <T v="headline">Уточнить по скану тела</T>
+            <T v="callout" color={colors.textDim}>
+              2 фото: процент жира, отстающие зоны — в калории и акценты плана
+            </T>
+          </View>
+          <Icon name="chevron-forward" size={18} color={colors.textDim} />
+        </Pressable>
+      ) : null}
       <PrimaryAction title="Открыть мой план" onPress={onStart} accessibilityLabel={`Открыть мой план и начать с ${BRAND}`} />
     </View>
   );

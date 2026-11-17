@@ -140,7 +140,7 @@ export default function Onboarding() {
     else if (stage > 0) setStage(stage - 1, pagesOf(stage - 1, draft).length - 1);
   };
 
-  const finish = () => {
+  const finish = (then?: '/body-scan') => {
     if (!profile) return;
     const now = Date.now();
     applyProfile({ ...profile, createdAt: now, updatedAt: now }, { force: true });
@@ -149,13 +149,14 @@ export default function Onboarding() {
     useQuestionnaire.getState().reset();
     haptic.success();
     router.replace('/');
+    if (then) router.push(then);
   };
 
   if (stage === Q_STAGES) {
     // key: свой экран с прокруткой с самого верха — иначе «План готов» открывается там, где прокрутили последний вопрос
     return (
       <Screen key="plan">
-        <PlanReady profile={profile} onStart={finish} onBack={() => setStage(Q_STAGES - 1, 0)} />
+        <PlanReady profile={profile} onStart={() => finish()} onScan={() => finish('/body-scan')} onBack={() => setStage(Q_STAGES - 1, 0)} />
       </Screen>
     );
   }

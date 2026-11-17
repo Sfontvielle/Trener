@@ -22,8 +22,8 @@ const pages = [];
 /** Ошибки React в консоли (dev-оверлей Expo LogBox) — тоже ошибка теста: раньше они проходили незамеченными */
 const logBoxText = async (pg) => {
   try {
-    const t = await pg.locator('#error-toast div').filter({ hasText: /\S/ }).first().innerText({ timeout: 300 });
-    return t.trim();
+    const t = await pg.locator('#error-toast').innerText({ timeout: 300 });
+    return t.replace(/\s+/g, ' ').trim();
   } catch {
     return '';
   }
@@ -155,6 +155,7 @@ const passQuestionnaire = async (pg, name = 'Тест') => {
   assert.match(await pg.getByTestId('plan-kcal').innerText(), /^\d[\d\s ]*$/);
   assert.match(await body(), /Белки[\s\S]*Жиры[\s\S]*Углеводы[\s\S]*3× в неделю/);
   assert.match(await body(), /Программа тренировок[\s\S]*Персональное КБЖУ[\s\S]*Рекомендации по восстановлению/);
+  assert.equal(await pg.getByTestId('plan-scan').count(), 1, 'на итоге анкеты — предложение уточнить план сканом тела');
   await pg.getByText('Открыть мой план', { exact: true }).click();
   await pg.waitForTimeout(1500);
 };
@@ -1936,6 +1937,57 @@ const closeSheet = async (pg) => {
     const back = await page2.evaluate(() => JSON.parse(localStorage.getItem('form.plan')).state.plan);
     assert.ok(!back.cycle, 'цикл снят');
     assert.ok(back.schedule.some(Boolean), 'дни недели вернулись');
+  });
+
+  await check('72. Скан тела: из «Тела» — подсказки и приватность, два фото; до фото — никаких чисел', async () => {
+    await page.goto(`${URL}/body`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await dismiss();
+    await page.getByTestId('body-scan-open').click();
+    await page.waitForTimeout(900);
+    const intro = await page.getByTestId('scan-intro').innerText();
+    assert.match(intro, /спереди и боком/);
+    assert.match(intro, /формула ВМС США/);
+    assert.match(intro, /не сохраняются/, 'приватность: фото не сохраняются');
+    assert.doesNotMatch(intro, /\d+\s?%/, 'до фото — никаких процентов');
+    await page.getByTestId('scan-start').click();
+    await page.waitForTimeout(500);
+    const front = await page.getByTestId('scan-front').innerText();
+    assert.match(front, /лицом к камере[\s\S]*буквой «А»[\s\S]*от макушки до стоп/);
+    assert.match(front, /Сфотографировать[\s\S]*Выбрать из галереи/);
+    await shot('body-scan');
+  });
+
+  await check('73. Скан тела целиком (нужен интернет: модель MediaPipe): два фото из галереи → распознавание на устройстве → диапазон жира и обхваты → сохранение в замеры, калории по сухой массе', async () => {
+    const path = require('node:path');
+    const before = await page.evaluate(() => ({ profile: localStorage.getItem('form.profile'), body: localStorage.getItem('form.body'), plan: localStorage.getItem('form.plan') }));
+    try {
+      await page.goto(`${URL}/body-scan`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1000);
+      await dismiss();
+      await page.getByTestId('scan-start').click();
+      for (const [step, file] of [['scan-front', 'scan-model-front.jpg'], ['scan-side', 'scan-model-side.jpg']]) {
+        await page.getByTestId(step).waitFor({ timeout: 5000 });
+        const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.getByText('Выбрать из галереи', { exact: true }).click()]);
+        await fc.setFiles(path.join(__dirname, 'fixtures', file));
+        await page.waitForTimeout(800);
+      }
+      await page.locator('[data-testid="scan-result"], [data-testid="scan-retry"]').first().waitFor({ timeout: 90000 });
+      if (await page.getByTestId('scan-retry').count()) throw new Error(`скан не посчитан: ${(await page.getByTestId('scan-retry').innerText()).slice(0, 200)}`);
+      const res = await page.getByTestId('scan-result').innerText();
+      assert.match(res, /\d+(,\d)?–\d+(,\d)? %/, 'процент жира — диапазоном');
+      assert.match(res, /Шея[\s\S]*см[\s\S]*Талия[\s\S]*см/, 'обхваты с погрешностью');
+      assert.match(res, /Кэтча — Макардла/);
+      await shot('body-scan-result');
+      await page.getByTestId('scan-save').click();
+      await page.waitForTimeout(1200);
+      const after = await page.evaluate(() => ({ profile: JSON.parse(localStorage.getItem('form.profile')).state.profile, body: JSON.parse(localStorage.getItem('form.body')).state, plan: JSON.parse(localStorage.getItem('form.plan')).state }));
+      assert.equal(after.profile.bodyFat.method, 'scan');
+      assert.ok(after.body.metrics.filter((m) => m.source === 'scan').length >= 3, 'замеры со скана сохранены');
+      assert.ok(after.plan.target.steps.some((st) => /Кэтча/.test(st.note || '')), 'калории — по сухой массе');
+    } finally {
+      await page.evaluate((b) => { for (const [k, v] of Object.entries({ 'form.profile': b.profile, 'form.body': b.body, 'form.plan': b.plan })) if (v) localStorage.setItem(k, v); }, before);
+    }
   });
 
   await check('14. Тема сохраняется после перезапуска', async () => {

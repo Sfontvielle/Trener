@@ -38,11 +38,12 @@ export const ZONE_MUSCLES: Partial<Record<BodyZone, VolumeMuscle[]>> = {
   glutes: ['glutes'],
 };
 
-export type BfMethod = 'measured' | 'navy' | 'rfm' | 'bmi' | 'photo';
+export type BfMethod = 'measured' | 'navy' | 'scan' | 'rfm' | 'bmi' | 'photo';
 
 export const BF_METHOD_LABEL: Record<BfMethod, string> = {
   measured: 'по замеру прибором',
   navy: 'по шее и талии (формула ВМС США)',
+  scan: 'по скану камерой: обхваты по силуэту, формула ВМС США',
   rfm: 'по росту и талии (RFM)',
   bmi: 'по росту, весу и возрасту — грубо',
   photo: 'по фото и замерам',
@@ -140,7 +141,9 @@ export function estimateBodyFat(i: BodyInput): BodyFatEstimate {
   if (m.bodyfat && daysBetween(m.bodyfat.date, i.today) <= 30) return make(m.bodyfat.value, 2, 'measured');
   if (m.waist && m.neck) {
     const v = navyBodyFat(i.sex, i.heightCm, m.waist.value, m.neck.value, m.hips?.value);
-    if (v !== null && Number.isFinite(v)) return make(v, 3.5, 'navy');
+    // обхваты по силуэту со скана — ошибка выше, чем у ленты: ±5 п.п. вместо ±3,5
+    const scanned = m.waist.source === 'scan' || m.neck.source === 'scan';
+    if (v !== null && Number.isFinite(v)) return scanned ? make(v, 5, 'scan') : make(v, 3.5, 'navy');
   }
   if (m.waist) return make(rfmBodyFat(i.sex, i.heightCm, m.waist.value), 4.5, 'rfm');
   return make(bmiBodyFat(i.sex, i.age, i.heightCm, i.weightKg), 5, 'bmi');
@@ -162,18 +165,20 @@ export function analyzeBody(i: BodyInput): BodyAnalysis {
   const lag = new Map<BodyZone, string>();
 
   const waist = m.waist?.value;
+  // у сухих (атлетичный уровень и хорошая форма) пропорции талии говорят о строении, а не о жире
+  const lean = level === 'athletic' || level === 'fit';
   if (waist) {
     const whtr = waist / i.heightCm;
     const ok = whtr < 0.5;
     ratios.push({ key: 'whtr', label: 'Талия / рост', value: whtr, ok, text: ok ? 'меньше 0,5 — хорошо' : 'от 0,5 — основной запас жира на животе' });
-    if (!ok) fat.set('belly', `талия ${fmt(whtr)} от роста — жир в первую очередь на животе`);
+    if (!ok && !lean) fat.set('belly', `талия ${fmt(whtr)} от роста — жир в первую очередь на животе`);
   }
   if (waist && m.hips) {
     const whr = waist / m.hips.value;
     const lim = male ? 0.9 : 0.85;
     const ok = whr <= lim;
     ratios.push({ key: 'whr', label: 'Талия / бёдра', value: whr, ok, text: ok ? `до ${fmt(lim)} — хорошо` : `выше ${fmt(lim)} — жир скорее на животе и боках` });
-    if (!ok) {
+    if (!ok && !lean) {
       fat.set('belly', fat.get('belly') ?? `талия ${fmt(whr)} от бёдер — жир на животе`);
       fat.set('sides', 'бока уходят вместе с животом');
     } else if (!male && level === 'high' && whr < 0.75) fat.set('hips', 'запас жира скорее на бёдрах и ягодицах — это типично и уходит последним');

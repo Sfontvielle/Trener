@@ -75,6 +75,8 @@ export interface UserProfile {
   preferredDays: number[];
   /** Тренировки циклом без привязки к дням недели («2 через 1»). Если задан — preferredDays не используются */
   cycle?: TrainingCycle | null;
+  /** Процент жира (скан тела или замеры): по нему основной обмен считается по сухой массе (Кэтч — Макардл) */
+  bodyFat?: { value: number; low: number; high: number; method: 'scan' | 'navy' | 'measured'; date: ISODate } | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -383,6 +385,8 @@ export interface BodyMetric {
   date: ISODate;
   kind: 'waist' | 'neck' | 'chest' | 'hips' | 'arm' | 'thigh' | 'bodyfat';
   value: number;
+  /** Откуда замер: scan — по силуэту со скана камерой (точность ниже, чем у ленты) */
+  source?: 'scan';
 }
 
 // ─── Recovery ───────────────────────────────────────────────────────────────

@@ -57,6 +57,21 @@ export function bmrMifflin(p: Pick<UserProfile, 'sex' | 'age' | 'heightCm'>, wei
   return p.sex === 'male' ? base + 5 : base - 161;
 }
 
+/** Основной обмен по сухой массе (Katch-McArdle): 370 + 21,6 × сухая масса, кг */
+export function bmrKatch(weightKg: number, bodyFatPct: number): number {
+  return 370 + 21.6 * weightKg * (1 - bodyFatPct / 100);
+}
+
+/** Процент жира из профиля, если он свежий (до 120 дней) — иначе расчёт по Миффлину */
+export function freshBodyFat(p: Pick<UserProfile, 'bodyFat'>, ref: string = toISO(new Date())): NonNullable<UserProfile['bodyFat']> | null {
+  const bf = p.bodyFat;
+  if (!bf || !(bf.value >= 3 && bf.value <= 60)) return null;
+  const days = (Date.parse(`${ref}T12:00:00`) - Date.parse(`${bf.date}T12:00:00`)) / 86400000;
+  return days >= 0 && days <= 120 ? bf : null;
+}
+
+const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export function nonTrainingFactor(p: Pick<UserProfile, 'stepsPerDay' | 'workStyle'>): { factor: number; note: string } {
   const steps = p.stepsPerDay;
   let f = 1.2;
@@ -105,8 +120,13 @@ export function computeNutritionTarget(
   const adj = opts.adjustmentKcal ?? 0;
   const steps: CalcStep[] = [];
 
-  const bmr = bmrMifflin(profile, w);
-  steps.push({ label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора (оценка, точность ±10% у большинства людей)' });
+  const bf = freshBodyFat(profile);
+  const bmr = bf ? bmrKatch(w, bf.value) : bmrMifflin(profile, w);
+  steps.push(
+    bf
+      ? { label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: `Формула Кэтча — Макардла по сухой массе: жир ~${String(bf.value).replace('.', ',')}% (${bf.method === 'scan' ? 'скан тела' : 'замеры'}, диапазон ${String(bf.low).replace('.', ',')}–${String(bf.high).replace('.', ',')}% → ±${round(Math.abs(bmrKatch(w, bf.low) - bmrKatch(w, bf.high)) / 2, 10)} ккал)` }
+      : { label: 'Основной обмен', value: `${round(bmr, 10)} ккал`, note: 'Формула Миффлина — Сан Жеора (оценка, точность ±10% у большинства людей)' },
+  );
 
   const nt = nonTrainingFactor(profile);
   const neat = bmr * nt.factor;

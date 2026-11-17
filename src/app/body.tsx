@@ -107,6 +107,7 @@ export default function BodyScreen() {
   return (
     <Screen>
       <Header title="Тело" right={<IconButton name="add" label="Добавить замеры и фото" onPress={() => router.push('/measurements')} />} />
+      <Button title="Скан тела камерой" icon="scan-outline" variant="secondary" onPress={() => router.push('/body-scan')} style={{ marginBottom: space.md }} testID="body-scan-open" />
 
       {/* Главное: процент жира диапазоном и что это значит */}
       {bf ? (
